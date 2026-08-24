@@ -3103,30 +3103,37 @@ function renderProofFiles(quarter) {
     }
     if (!files.length) return '';
 
+    const canDelete = quarter.status === 'pending_completion';
+    const delBtn = (url) => canDelete ? `
+        <button type="button" onclick="event.preventDefault(); deleteProofFile('${quarter.id}', '${String(url).replace(/'/g, "\\'")}')"
+            title="Delete attachment — cancels this pending completion"
+            class="shrink-0 w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 text-red-500 hover:text-red-700 flex items-center justify-center text-xs font-black transition">✕</button>` : '';
+
     const fileCards = files.map((f, i) => {
         const isImg = f.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(f.url || '');
         const name  = f.name || ('File ' + (i+1));
         if (isImg) {
-            return `<a href="${f.url}" target="_blank" class="block group">
-                <div class="rounded-2xl overflow-hidden border-2 border-slate-200 group-hover:border-[#8B5E4A] transition bg-slate-50">
+            return `<div class="rounded-2xl overflow-hidden border-2 border-slate-200 hover:border-[#8B5E4A] transition bg-slate-50">
+                <a href="${f.url}" target="_blank" class="block">
                     <img src="${f.url}" alt="${name}" class="w-full max-h-52 object-contain">
-                    <div class="px-3 py-2 border-t border-slate-100 flex items-center gap-2">
-                        <span class="text-base">🖼️</span>
-                        <span class="text-xs font-bold text-slate-600 truncate flex-1">${name}</span>
-                        <span class="text-[10px] text-[#8B5E4A] font-black shrink-0">Open ↗</span>
-                    </div>
+                </a>
+                <div class="px-3 py-2 border-t border-slate-100 flex items-center gap-2">
+                    <span class="text-base">🖼️</span>
+                    <a href="${f.url}" target="_blank" class="text-xs font-bold text-slate-600 truncate flex-1">${name}</a>
+                    <a href="${f.url}" target="_blank" class="text-[10px] text-[#8B5E4A] font-black shrink-0">Open ↗</a>
+                    ${delBtn(f.url)}
                 </div>
-            </a>`;
+            </div>`;
         } else {
-            return `<a href="${f.url}" target="_blank"
-                class="flex items-center gap-3 p-3 rounded-2xl border-2 border-slate-200 hover:border-[#8B5E4A] hover:bg-[#FBF5EF] transition group">
-                <div class="w-10 h-10 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center text-xl shrink-0">📄</div>
-                <div class="flex-1 min-w-0">
+            return `<div class="flex items-center gap-3 p-3 rounded-2xl border-2 border-slate-200 hover:border-[#8B5E4A] hover:bg-[#FBF5EF] transition group">
+                <a href="${f.url}" target="_blank" class="w-10 h-10 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center text-xl shrink-0">📄</a>
+                <a href="${f.url}" target="_blank" class="flex-1 min-w-0">
                     <p class="text-sm font-black text-slate-700 truncate">${name}</p>
                     <p class="text-[10px] text-slate-400">PDF Document</p>
-                </div>
-                <span class="text-xs font-black text-[#8B5E4A] shrink-0 group-hover:text-[#5a3323]">Open ↗</span>
-            </a>`;
+                </a>
+                <a href="${f.url}" target="_blank" class="text-xs font-black text-[#8B5E4A] shrink-0 group-hover:text-[#5a3323]">Open ↗</a>
+                ${delBtn(f.url)}
+            </div>`;
         }
     }).join('');
 
@@ -3138,39 +3145,101 @@ function renderProofFiles(quarter) {
     </div>`;
 }
 
-/* File list preview when files selected */
+/* Proof files must not exceed 5 MB each — mirrors the server's max:5120 rule */
+const MAX_PROOF_FILE_BYTES = 5 * 1024 * 1024;
+
+/* File list preview when files selected — flags oversized files inline and
+   disables Save instead of letting an oversized upload hit the server and
+   bounce back as a raw validation error. */
 document.addEventListener('change', function(e) {
     if (e.target.id !== 'qProofImage') return;
-    const files  = Array.from(e.target.files);
-    const list   = document.getElementById('proofPreviewList');
+    const files   = Array.from(e.target.files);
+    const list    = document.getElementById('proofPreviewList');
+    const saveBtn = document.getElementById('qSaveBtn');
     if (!list) return;
     list.innerHTML = '';
-    if (!files.length) { list.classList.add('hidden'); return; }
+    if (!files.length) {
+        list.classList.add('hidden');
+        if (saveBtn) saveBtn.disabled = false;
+        return;
+    }
     list.classList.remove('hidden');
+    let hasOversized = false;
     files.forEach(file => {
-        const isImg = file.type.startsWith('image/');
-        const sizeMb = (file.size / 1024 / 1024).toFixed(1);
+        const isImg     = file.type.startsWith('image/');
+        const sizeMb    = (file.size / 1024 / 1024).toFixed(1);
+        const oversized = file.size > MAX_PROOF_FILE_BYTES;
+        if (oversized) hasOversized = true;
+
         const row = document.createElement('div');
-        row.className = 'flex items-center gap-2 p-2 rounded-xl border border-[#6B3F2A]/20 bg-[#FBF5EF]';
+        row.className = 'flex items-center gap-2 p-2 rounded-xl border ' +
+            (oversized ? 'border-red-300 bg-red-50' : 'border-[#6B3F2A]/20 bg-[#FBF5EF]');
+
+        const sizeLabel = oversized
+            ? `<p class="text-[10px] text-red-600 font-bold">${sizeMb} MB · Too large — max 5 MB</p>`
+            : `<p class="text-[10px] text-slate-400">${sizeMb} MB · ${isImg ? 'Image' : 'PDF'}</p>`;
+
         if (isImg) {
             const objUrl = URL.createObjectURL(file);
             row.innerHTML = `
                 <img src="${objUrl}" class="w-10 h-10 rounded-lg object-cover border border-[#6B3F2A]/30 shrink-0">
                 <div class="flex-1 min-w-0">
                     <p class="text-xs font-black text-slate-700 truncate">${file.name}</p>
-                    <p class="text-[10px] text-slate-400">${sizeMb} MB · Image</p>
+                    ${sizeLabel}
                 </div>`;
         } else {
             row.innerHTML = `
                 <div class="w-10 h-10 rounded-lg bg-red-100 border border-red-200 flex items-center justify-center text-xl shrink-0">📄</div>
                 <div class="flex-1 min-w-0">
                     <p class="text-xs font-black text-slate-700 truncate">${file.name}</p>
-                    <p class="text-[10px] text-slate-400">${sizeMb} MB · PDF</p>
+                    ${sizeLabel}
                 </div>`;
         }
         list.appendChild(row);
     });
+
+    if (hasOversized) {
+        const warn = document.createElement('p');
+        warn.className = 'text-[10px] text-red-600 font-bold mt-1';
+        warn.textContent = '⚠ Remove the file(s) over 5 MB to continue — they can\'t be saved.';
+        list.appendChild(warn);
+    }
+    if (saveBtn) saveBtn.disabled = hasOversized;
 });
+
+/* Delete one completion-proof attachment. Only allowed while pending
+   approval — doing so cancels the whole pending completion request, since
+   the approver's pending review already points at the exact file set that
+   was submitted. */
+async function deleteProofFile(quarterId, url) {
+    if (!confirm('Delete this attachment? This will cancel the pending completion request so you can resubmit.')) return;
+
+    try {
+        const res = await fetch(`/kpi/quarter/${quarterId}/proof-file`, {
+            method: 'DELETE',
+            headers: { 'Content-Type':'application/json', 'X-CSRF-TOKEN':'{{ csrf_token() }}', 'Accept':'application/json' },
+            body: JSON.stringify({ url }),
+        });
+        const data = await res.json();
+        if (!data.success) {
+            showToast(data.message || 'Failed to delete attachment.', 'red');
+            return;
+        }
+
+        const q = activeKpi.quarters?.find(x => x.id == quarterId);
+        if (q) {
+            q.status                   = 'on_track';
+            q.completion_review        = null;
+            q.completion_proof_url     = null;
+            q.completion_proof_urls    = null;
+            q.completion_submitted_at  = null;
+        }
+        showToast('Attachment deleted — pending request cancelled', 'indigo');
+        renderKpiDetail(q?.quarter || 'Q1');
+    } catch (e) {
+        showToast('Network error. Please try again.', 'red');
+    }
+}
 
 /* Dispatch to the right save function based on selected status */
 function quarterSaveDispatch(quarterId) {
@@ -3249,6 +3318,13 @@ async function completeQuarterSubmit(quarterId) {
     }
     if (files.length > 5) {
         alert('Maximum 5 files allowed.');
+        return;
+    }
+    if (files.some(f => f.size > MAX_PROOF_FILE_BYTES)) {
+        // Belt-and-suspenders: the file-selection handler already disables
+        // Save for this, but never let an oversized file reach the server
+        // and bounce back as a raw validation error either way.
+        showToast('Remove the file(s) over 5 MB before submitting.', 'red');
         return;
     }
 

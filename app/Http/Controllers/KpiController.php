@@ -1408,6 +1408,119 @@ class KpiController extends Controller
         ]);
     }
 
+    /**
+     * Delete one completion-proof attachment from a quarter.
+     *
+     * Only allowed while the completion is still pending_completion: the
+     * pending approval already references the exact set of proof files
+     * that were submitted, so removing one file out from under it would
+     * leave the approver reviewing evidence that no longer matches what's
+     * stored. Rather than patch the pending approval's attachment list in
+     * place, the whole pending completion request is cancelled — the quarter
+     * reverts to on_track and the owner can resubmit with a clean set of
+     * files.
+     */
+    public function deleteProofFile(Request $request, string $id)
+    {
+        $user    = $this->currentUser($this->supabase);
+        $quarter = $this->supabase->first('kpi_quarters', ['id' => 'eq.' . $id, 'select' => '*']);
+
+        if (!$quarter) {
+            return response()->json(['success' => false, 'message' => 'Quarter not found.'], 404);
+        }
+
+        $kpi = $this->findKpiOrFail($this->supabase, $quarter['kpi_id']);
+
+        if (!$this->canEditKpi($user, $kpi)) {
+            return response()->json(['success' => false, 'message' => 'Permission denied.'], 403);
+        }
+
+        if (($quarter['status'] ?? '') !== 'pending_completion') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Attachments can only be removed while the completion is pending approval.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'url' => 'required|string',
+        ]);
+
+        $proofFiles = [];
+        if (!empty($quarter['completion_proof_urls'])) {
+            $decoded = json_decode($quarter['completion_proof_urls'], true);
+            if (is_array($decoded)) $proofFiles = $decoded;
+        }
+        if (!$proofFiles && !empty($quarter['completion_proof_url'])) {
+            $proofFiles = [['url' => $quarter['completion_proof_url']]];
+        }
+
+        $matches = array_filter($proofFiles, fn($f) => ($f['url'] ?? null) === $validated['url']);
+        if (!$matches) {
+            return response()->json(['success' => false, 'message' => 'Attachment not found.'], 404);
+        }
+
+        // Best-effort — the DB record (cleared below regardless) is the
+        // source of truth for what the UI shows, so a storage hiccup here
+        // isn't fatal to the cancellation itself.
+        try {
+            $this->deleteProofObjectFromStorage($validated['url']);
+        } catch (\Throwable $e) {
+            Log::error('deleteProofFile: storage delete failed', ['error' => $e->getMessage()]);
+        }
+
+        $approval = $this->supabase->first('kpi_update_approvals', [
+            'quarter_id' => 'eq.' . $id,
+            'status'     => 'eq.pending',
+            'select'     => '*',
+        ]);
+
+        if ($approval && str_starts_with($approval['reason'] ?? '', '[[COMPLETION]]')) {
+            $this->supabase->safePatch('kpi_update_approvals', ['id' => 'eq.' . $approval['id']], [
+                'status'           => 'rejected',
+                'rejected_by'      => $user['id'],
+                'rejected_by_name' => $user['short_name'] ?? $user['full_name'] ?? 'Unknown',
+                'rejected_at'      => $this->nowMy(),
+                'rejection_reason' => 'Cancelled by requester — attachment removed.',
+                'approver_remark'  => 'Cancelled by requester — attachment removed.',
+                'is_viewed'        => true,
+                'viewed_at'        => $this->nowMy(),
+            ]);
+        }
+
+        $quarterPayload = [
+            'status'                   => 'on_track',
+            'completion_review'        => null,
+            'completion_proof_url'     => null,
+            'completion_proof_urls'    => null,
+            'completion_submitted_at'  => null,
+            'completion_submitted_by'  => null,
+            'updated_at'               => $this->nowMy(),
+        ];
+
+        if (!$this->supabase->safePatch('kpi_quarters', ['id' => 'eq.' . $id], $quarterPayload)) {
+            return response()->json(['success' => false, 'message' => 'Failed to update quarter.'], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Attachment deleted — the pending completion request was cancelled.',
+            'status'  => 'on_track',
+        ]);
+    }
+
+    private function deleteProofObjectFromStorage(string $url): void
+    {
+        $marker = '/storage/v1/object/public/kpi-proofs/';
+        $pos    = strpos($url, $marker);
+        if ($pos === false) return;
+
+        $path = substr($url, $pos + strlen($marker));
+        if ($path === '') return;
+
+        $this->supabase->deleteFromStorage('kpi-proofs', $path);
+    }
+
     public function destroy(string $id, SupabaseService $supabase)
     {
         abort(403,

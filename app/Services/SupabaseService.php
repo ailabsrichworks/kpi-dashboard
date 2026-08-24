@@ -390,6 +390,24 @@ class SupabaseService
 
     /*
     |--------------------------------------------------------------------------
+    | DELETE FROM STORAGE
+    |--------------------------------------------------------------------------
+    */
+
+    public function deleteFromStorage(string $bucket, string $path): bool
+    {
+        $url = $this->url . '/storage/v1/object/' . $bucket . '/' . $path;
+
+        $response = Http::timeout(30)->connectTimeout(10)->withHeaders([
+            'apikey'        => $this->key,
+            'Authorization' => 'Bearer ' . $this->key,
+        ])->delete($url);
+
+        return $response->successful();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | SAFE PATCH
     |--------------------------------------------------------------------------
     */

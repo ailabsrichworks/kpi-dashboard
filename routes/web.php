@@ -439,6 +439,11 @@ Route::middleware(['kpi.auth'])->group(function () {
         [KpiController::class, 'completeQuarter']
     )->name('kpi.quarter.complete');
 
+    Route::delete(
+        '/kpi/quarter/{id}/proof-file',
+        [KpiController::class, 'deleteProofFile']
+    )->name('kpi.quarter.proof.delete');
+
     /*
     |--------------------------------------------------------------------------
     | KPI GOVERNANCE REQUESTS
