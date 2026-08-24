@@ -3083,6 +3083,15 @@ function toggleCompletionProof(status) {
         btn.innerHTML = merged ? '💾 Save Quarter & Actual' : '💾 Save Quarter Details';
         btn.className = btn.className.replace('from-[#6B3F2A] to-[#5a3323] hover:from-[#5a3323] hover:to-[#4a2a1a] shadow-[#6B3F2A]/20',
             'from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 shadow-indigo-600/20');
+        // Backing out of "Completed" drops whatever proof files were staged
+        // (and any oversized-file Save lock that came with them) — picking
+        // "Completed" again starts a clean selection.
+        selectedProofFiles = [];
+        btn.disabled = false;
+        const input = document.getElementById('qProofImage');
+        if (input) input.value = '';
+        const list = document.getElementById('proofPreviewList');
+        if (list) { list.innerHTML = ''; list.classList.add('hidden'); }
     }
 }
 
@@ -3148,24 +3157,27 @@ function renderProofFiles(quarter) {
 /* Proof files must not exceed 5 MB each — mirrors the server's max:5120 rule */
 const MAX_PROOF_FILE_BYTES = 5 * 1024 * 1024;
 
-/* File list preview when files selected — flags oversized files inline and
-   disables Save instead of letting an oversized upload hit the server and
-   bounce back as a raw validation error. */
-document.addEventListener('change', function(e) {
-    if (e.target.id !== 'qProofImage') return;
-    const files   = Array.from(e.target.files);
+/* A native <input type=file multiple>'s FileList is read-only — there's no
+   way to pull one bad file back out of it. So the input is only ever used
+   to CAPTURE a selection; from then on `selectedProofFiles` (a plain array)
+   is what actually gets submitted, and it's what the ✕ button below edits. */
+let selectedProofFiles = [];
+
+function renderProofPreviewList() {
     const list    = document.getElementById('proofPreviewList');
     const saveBtn = document.getElementById('qSaveBtn');
     if (!list) return;
     list.innerHTML = '';
-    if (!files.length) {
+
+    if (!selectedProofFiles.length) {
         list.classList.add('hidden');
         if (saveBtn) saveBtn.disabled = false;
         return;
     }
     list.classList.remove('hidden');
+
     let hasOversized = false;
-    files.forEach(file => {
+    selectedProofFiles.forEach((file, i) => {
         const isImg     = file.type.startsWith('image/');
         const sizeMb    = (file.size / 1024 / 1024).toFixed(1);
         const oversized = file.size > MAX_PROOF_FILE_BYTES;
@@ -3179,22 +3191,18 @@ document.addEventListener('change', function(e) {
             ? `<p class="text-[10px] text-red-600 font-bold">${sizeMb} MB · Too large — max 5 MB</p>`
             : `<p class="text-[10px] text-slate-400">${sizeMb} MB · ${isImg ? 'Image' : 'PDF'}</p>`;
 
-        if (isImg) {
-            const objUrl = URL.createObjectURL(file);
-            row.innerHTML = `
-                <img src="${objUrl}" class="w-10 h-10 rounded-lg object-cover border border-[#6B3F2A]/30 shrink-0">
-                <div class="flex-1 min-w-0">
-                    <p class="text-xs font-black text-slate-700 truncate">${file.name}</p>
-                    ${sizeLabel}
-                </div>`;
-        } else {
-            row.innerHTML = `
-                <div class="w-10 h-10 rounded-lg bg-red-100 border border-red-200 flex items-center justify-center text-xl shrink-0">📄</div>
-                <div class="flex-1 min-w-0">
-                    <p class="text-xs font-black text-slate-700 truncate">${file.name}</p>
-                    ${sizeLabel}
-                </div>`;
-        }
+        const thumb = isImg
+            ? `<img src="${URL.createObjectURL(file)}" class="w-10 h-10 rounded-lg object-cover border border-[#6B3F2A]/30 shrink-0">`
+            : `<div class="w-10 h-10 rounded-lg bg-red-100 border border-red-200 flex items-center justify-center text-xl shrink-0">📄</div>`;
+
+        row.innerHTML = `
+            ${thumb}
+            <div class="flex-1 min-w-0">
+                <p class="text-xs font-black text-slate-700 truncate">${file.name}</p>
+                ${sizeLabel}
+            </div>
+            <button type="button" onclick="removeSelectedProofFile(${i})" title="Remove this file"
+                class="shrink-0 w-7 h-7 rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 text-red-500 hover:text-red-700 flex items-center justify-center text-xs font-black transition">✕</button>`;
         list.appendChild(row);
     });
 
@@ -3205,6 +3213,27 @@ document.addEventListener('change', function(e) {
         list.appendChild(warn);
     }
     if (saveBtn) saveBtn.disabled = hasOversized;
+}
+
+/* Remove one file (by index) from the pending selection — this is the ✕
+   button's handler, e.g. for clearing an oversized file so Save re-enables. */
+function removeSelectedProofFile(index) {
+    selectedProofFiles.splice(index, 1);
+    if (!selectedProofFiles.length) {
+        // Nothing left selected — reset the native input too, so re-opening
+        // the picker doesn't look like files are still attached.
+        const input = document.getElementById('qProofImage');
+        if (input) input.value = '';
+    }
+    renderProofPreviewList();
+}
+
+/* Picking files (re)plants the working selection. Choosing again replaces
+   it — same as the browser's own native multi-file semantics. */
+document.addEventListener('change', function(e) {
+    if (e.target.id !== 'qProofImage') return;
+    selectedProofFiles = Array.from(e.target.files);
+    renderProofPreviewList();
 });
 
 /* Delete one completion-proof attachment. Only allowed while pending
@@ -3305,7 +3334,7 @@ async function saveQuarterAndActualCombined(quarterId) {
 /* Submit completion with multiple proof files (multipart) */
 async function completeQuarterSubmit(quarterId) {
     const review = document.getElementById('qCompletionReview')?.value?.trim() ?? '';
-    const files  = Array.from(document.getElementById('qProofImage')?.files ?? []);
+    const files  = selectedProofFiles; // the working selection, not the raw (unremovable) input.files
     const btn    = document.getElementById('qSaveBtn');
 
     if (review.length < 10) {
@@ -3356,6 +3385,7 @@ async function completeQuarterSubmit(quarterId) {
             } else {
                 showToast('Completion submitted — pending approval ⏳', 'indigo');
             }
+            selectedProofFiles = [];
             renderKpiDetail(q?.quarter || 'Q1');
         } else {
             alert(data.message || 'Failed to submit completion.');
