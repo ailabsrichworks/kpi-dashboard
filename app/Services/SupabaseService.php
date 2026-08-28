@@ -21,31 +21,59 @@ class SupabaseService
     private const CACHE_TTL_SECONDS = 180;
 
     /**
-     * REMOVED (2026-08-18) — this guard blocked `departments`/`kpis`/
-     * `notifications`/`tasks` (and others) on the theory that every caller
-     * reaching them was dead legacy code and the real, live tables lived in
-     * a separate, RLS-protected "Platform" project instead. Investigating a
-     * real production 500 (DashboardController::getUserDepartment(), the
-     * very first screen after login) disproved that directly against the
-     * actual live database (`mlggobjdsicuokblbsww`): `employees` and
-     * `user_company_roles` — the tables that guard's own docblock claimed
-     * "don't exist in production" — are real, active, and are what every
-     * real login on this project goes through (see "Login system
-     * correction" in CLAUDE.md). And there is no RLS to bypass here at
-     * all: every table in this project, checked directly in the Supabase
-     * table editor, shows RLS disabled / unrestricted. The guard was
-     * correctly designed for a genuine multi-tenant Platform deployment —
-     * it just isn't protecting one that exists on this Supabase project.
-     * `departments`, `kpis`, `notifications`, and `tasks` are this
-     * project's own real, single-tenant tables, actively read by
-     * `DashboardController`, `KpiController`, the sidebar's unread-count
-     * composer, and the Tasks feature — blocking them broke the app for
-     * every real user immediately after login. If a genuine multi-tenant
-     * Platform is ever deployed for real (its own project, real RLS,
-     * confirmed live — not assumed), this class is the right place to
-     * reintroduce a version of this guard scoped to that project's actual
-     * tenant-owned tables.
+     * RESTORED (2026-08-28) — removed on 2026-08-18 (commit d0bf0d4) because
+     * the project `.env` pointed at then (`mlggobjdsicuokblbsww`) turned out
+     * to be running the legacy single-tenant app with RLS disabled on every
+     * table, so `departments`/`kpis`/`notifications`/`tasks` there were real,
+     * live, single-tenant data this guard was wrongly blocking — that removal
+     * was correct for that project. `.env` now points at a different project,
+     * `drmgngqgnqggfmtkqthb`, confirmed (2026-08-28) to be a genuine
+     * multi-tenant Platform deployment: all 23 tenant-owned tables below
+     * carry `company_id` and have RLS enabled, verified directly against the
+     * live database, not assumed — exactly the condition this class's own
+     * prior docblock named as the trigger to bring the guard back. This
+     * project has no `employees`/`user_company_roles` tables at all, so the
+     * legacy single-tenant login path this guard once conflicted with cannot
+     * run against it regardless.
+     *
+     * The list below is the Core Platform Rule's tenant-owned set (CLAUDE.md)
+     * as it actually exists in this database today — every table with
+     * `company_id` except the rule's own documented exemptions (`companies`,
+     * `users`, `kpi_templates`, `kpi_template_items`, `admin_action_logs`).
+     * It has grown since the guard was first written: `company_goals`,
+     * `company_performance_periods`, `kpi_period_targets`,
+     * `kpi_target_revisions`, and the four `approval_*` tables were added by
+     * this session's governance work and did not exist when the guard was
+     * first designed.
+     *
+     * The three legitimate service_role exceptions in this codebase
+     * (`CompanyController::storeAdmin`, `DepartmentController::storeUser`,
+     * `UserCreationController::store`) all read back a freshly-created
+     * `users` row the caller provably can't see yet under RLS — `users` is
+     * exempt, so nothing legitimate needs this client for a tenant-owned
+     * table. Use `SupabaseUserService` (the caller's own token) for Platform
+     * code, or `AuthorizedDataScope` for assistant/bot contexts with no HTTP
+     * request of their own to carry a token.
      */
+    private const TENANT_OWNED_TABLES = [
+        'company_users', 'department_users', 'departments', 'kpi_categories',
+        'kpis', 'kpi_submissions', 'roles', 'notifications', 'kpi_access_grants',
+        'platform_admin_assignments', 'import_batches', 'audit_logs', 'reports',
+        'tasks', 'task_kpi_links', 'company_goals', 'company_performance_periods',
+        'kpi_period_targets', 'kpi_target_revisions', 'approval_workflows',
+        'approval_workflow_steps', 'approval_requests', 'approval_request_steps',
+    ];
+
+    private function assertNotTenantOwned(string $table): void
+    {
+        if (in_array($table, self::TENANT_OWNED_TABLES, true)) {
+            throw new \RuntimeException(
+                "SupabaseService (service_role) refused a query against '{$table}' — this is a tenant-owned "
+                . 'Platform table and a service_role read/write bypasses RLS entirely. Use SupabaseUserService '
+                . "(the caller's own token) for Platform code, or AuthorizedDataScope for assistant/bot contexts."
+            );
+        }
+    }
 
     public function __construct()
     {
@@ -122,6 +150,8 @@ class SupabaseService
         string $table,
         array $query
     ){
+        $this->assertNotTenantOwned($table);
+
         return $this->request()
 
             ->get(
@@ -155,6 +185,10 @@ class SupabaseService
     {
         if (empty($requests)) {
             return [];
+        }
+
+        foreach ($requests as $req) {
+            $this->assertNotTenantOwned($req['table']);
         }
 
         $headers = [
@@ -258,6 +292,7 @@ class SupabaseService
         string $table,
         array $data
     ){
+        $this->assertNotTenantOwned($table);
 
         return $this->request()
 
@@ -282,6 +317,8 @@ class SupabaseService
         array $filters,
         array $data
     ){
+        $this->assertNotTenantOwned($table);
+
         $query = http_build_query(
             $filters
         );
@@ -344,6 +381,8 @@ class SupabaseService
         string $table,
         array $filters = []
     ){
+        $this->assertNotTenantOwned($table);
+
         $url = $this->endpoint(
             $table
         );
@@ -472,6 +511,8 @@ class SupabaseService
 
     public function upsert(string $table, array $data, string $onConflict = 'id'): mixed
     {
+        $this->assertNotTenantOwned($table);
+
         return Http::timeout(15)->connectTimeout(5)->withHeaders([
             'apikey'        => $this->key,
             'Authorization' => 'Bearer ' . $this->key,
