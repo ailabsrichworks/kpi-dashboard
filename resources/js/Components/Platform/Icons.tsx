@@ -61,6 +61,14 @@ export const TargetIcon = base(
     </>,
 );
 
+export const FlagIcon = base(
+    <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3 3v18M3 4.5h13.5l-1.5 3.75 1.5 3.75H3"
+    />,
+);
+
 export const ClipboardCheckIcon = base(
     <path
         strokeLinecap="round"

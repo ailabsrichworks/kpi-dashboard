@@ -1,8 +1,29 @@
 import { useForm, usePage } from '@inertiajs/react';
 import { FormEventHandler } from 'react';
 import PlatformLayout from '@/Components/Platform/PlatformLayout';
-import { Card, EmptyState, InfoTooltip, PrimaryButton } from '@/Components/Platform/ui';
+import { Badge, Card, EmptyState, InfoTooltip, PrimaryButton } from '@/Components/Platform/ui';
 import { ClipboardCheckIcon } from '@/Components/Platform/Icons';
+import { calculateAchievement, MeasurementDirection } from '@/lib/kpiAchievement';
+
+type ComputedStatus = 'not_scored' | 'critical' | 'at_risk' | 'on_track' | 'achieved' | 'exceeded';
+
+const STATUS_LABELS: Record<ComputedStatus, string> = {
+    not_scored: 'Not scored',
+    critical: 'Critical',
+    at_risk: 'At risk',
+    on_track: 'On track',
+    achieved: 'Achieved',
+    exceeded: 'Exceeded',
+};
+
+const STATUS_TONE: Record<ComputedStatus, 'neutral' | 'danger' | 'warning' | 'success'> = {
+    not_scored: 'neutral',
+    critical: 'danger',
+    at_risk: 'warning',
+    on_track: 'success',
+    achieved: 'success',
+    exceeded: 'success',
+};
 
 interface Department {
     id: string;
@@ -24,8 +45,10 @@ interface Submission {
     value: number;
     submission_date: string;
     notes: string | null;
-    kpis: { name: string; unit: string | null; target: number | null };
+    kpis: { name: string; unit: string | null; target: number | null; stretch_target: number | null; measurement_direction: MeasurementDirection };
     users: { name: string };
+    /** Server-computed (KpiCalculationService), not derived from the client-side achievementPct() below. */
+    computed_status: ComputedStatus;
 }
 
 interface PlatformUser {
@@ -93,13 +116,8 @@ function SubmitForm({ companyId, departmentId, kpis }: { companyId: string; depa
     );
 }
 
-/** Matches the legacy app's own achievement formula and the company_kpi_summary view: value/target*100, excluding submissions with no (or zero) target rather than showing null/Infinity. */
 function achievementPct(submission: Submission): number | null {
-    const target = submission.kpis.target;
-    if (target === null || target === 0) {
-        return null;
-    }
-    return (submission.value / target) * 100;
+    return calculateAchievement(submission.value, submission.kpis.target, submission.kpis.stretch_target, submission.kpis.measurement_direction);
 }
 
 function AchievementBadge({ pct }: { pct: number | null }) {
@@ -144,7 +162,7 @@ export default function SubmissionsIndex({ department, kpis, submissions, canSub
                 title={
                     <span className="inline-flex items-center gap-1.5">
                         Report a value
-                        <InfoTooltip text="Achievement % = your value ÷ the KPI's target, shown so you can see at a glance whether you're on track." />
+                        <InfoTooltip text="Achievement % compares your value against the KPI's target (and stretch target, if set) — accounting for whether higher or lower is actually better for this KPI." />
                     </span>
                 }
             >
@@ -179,6 +197,7 @@ export default function SubmissionsIndex({ department, kpis, submissions, canSub
                                 <div className="flex-none flex items-center gap-2">
                                     <AchievementBar pct={achievementPct(s)} />
                                     <AchievementBadge pct={achievementPct(s)} />
+                                    {s.computed_status !== 'not_scored' && <Badge tone={STATUS_TONE[s.computed_status]}>{STATUS_LABELS[s.computed_status]}</Badge>}
                                 </div>
                             </li>
                         ))}

@@ -13,6 +13,7 @@ interface Company {
     display_name: string | null;
     primary_color: string | null;
     secondary_color: string | null;
+    subdomain: string | null;
 }
 
 interface AdminRow {
@@ -28,7 +29,12 @@ interface CompaniesPageProps {
 
 function CreateCompanyForm() {
     const [open, setOpen] = useState(false);
-    const { data, setData, post, processing, reset } = useForm({ name: '', code: '' });
+    const { data, setData, post, processing, reset } = useForm({
+        legal_name: '', display_name: '', registration_number: '', industry: '', country: '', timezone: 'Asia/Kuala_Lumpur',
+        financial_year_start: 'January', financial_year_end: 'December', estimated_employee_count: '', primary_contact_name: '',
+        primary_contact_email: '', primary_contact_phone: '', company_admin_name: '', company_admin_email: '', cam_name: '',
+        subscription_plan: 'Standard', contract_start_date: '', contract_end_date: '', user_limit: '', subdomain: '',
+    });
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
@@ -48,37 +54,26 @@ function CreateCompanyForm() {
         );
     }
 
-    return (
-        <form onSubmit={submit} className="flex flex-wrap items-end gap-3 mb-5 bg-slate-50 rounded-xl p-4">
-            <div className="flex-1 min-w-48">
-                <label className="block text-xs font-medium text-slate-600 mb-1">Company name</label>
-                <input
-                    value={data.name}
-                    onChange={(e) => setData('name', e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                    placeholder="Andalusia"
-                    required
-                    autoFocus
-                />
-            </div>
-            <div className="w-40">
-                <label className="block text-xs font-medium text-slate-600 mb-1">Code</label>
-                <input
-                    value={data.code}
-                    onChange={(e) => setData('code', e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                    placeholder="ANDALUSIA"
-                    required
-                />
-            </div>
-            <PrimaryButton type="submit" disabled={processing}>
-                Create
-            </PrimaryButton>
-            <button type="button" onClick={() => setOpen(false)} className="text-sm text-slate-400 pb-2.5">
-                Cancel
-            </button>
-        </form>
-    );
+    const fields = [
+        ['legal_name', 'Legal company name', 'Andalusia Travel & Tours Sdn Bhd'], ['display_name', 'Display name', 'Andalusia'],
+        ['subdomain', 'Requested subdomain', 'andalusia'], ['registration_number', 'Registration number', 'Optional'],
+        ['industry', 'Industry', 'Travel & Tourism'], ['country', 'Country', 'Malaysia'], ['timezone', 'Timezone', 'Asia/Kuala_Lumpur'],
+        ['estimated_employee_count', 'Estimated employees', '482'], ['primary_contact_name', 'Primary contact', 'Full name'],
+        ['primary_contact_email', 'Primary contact email', 'name@company.com'], ['primary_contact_phone', 'Primary contact phone', 'Optional'],
+        ['company_admin_name', 'Company Admin name', 'Full name'], ['company_admin_email', 'Company Admin email', 'admin@company.com'],
+        ['cam_name', 'CAM', 'Assigned CAM'], ['subscription_plan', 'Subscription plan', 'Enterprise'], ['user_limit', 'User limit', '500'],
+        ['contract_start_date', 'Contract starts', ''], ['contract_end_date', 'Contract ends', ''],
+    ] as const;
+
+    return <form onSubmit={submit} className="mb-5 rounded-xl bg-slate-50 p-4">
+        <p className="mb-3 text-sm font-bold text-slate-800">New client onboarding</p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {fields.map(([key, label, placeholder]) => <label key={key} className="block text-xs font-medium text-slate-600">
+                {label}<input type={key.includes('date') ? 'date' : key.includes('email') ? 'email' : 'text'} value={data[key]} onChange={(e) => setData(key, e.target.value)} placeholder={placeholder} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" required={!['registration_number', 'primary_contact_phone', 'cam_name', 'contract_start_date', 'contract_end_date'].includes(key)} />
+            </label>)}
+        </div>
+        <div className="mt-4 flex items-center gap-3"><PrimaryButton type="submit" disabled={processing}>Create onboarding</PrimaryButton><button type="button" onClick={() => setOpen(false)} className="text-sm text-slate-400">Cancel</button></div>
+    </form>;
 }
 
 function InviteAdminForm({ companyId }: { companyId: string }) {
@@ -234,7 +229,7 @@ export default function CompaniesIndex({ companies, admins }: CompaniesPageProps
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                     <div>
                                         <p className="text-sm font-bold text-slate-800">{company.name}</p>
-                                        <p className="text-xs text-slate-400">{company.code}</p>
+                                        <p className="text-xs text-slate-400">{company.code}{company.subdomain ? ` · ${company.subdomain}.performix.ai` : ''}</p>
                                     </div>
                                     <div className="flex items-center gap-4">
                                         <Link href={`/platform/companies/${company.id}/onboarding`} className="text-xs font-semibold text-brand-800 hover:underline">

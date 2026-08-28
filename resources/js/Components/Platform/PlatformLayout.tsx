@@ -6,6 +6,7 @@ import {
     ChecklistIcon,
     ClipboardCheckIcon,
     DocumentDuplicateIcon,
+    FlagIcon,
     HomeIcon,
     LogoutIcon,
     MenuIcon,
@@ -161,6 +162,13 @@ function SidebarContent({ platformUser, company, currentUrl }: { platformUser: P
                                 Departments &amp; People
                             </NavLink>
                         )}
+                        <NavLink
+                            href={`/platform/companies/${contextCompany.id}/goals`}
+                            icon={<FlagIcon className="w-[18px] h-[18px]" />}
+                            currentUrl={currentUrl}
+                        >
+                            Company Goals
+                        </NavLink>
                         <NavLink
                             href={`/platform/companies/${contextCompany.id}/kpis`}
                             icon={<TargetIcon className="w-[18px] h-[18px]" />}

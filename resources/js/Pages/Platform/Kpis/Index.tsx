@@ -15,6 +15,14 @@ interface Category {
     name: string;
 }
 
+interface Goal {
+    id: string;
+    title: string;
+}
+
+type MeasurementUnit = 'number' | 'currency' | 'percentage' | 'ratio' | 'days' | 'hours' | 'score' | 'binary' | 'custom';
+type MeasurementDirection = 'higher_is_better' | 'lower_is_better' | 'target_range' | 'on_or_before' | 'binary_completion';
+
 interface Kpi {
     id: string;
     name: string;
@@ -25,6 +33,20 @@ interface Kpi {
     status: string;
     visibility: 'company' | 'department' | 'restricted';
     kpi_categories: { name: string } | null;
+    company_goal_id: string | null;
+    parent_kpi_id: string | null;
+    department_id: string | null;
+    owner_user_id: string | null;
+    measurement_unit: MeasurementUnit;
+    measurement_direction: MeasurementDirection;
+    stretch_target: number | null;
+    weightage: number | null;
+    /** Server-computed (KpiCalculationService) from this KPI's own most recent submission — null if nothing's been submitted yet or the direction isn't calculable. */
+    computed_achievement: number | null;
+    computed_expected_progress: number | null;
+    computed_status: 'not_scored' | 'critical' | 'at_risk' | 'on_track' | 'achieved' | 'exceeded';
+    /** Server-computed weighted roll-up from this KPI's children, one level deep — null if it has no children or none are scored. */
+    rollup_achievement: number | null;
 }
 
 interface Template {
@@ -66,6 +88,7 @@ interface KpisPageProps {
     templates: Template[];
     templateItems: TemplateItem[];
     grants: Grant[];
+    goals: Goal[];
     departments: Department[];
     members: Member[];
     [key: string]: unknown;
@@ -81,6 +104,44 @@ const VISIBILITY_TONE: Record<Kpi['visibility'], 'success' | 'info' | 'warning'>
     company: 'success',
     department: 'info',
     restricted: 'warning',
+};
+
+const PERFORMANCE_STATUS_LABELS: Record<Kpi['computed_status'], string> = {
+    not_scored: 'Not scored yet',
+    critical: 'Critical',
+    at_risk: 'At risk',
+    on_track: 'On track',
+    achieved: 'Achieved',
+    exceeded: 'Exceeded',
+};
+
+const PERFORMANCE_STATUS_TONE: Record<Kpi['computed_status'], 'neutral' | 'danger' | 'warning' | 'success'> = {
+    not_scored: 'neutral',
+    critical: 'danger',
+    at_risk: 'warning',
+    on_track: 'success',
+    achieved: 'success',
+    exceeded: 'success',
+};
+
+const MEASUREMENT_UNIT_LABELS: Record<MeasurementUnit, string> = {
+    number: 'Number',
+    currency: 'Currency',
+    percentage: 'Percentage',
+    ratio: 'Ratio',
+    days: 'Days',
+    hours: 'Hours',
+    score: 'Score',
+    binary: 'Binary',
+    custom: 'Custom',
+};
+
+const MEASUREMENT_DIRECTION_LABELS: Record<MeasurementDirection, string> = {
+    higher_is_better: 'Higher is better',
+    lower_is_better: 'Lower is better',
+    target_range: 'Target range',
+    on_or_before: 'On or before (deadline)',
+    binary_completion: 'Binary completion',
 };
 
 function ApplyTemplateForm({ companyId, templates, templateItems }: { companyId: string; templates: Template[]; templateItems: TemplateItem[] }) {
@@ -166,14 +227,41 @@ function CreateCategoryForm({ companyId }: { companyId: string }) {
     );
 }
 
+interface KpiFormData {
+    category_id: string;
+    name: string;
+    description: string;
+    target: string;
+    unit: string;
+    frequency: string;
+    visibility: string;
+    company_goal_id: string;
+    parent_kpi_id: string;
+    department_id: string;
+    owner_user_id: string;
+    measurement_unit: string;
+    measurement_direction: string;
+    stretch_target: string;
+    weightage: string;
+}
+
 function KpiFormFields({
     data,
     setData,
     categories,
+    goals,
+    departments,
+    members,
+    kpiOptions,
 }: {
-    data: { category_id: string; name: string; description: string; target: string; unit: string; frequency: string; visibility: string };
+    data: KpiFormData;
     setData: (key: string, value: string) => void;
     categories: Category[];
+    goals: Goal[];
+    departments: Department[];
+    members: Member[];
+    /** Candidate parents — excludes the KPI being edited itself, if any. */
+    kpiOptions: Kpi[];
 }) {
     return (
         <>
@@ -210,7 +298,7 @@ function KpiFormFields({
             </div>
             <div>
                 <label className="text-xs font-medium text-slate-600 mb-1 inline-flex items-center gap-1">
-                    Target
+                    Base target
                     <InfoTooltip text="The number someone needs to reach for 100% achievement. Leave blank if this KPI isn't measured against a fixed number." />
                 </label>
                 <input
@@ -223,12 +311,72 @@ function KpiFormFields({
                 />
             </div>
             <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 inline-flex items-center gap-1">
+                    Stretch target
+                    <InfoTooltip text="An optional, more ambitious target. Achievement beyond the base target is scored against this, up to 200%." />
+                </label>
+                <input
+                    value={data.stretch_target}
+                    onChange={(e) => setData('stretch_target', e.target.value)}
+                    type="number"
+                    step="any"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    placeholder="Optional"
+                />
+            </div>
+            <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Unit</label>
                 <input
                     value={data.unit}
                     onChange={(e) => setData('unit', e.target.value)}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                     placeholder="%, $, calls…"
+                />
+            </div>
+            <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 inline-flex items-center gap-1">
+                    Measurement unit
+                    <InfoTooltip text="What kind of number this is — used to format it consistently and pick a sensible calculation." />
+                </label>
+                <select value={data.measurement_unit} onChange={(e) => setData('measurement_unit', e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                    {Object.entries(MEASUREMENT_UNIT_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>
+                            {label}
+                        </option>
+                    ))}
+                </select>
+            </div>
+            <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 inline-flex items-center gap-1">
+                    Direction
+                    <InfoTooltip text="Whether hitting the target means going up or down — e.g. revenue is higher-is-better, operating cost is usually lower-is-better." />
+                </label>
+                <select
+                    value={data.measurement_direction}
+                    onChange={(e) => setData('measurement_direction', e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                >
+                    {Object.entries(MEASUREMENT_DIRECTION_LABELS).map(([value, label]) => (
+                        <option key={value} value={value}>
+                            {label}
+                        </option>
+                    ))}
+                </select>
+            </div>
+            <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 inline-flex items-center gap-1">
+                    Weightage
+                    <InfoTooltip text="This KPI's share of its group (its parent KPI, or its company goal if it has no parent). The system rejects a group total over 100%." />
+                </label>
+                <input
+                    value={data.weightage}
+                    onChange={(e) => setData('weightage', e.target.value)}
+                    type="number"
+                    step="any"
+                    min={0}
+                    max={100}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    placeholder="Optional, %"
                 />
             </div>
             <div className="col-span-2">
@@ -242,13 +390,81 @@ function KpiFormFields({
                     <option value="restricted">Restricted — nobody by default, grant access explicitly</option>
                 </select>
             </div>
+
+            <div className="col-span-2 border-t border-slate-200 pt-3 mt-1">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Cascade — where this fits</p>
+            </div>
+            <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 inline-flex items-center gap-1">
+                    Company goal
+                    <InfoTooltip text="Links this as a top-level Company KPI contributing to a Company Goal. Leave blank for a KPI without a direct goal link." />
+                </label>
+                <select value={data.company_goal_id} onChange={(e) => setData('company_goal_id', e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                    <option value="">None</option>
+                    {goals.map((g) => (
+                        <option key={g.id} value={g.id}>
+                            {g.title}
+                        </option>
+                    ))}
+                </select>
+            </div>
+            <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 inline-flex items-center gap-1">
+                    Parent KPI
+                    <InfoTooltip text="Makes this a Department or Individual KPI that rolls up into a higher-level KPI — e.g. a Sales team's revenue KPI rolling up into the company-wide revenue KPI." />
+                </label>
+                <select value={data.parent_kpi_id} onChange={(e) => setData('parent_kpi_id', e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                    <option value="">None — top-level KPI</option>
+                    {kpiOptions.map((k) => (
+                        <option key={k.id} value={k.id}>
+                            {k.name}
+                        </option>
+                    ))}
+                </select>
+            </div>
+            <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Owning department</label>
+                <select value={data.department_id} onChange={(e) => setData('department_id', e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                    <option value="">None</option>
+                    {departments.map((d) => (
+                        <option key={d.id} value={d.id}>
+                            {d.name}
+                        </option>
+                    ))}
+                </select>
+            </div>
+            <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Owner</label>
+                <select value={data.owner_user_id} onChange={(e) => setData('owner_user_id', e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                    <option value="">Unassigned</option>
+                    {members.map((m) => (
+                        <option key={m.user_id} value={m.user_id}>
+                            {m.users.name}
+                        </option>
+                    ))}
+                </select>
+            </div>
         </>
     );
 }
 
-function CreateKpiPanel({ companyId, categories }: { companyId: string; categories: Category[] }) {
+function CreateKpiPanel({
+    companyId,
+    categories,
+    goals,
+    departments,
+    members,
+    kpis,
+}: {
+    companyId: string;
+    categories: Category[];
+    goals: Goal[];
+    departments: Department[];
+    members: Member[];
+    kpis: Kpi[];
+}) {
     const [open, setOpen] = useState(false);
-    const { data, setData, post, processing, reset } = useForm({
+    const { data, setData, post, processing, reset } = useForm<KpiFormData>({
         category_id: '',
         name: '',
         description: '',
@@ -256,6 +472,14 @@ function CreateKpiPanel({ companyId, categories }: { companyId: string; categori
         unit: '',
         frequency: 'monthly',
         visibility: 'company',
+        company_goal_id: '',
+        parent_kpi_id: '',
+        department_id: '',
+        owner_user_id: '',
+        measurement_unit: 'number',
+        measurement_direction: 'higher_is_better',
+        stretch_target: '',
+        weightage: '',
     });
 
     const submit: FormEventHandler = (e) => {
@@ -278,7 +502,7 @@ function CreateKpiPanel({ companyId, categories }: { companyId: string; categori
 
     return (
         <form onSubmit={submit} className="grid grid-cols-2 gap-3 mb-5 bg-slate-50 rounded-xl p-4">
-            <KpiFormFields data={data} setData={setData} categories={categories} />
+            <KpiFormFields data={data} setData={setData} categories={categories} goals={goals} departments={departments} members={members} kpiOptions={kpis} />
             <div className="col-span-2 flex items-center gap-2">
                 <PrimaryButton type="submit" disabled={processing}>
                     Create KPI
@@ -291,8 +515,26 @@ function CreateKpiPanel({ companyId, categories }: { companyId: string; categori
     );
 }
 
-function EditKpiForm({ companyId, kpi, categories, onDone }: { companyId: string; kpi: Kpi; categories: Category[]; onDone: () => void }) {
-    const { data, setData, patch, processing } = useForm({
+function EditKpiForm({
+    companyId,
+    kpi,
+    categories,
+    goals,
+    departments,
+    members,
+    kpis,
+    onDone,
+}: {
+    companyId: string;
+    kpi: Kpi;
+    categories: Category[];
+    goals: Goal[];
+    departments: Department[];
+    members: Member[];
+    kpis: Kpi[];
+    onDone: () => void;
+}) {
+    const { data, setData, patch, processing } = useForm<KpiFormData>({
         category_id: kpi.kpi_categories ? categories.find((c) => c.name === kpi.kpi_categories?.name)?.id ?? '' : '',
         name: kpi.name,
         description: kpi.description ?? '',
@@ -300,6 +542,14 @@ function EditKpiForm({ companyId, kpi, categories, onDone }: { companyId: string
         unit: kpi.unit ?? '',
         frequency: kpi.frequency,
         visibility: kpi.visibility,
+        company_goal_id: kpi.company_goal_id ?? '',
+        parent_kpi_id: kpi.parent_kpi_id ?? '',
+        department_id: kpi.department_id ?? '',
+        owner_user_id: kpi.owner_user_id ?? '',
+        measurement_unit: kpi.measurement_unit ?? 'number',
+        measurement_direction: kpi.measurement_direction ?? 'higher_is_better',
+        stretch_target: kpi.stretch_target !== null ? String(kpi.stretch_target) : '',
+        weightage: kpi.weightage !== null ? String(kpi.weightage) : '',
     });
 
     const submit: FormEventHandler = (e) => {
@@ -309,7 +559,15 @@ function EditKpiForm({ companyId, kpi, categories, onDone }: { companyId: string
 
     return (
         <form onSubmit={submit} className="grid grid-cols-2 gap-3 mt-3 mb-2 bg-slate-50 rounded-xl p-4">
-            <KpiFormFields data={data} setData={setData} categories={categories} />
+            <KpiFormFields
+                data={data}
+                setData={setData}
+                categories={categories}
+                goals={goals}
+                departments={departments}
+                members={members}
+                kpiOptions={kpis.filter((k) => k.id !== kpi.id)}
+            />
             <div className="col-span-2 flex items-center gap-2">
                 <PrimaryButton type="submit" disabled={processing}>
                     Save changes
@@ -391,8 +649,99 @@ function KpiVisibilityGrants({ kpi, companyId, grants, departments, members }: {
     );
 }
 
-function KpiRow({ kpi, company, categories, grants, departments, members }: { kpi: Kpi; company: Company; categories: Category[]; grants: Grant[]; departments: Department[]; members: Member[] }) {
+function PeriodTargetForm({ companyId, kpi, onDone }: { companyId: string; kpi: Kpi; onDone: () => void }) {
+    const currentYear = new Date().getFullYear();
+    const [financialYear, setFinancialYear] = useState(currentYear);
+    const [values, setValues] = useState<string[]>(['', '', '', '']);
+    const [processing, setProcessing] = useState(false);
+
+    const allocated = values.reduce((sum, v) => sum + (parseFloat(v) || 0), 0);
+    const remaining = kpi.target !== null ? kpi.target - allocated : null;
+
+    const submit: FormEventHandler = (e) => {
+        e.preventDefault();
+        setProcessing(true);
+        router.post(
+            `/platform/companies/${companyId}/kpis/${kpi.id}/period-targets`,
+            {
+                financial_year: financialYear,
+                period_type: 'quarter',
+                targets: { 1: values[0] || '0', 2: values[1] || '0', 3: values[2] || '0', 4: values[3] || '0' },
+            },
+            { onFinish: () => setProcessing(false), onSuccess: onDone, preserveScroll: true },
+        );
+    };
+
+    return (
+        <form onSubmit={submit} className="mt-3 bg-slate-50 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+                <label className="text-xs font-medium text-slate-600">Financial year</label>
+                <input
+                    type="number"
+                    value={financialYear}
+                    onChange={(e) => setFinancialYear(parseInt(e.target.value, 10) || currentYear)}
+                    className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                />
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+                {['Q1', 'Q2', 'Q3', 'Q4'].map((label, i) => (
+                    <div key={label}>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
+                        <input
+                            type="number"
+                            step="any"
+                            value={values[i]}
+                            onChange={(e) => setValues((v) => v.map((existing, idx) => (idx === i ? e.target.value : existing)))}
+                            className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                            placeholder="0"
+                        />
+                    </div>
+                ))}
+            </div>
+            {kpi.target !== null && (
+                <p className="text-xs text-slate-500 mt-2">
+                    Annual target: {kpi.target} · Allocated: {allocated} · Remaining: {remaining}
+                </p>
+            )}
+            <div className="mt-3 flex items-center gap-2">
+                <PrimaryButton type="submit" disabled={processing}>
+                    Save quarterly targets
+                </PrimaryButton>
+                <button type="button" onClick={onDone} className="text-sm text-slate-400">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    );
+}
+
+function KpiRow({
+    kpi,
+    company,
+    categories,
+    goals,
+    grants,
+    departments,
+    members,
+    kpis,
+}: {
+    kpi: Kpi;
+    company: Company;
+    categories: Category[];
+    goals: Goal[];
+    grants: Grant[];
+    departments: Department[];
+    members: Member[];
+    kpis: Kpi[];
+}) {
     const [editing, setEditing] = useState(false);
+    const [settingPeriodTargets, setSettingPeriodTargets] = useState(false);
+
+    const parentKpi = kpi.parent_kpi_id ? kpis.find((k) => k.id === kpi.parent_kpi_id) : null;
+    const goal = kpi.company_goal_id ? goals.find((g) => g.id === kpi.company_goal_id) : null;
+    const department = kpi.department_id ? departments.find((d) => d.id === kpi.department_id) : null;
+    const owner = kpi.owner_user_id ? members.find((m) => m.user_id === kpi.owner_user_id) : null;
+    const childCount = kpis.filter((k) => k.parent_kpi_id === kpi.id).length;
 
     return (
         <li className="py-4">
@@ -407,9 +756,32 @@ function KpiRow({ kpi, company, categories, grants, departments, members }: { kp
                                 <TargetIcon className="w-3.5 h-3.5 text-slate-400" />
                                 Target: {kpi.target}
                                 {kpi.unit ?? ''}
+                                {kpi.stretch_target !== null && ` (stretch ${kpi.stretch_target})`}
                             </span>
                         )}
+                        {kpi.weightage !== null && <Badge tone="neutral">{kpi.weightage}% weight</Badge>}
                         <Badge tone={VISIBILITY_TONE[kpi.visibility]}>{VISIBILITY_LABEL[kpi.visibility]}</Badge>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-slate-400">
+                        {goal && <span>Contributes to goal: <span className="font-semibold text-slate-600">{goal.title}</span></span>}
+                        {parentKpi && <span>Rolls up into: <span className="font-semibold text-slate-600">{parentKpi.name}</span></span>}
+                        {childCount > 0 && <span>{childCount} contributing KPI{childCount === 1 ? '' : 's'}</span>}
+                        {department && <span>Department: <span className="font-semibold text-slate-600">{department.name}</span></span>}
+                        {owner && <span>Owner: <span className="font-semibold text-slate-600">{owner.users.name}</span></span>}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5">
+                        {kpi.computed_achievement !== null && (
+                            <Badge tone="neutral">{Math.round(kpi.computed_achievement)}% achieved</Badge>
+                        )}
+                        {kpi.computed_status !== 'not_scored' && (
+                            <Badge tone={PERFORMANCE_STATUS_TONE[kpi.computed_status]}>{PERFORMANCE_STATUS_LABELS[kpi.computed_status]}</Badge>
+                        )}
+                        {kpi.rollup_achievement !== null && (
+                            <Badge tone="info">{Math.round(kpi.rollup_achievement)}% roll-up from contributors</Badge>
+                        )}
+                        <button onClick={() => setSettingPeriodTargets((v) => !v)} className="text-xs font-semibold text-brand-800 hover:underline">
+                            {settingPeriodTargets ? 'Close' : 'Set quarterly targets'}
+                        </button>
                     </div>
                 </div>
                 <div className="flex-none flex items-center gap-3">
@@ -419,22 +791,34 @@ function KpiRow({ kpi, company, categories, grants, departments, members }: { kp
                     <Badge tone={kpi.status === 'active' ? 'success' : 'neutral'}>{kpi.status}</Badge>
                 </div>
             </div>
-            {editing && <EditKpiForm companyId={company.id} kpi={kpi} categories={categories} onDone={() => setEditing(false)} />}
+            {settingPeriodTargets && <PeriodTargetForm companyId={company.id} kpi={kpi} onDone={() => setSettingPeriodTargets(false)} />}
+            {editing && (
+                <EditKpiForm
+                    companyId={company.id}
+                    kpi={kpi}
+                    categories={categories}
+                    goals={goals}
+                    departments={departments}
+                    members={members}
+                    kpis={kpis}
+                    onDone={() => setEditing(false)}
+                />
+            )}
             <KpiVisibilityGrants kpi={kpi} companyId={company.id} grants={grants} departments={departments} members={members} />
         </li>
     );
 }
 
-export default function KpisIndex({ company, categories, kpis, templates, templateItems, grants, departments, members }: KpisPageProps) {
+export default function KpisIndex({ company, categories, kpis, templates, templateItems, grants, goals, departments, members }: KpisPageProps) {
     return (
         <PlatformLayout
             title="KPIs"
-            description="The metrics this company tracks — what's measured, how often, and who's expected to report against it."
+            description="The metrics this company tracks — what's measured, how often, who's expected to report against it, and how it rolls up into company goals."
             company={company}
         >
             <Card>
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
-                    <CreateKpiPanel companyId={company.id} categories={categories} />
+                    <CreateKpiPanel companyId={company.id} categories={categories} goals={goals} departments={departments} members={members} kpis={kpis} />
                 </div>
                 <ApplyTemplateForm companyId={company.id} templates={templates} templateItems={templateItems} />
                 <CreateCategoryForm companyId={company.id} />
@@ -453,9 +837,11 @@ export default function KpisIndex({ company, categories, kpis, templates, templa
                                 kpi={kpi}
                                 company={company}
                                 categories={categories}
+                                goals={goals}
                                 grants={grants.filter((g) => g.kpi_id === kpi.id)}
                                 departments={departments}
                                 members={members}
+                                kpis={kpis}
                             />
                         ))}
                     </ul>

@@ -30,17 +30,16 @@ use Inertia\Inertia;
  * `currentStepKey` is whichever built step isn't done yet, and that's where
  * a returning Center Admin lands.
  *
- * Three steps — reporting hierarchy, ANIRA config, Telegram config — have no
- * backend at all yet and are marked `builtYet: false` rather than faking a
- * working feature (the same honesty the original "Import" step used before
- * Excel import was actually built). They never block Review/Activate.
- * Reporting hierarchy has no home in the schema at all (no manager/reports-to
- * relationship exists anywhere in the Platform's tables); ANIRA has no
- * Platform-facing feature yet (`AuthorizedDataScope` is prepared
- * infrastructure, not a UI); Telegram's only existing code is the legacy
- * integration that `SupabaseService::TENANT_OWNED_TABLES` now specifically
- * blocks from touching real Platform data — building this step for real
- * means designing an RLS-safe replacement, not reviving that.
+ * Two steps — ANIRA config, Telegram config — still have no backend at all
+ * and are marked `builtYet: false` rather than faking a working feature (the
+ * same honesty the original "Import" step used before Excel import was
+ * actually built, and "Configure reporting hierarchy" used before
+ * `department_users.manager_user_id` existed). They never block
+ * Review/Activate. ANIRA has no per-company configuration surface yet
+ * (`AuthorizedDataScope` is prepared infrastructure, not a settings UI);
+ * Telegram's only existing per-company-configuration gap is the same —
+ * linking/digests themselves are real and tenant-aware, but nothing lets an
+ * admin disable/customize them per company yet.
  *
  * Depends on the `onboarding_status`/`display_name`/`primary_color` columns
  * from `2026_08_14_030000_add_onboarding_lifecycle_to_companies.php`.
@@ -63,9 +62,23 @@ class OnboardingController extends Controller
 
         abort_if(!$companyRow, 404);
 
-        $departmentCount = count($supabase->get('departments', [
+        $departmentIds = array_column($supabase->get('departments', [
             'company_id' => 'eq.' . $company,
             'select' => 'id',
+        ]), 'id');
+
+        $departmentCount = count($departmentIds);
+
+        // "Done" once at least one reporting-line relationship has been
+        // recorded — mirrors the existence-based checks every other step
+        // already uses ($kpiCount > 0, etc.) rather than requiring every
+        // single member to have a manager, which would never be true for a
+        // company's most senior person and would false-negative for a
+        // legitimately flat small team.
+        $reportingCount = empty($departmentIds) ? 0 : count($supabase->get('department_users', [
+            'department_id' => 'in.(' . implode(',', $departmentIds) . ')',
+            'manager_user_id' => 'not.is.null',
+            'select' => 'user_id',
         ]));
 
         $companyUsers = $supabase->get('company_users', [
@@ -111,7 +124,7 @@ class OnboardingController extends Controller
             ['key' => 'assign_roles', 'label' => 'Assign roles', 'done' => $nonAdminUserCount > 0, 'builtYet' => true, 'href' => "/platform/companies/{$company}/onboarding/assign-roles"],
             ['key' => 'kpi_structure', 'label' => 'Configure KPI structure', 'done' => $kpiCount > 0, 'builtYet' => true, 'href' => "/platform/companies/{$company}/kpis"],
             ['key' => 'apply_kpi_template', 'label' => 'Apply KPI template', 'done' => $kpiCount > 0, 'builtYet' => true, 'href' => "/platform/companies/{$company}/kpis"],
-            ['key' => 'reporting_hierarchy', 'label' => 'Configure reporting hierarchy', 'done' => false, 'builtYet' => false, 'href' => "/platform/companies/{$company}/onboarding/reporting-hierarchy"],
+            ['key' => 'reporting_hierarchy', 'label' => 'Configure reporting hierarchy', 'done' => $reportingCount > 0, 'builtYet' => true, 'href' => "/platform/companies/{$company}/onboarding/reporting-hierarchy"],
             ['key' => 'anira_config', 'label' => 'Configure ANIRA', 'done' => false, 'builtYet' => false, 'href' => "/platform/companies/{$company}/onboarding/anira-config"],
             ['key' => 'telegram_config', 'label' => 'Configure Telegram', 'done' => false, 'builtYet' => false, 'href' => "/platform/companies/{$company}/onboarding/telegram-config"],
             ['key' => 'review', 'label' => 'Review', 'done' => $hasActiveAdmin && $departmentCount > 0 && $nonAdminUserCount > 0 && $kpiCount > 0, 'builtYet' => true, 'href' => null],
@@ -232,12 +245,18 @@ class OnboardingController extends Controller
         ]);
     }
 
+    /**
+     * "Configure reporting hierarchy" now has a real home: `department_users`
+     * carries `manager_user_id` (see the organisation-hierarchy migration),
+     * and the Departments page is where a Company Admin assigns it per
+     * member. This step is a redirect there rather than its own page —
+     * there was never a reason to duplicate that UI.
+     */
     public function reportingHierarchy(Request $request, string $company)
     {
-        return $this->comingSoon($request, $company, [
-            'title' => 'Configure reporting hierarchy',
-            'body' => 'The Platform schema has no manager/reports-to relationship yet — company_users and department_users record membership and role, but nothing records who reports to whom. Building this for real means a schema addition (likely a manager_id on department_users, plus the RLS policies and approval-routing logic that would depend on it), not a UI on top of an existing column. Skipping this step never blocks Review or Activate.',
-        ]);
+        $this->ensureCompanyAdmin($request, $company);
+
+        return redirect("/platform/companies/{$company}/departments");
     }
 
     public function aniraConfig(Request $request, string $company)

@@ -5,8 +5,11 @@ namespace App\Http\Controllers\Platform;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Platform\Concerns\LogsAdminActions;
 use App\Http\Controllers\Platform\Concerns\PlatformAuthorization;
+use App\Services\KpiCalculationService;
+use App\Services\PerformancePeriodService;
 use App\Services\SupabaseUserService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Inertia\Inertia;
 
 /**
@@ -21,7 +24,7 @@ class KpiController extends Controller
     use LogsAdminActions;
     use PlatformAuthorization;
 
-    public function index(Request $request, string $company)
+    public function index(Request $request, string $company, KpiCalculationService $calc)
     {
         $this->ensureCompanyMember($request, $company);
 
@@ -32,7 +35,7 @@ class KpiController extends Controller
 
         $companyRow = $supabase->first('companies', [
             'id' => 'eq.' . $company,
-            'select' => 'id,name,code',
+            'select' => 'id,name,code,financial_year_start_month',
         ]);
 
         $categories = $supabase->get('kpi_categories', [
@@ -45,6 +48,13 @@ class KpiController extends Controller
             'company_id' => 'eq.' . $company,
             'select' => '*,kpi_categories(name)',
             'order' => 'created_at.desc',
+        ]);
+
+        $goals = $supabase->get('company_goals', [
+            'company_id' => 'eq.' . $company,
+            'status' => 'in.(draft,active,at_risk)',
+            'select' => 'id,title',
+            'order' => 'title.asc',
         ]);
 
         $kpiIds = array_column($kpis, 'id');
@@ -86,6 +96,8 @@ class KpiController extends Controller
                 'select' => 'id,template_id,category_name,name',
             ]);
 
+        $kpis = $this->attachComputedPerformance($supabase, $kpis, $companyRow, $calc);
+
         return Inertia::render('Platform/Kpis/Index', [
             'company' => $companyRow,
             'categories' => $categories,
@@ -93,9 +105,119 @@ class KpiController extends Controller
             'templates' => $templates,
             'templateItems' => $templateItems,
             'grants' => $grants,
+            'goals' => $goals,
             'departments' => $departments,
             'members' => $members,
         ]);
+    }
+
+    /**
+     * Attaches server-computed `computed_achievement`/`computed_status`/
+     * `computed_expected_progress` (from each KPI's own most recent
+     * submission) and, for KPIs with children, `rollup_achievement` (the
+     * weighted roll-up of those children) — spec §11/§18: a single,
+     * reusable calculation engine instead of per-page ad-hoc formulas.
+     *
+     * Bounded, not deeply recursive: rolls up exactly one level (children
+     * into their direct parent). A KPI three cascade levels deep would need
+     * its own children rolled up first — fine for the common
+     * Company KPI <- Department KPI shape this pass targets, worth
+     * revisiting if a real 4-level cascade shows up in practice.
+     */
+    private function attachComputedPerformance(SupabaseUserService $supabase, array $kpis, array $companyRow, KpiCalculationService $calc): array
+    {
+        if (empty($kpis)) {
+            return $kpis;
+        }
+
+        $periods = new PerformancePeriodService((int) ($companyRow['financial_year_start_month'] ?? 1));
+        $now = Carbon::now();
+        $currentFy = $periods->financialYearFor($now);
+        $currentQuarter = $periods->quarterFor($now);
+        [$fyStart, $fyEnd] = $periods->financialYearBounds($currentFy);
+        $elapsedFraction = $periods->periodElapsedFraction($fyStart, $fyEnd, $now);
+
+        $kpiIds = array_column($kpis, 'id');
+
+        // Latest submission per KPI this financial year — reduced in PHP
+        // from one ordered query rather than one query per KPI.
+        $submissions = $supabase->get('kpi_submissions', [
+            'kpi_id' => 'in.(' . implode(',', $kpiIds) . ')',
+            'submission_date' => 'gte.' . $fyStart->toDateString(),
+            'select' => 'kpi_id,value,submission_date',
+            'order' => 'submission_date.desc',
+        ]);
+
+        $latestValueByKpi = [];
+        foreach ($submissions as $submission) {
+            $latestValueByKpi[$submission['kpi_id']] ??= (float) $submission['value'];
+        }
+
+        // This FY's quarterly period targets, if any were set — used for a
+        // precise "expected progress to date" instead of a linear estimate
+        // when the company has actually split the target unevenly.
+        $periodTargets = $supabase->get('kpi_period_targets', [
+            'kpi_id' => 'in.(' . implode(',', $kpiIds) . ')',
+            'financial_year' => 'eq.' . $currentFy,
+            'period_type' => 'eq.quarter',
+            'select' => 'kpi_id,period_number,target',
+        ]);
+
+        $quarterTargetsByKpi = [];
+        foreach ($periodTargets as $pt) {
+            $quarterTargetsByKpi[$pt['kpi_id']][(int) $pt['period_number']] = (float) $pt['target'];
+        }
+
+        $computed = [];
+
+        foreach ($kpis as $kpi) {
+            $target = $kpi['target'] !== null ? (float) $kpi['target'] : null;
+            $stretch = $kpi['stretch_target'] !== null ? (float) $kpi['stretch_target'] : null;
+            $direction = $kpi['measurement_direction'] ?? 'higher_is_better';
+            $latest = $latestValueByKpi[$kpi['id']] ?? null;
+
+            $achievement = $latest !== null ? $calc->achievement($latest, $target, $stretch, $direction) : null;
+
+            $expectedProgress = null;
+            if (isset($quarterTargetsByKpi[$kpi['id']]) && $target !== null && $target != 0) {
+                $allocatedToDate = 0.0;
+                for ($q = 1; $q <= $currentQuarter; $q++) {
+                    $allocatedToDate += $quarterTargetsByKpi[$kpi['id']][$q] ?? 0.0;
+                }
+                $expectedProgress = min(100.0, ($allocatedToDate / $target) * 100);
+            } elseif ($target !== null) {
+                $expectedProgress = $calc->expectedProgressPct($elapsedFraction);
+            }
+
+            $status = $calc->status($achievement, $expectedProgress);
+
+            $computed[$kpi['id']] = $kpi + [
+                'computed_achievement' => $achievement,
+                'computed_expected_progress' => $expectedProgress,
+                'computed_status' => $status,
+                'rollup_achievement' => null,
+            ];
+        }
+
+        $childrenByParent = [];
+        foreach ($computed as $kpi) {
+            if ($kpi['parent_kpi_id']) {
+                $childrenByParent[$kpi['parent_kpi_id']][] = $kpi;
+            }
+        }
+
+        foreach ($childrenByParent as $parentId => $children) {
+            if (!isset($computed[$parentId])) {
+                continue;
+            }
+
+            $computed[$parentId]['rollup_achievement'] = $calc->weightedRollup(array_map(
+                fn ($c) => ['achievement' => $c['computed_achievement'], 'weightage' => $c['weightage'] !== null ? (float) $c['weightage'] : null],
+                $children,
+            ));
+        }
+
+        return array_values($computed);
     }
 
     /**
@@ -217,10 +339,25 @@ class KpiController extends Controller
             'unit' => 'nullable|string|max:50',
             'frequency' => 'required|in:daily,weekly,monthly,quarterly,custom',
             'visibility' => 'nullable|in:company,department,restricted',
+            'company_goal_id' => 'nullable|uuid',
+            'parent_kpi_id' => 'nullable|uuid',
+            'department_id' => 'nullable|uuid',
+            'owner_user_id' => 'nullable|uuid',
+            'measurement_unit' => 'nullable|in:number,currency,percentage,ratio,days,hours,score,binary,custom',
+            'measurement_direction' => 'nullable|in:higher_is_better,lower_is_better,target_range,on_or_before,binary_completion',
+            'stretch_target' => 'nullable|numeric',
+            'weightage' => 'nullable|numeric|min:0|max:100',
         ]);
 
         /** @var SupabaseUserService $supabase */
         $supabase = $request->attributes->get('platformSupabase');
+
+        if ($request->filled('weightage')) {
+            $error = $this->weightageOverageError($supabase, $company, (float) $request->weightage, $request->parent_kpi_id ?: null, $request->company_goal_id ?: null);
+            if ($error) {
+                return back()->withInput()->with('error', $error);
+            }
+        }
 
         try {
             // return=minimal (3rd arg false): `kpis_select`'s policy calls
@@ -241,6 +378,14 @@ class KpiController extends Controller
                 'unit' => $request->unit,
                 'frequency' => $request->frequency,
                 'visibility' => $request->input('visibility', 'company'),
+                'company_goal_id' => $request->company_goal_id ?: null,
+                'parent_kpi_id' => $request->parent_kpi_id ?: null,
+                'department_id' => $request->department_id ?: null,
+                'owner_user_id' => $request->owner_user_id ?: null,
+                'measurement_unit' => $request->input('measurement_unit', 'number'),
+                'measurement_direction' => $request->input('measurement_direction', 'higher_is_better'),
+                'stretch_target' => $request->stretch_target,
+                'weightage' => $request->weightage,
             ], false);
         } catch (\Throwable $e) {
             return back()->withInput()->with('error', 'Could not create KPI: ' . $e->getMessage());
@@ -259,6 +404,42 @@ class KpiController extends Controller
         }
 
         return back()->with('success', 'KPI "' . $request->name . '" created.');
+    }
+
+    /**
+     * Sums the weightage of this KPI's siblings — other KPIs sharing the
+     * same `parent_kpi_id` (Department/Individual KPI cascade level), or
+     * failing that the same `company_goal_id` (top-level Company KPI), or
+     * failing that unset entirely (no natural 100% bucket to check against,
+     * so nothing is validated) — and rejects outright if the incoming
+     * weightage would push the group's total over 100. Spec §15/§56: "do not
+     * silently accept invalid total weightage."
+     */
+    private function weightageOverageError(SupabaseUserService $supabase, string $company, float $incoming, ?string $parentKpiId, ?string $companyGoalId, ?string $excludeKpiId = null): ?string
+    {
+        if (!$parentKpiId && !$companyGoalId) {
+            return null;
+        }
+
+        $siblings = $parentKpiId
+            ? $supabase->get('kpis', ['parent_kpi_id' => 'eq.' . $parentKpiId, 'select' => 'id,weightage'])
+            : $supabase->get('kpis', ['company_goal_id' => 'eq.' . $companyGoalId, 'parent_kpi_id' => 'is.null', 'select' => 'id,weightage']);
+
+        $existingTotal = collect($siblings)
+            ->when($excludeKpiId, fn ($c) => $c->reject(fn ($k) => $k['id'] === $excludeKpiId))
+            ->sum(fn ($k) => (float) ($k['weightage'] ?? 0));
+
+        $newTotal = $existingTotal + $incoming;
+
+        if ($newTotal > 100) {
+            return sprintf(
+                'Total weightage among these sibling KPIs would be %s%% (exceeds 100%% by %s%%). Adjust another KPI weightage first, or lower this one.',
+                rtrim(rtrim(number_format($newTotal, 2), '0'), '.'),
+                rtrim(rtrim(number_format($newTotal - 100, 2), '0'), '.'),
+            );
+        }
+
+        return null;
     }
 
     /**
@@ -288,6 +469,14 @@ class KpiController extends Controller
             'unit' => 'nullable|string|max:50',
             'frequency' => 'required|in:daily,weekly,monthly,quarterly,custom',
             'visibility' => 'nullable|in:company,department,restricted',
+            'company_goal_id' => 'nullable|uuid',
+            'parent_kpi_id' => 'nullable|uuid',
+            'department_id' => 'nullable|uuid',
+            'owner_user_id' => 'nullable|uuid',
+            'measurement_unit' => 'nullable|in:number,currency,percentage,ratio,days,hours,score,binary,custom',
+            'measurement_direction' => 'nullable|in:higher_is_better,lower_is_better,target_range,on_or_before,binary_completion',
+            'stretch_target' => 'nullable|numeric',
+            'weightage' => 'nullable|numeric|min:0|max:100',
         ]);
 
         /** @var SupabaseUserService $supabase */
@@ -296,11 +485,25 @@ class KpiController extends Controller
         $before = $supabase->first('kpis', [
             'id' => 'eq.' . $kpi,
             'company_id' => 'eq.' . $company,
-            'select' => 'id,name,description,target,unit,frequency,visibility,category_id',
+            'select' => '*',
         ]);
 
         if (!$before) {
             abort(404, 'That KPI does not belong to this company.');
+        }
+
+        if ($kpi === $request->parent_kpi_id) {
+            return back()->withInput()->with('error', 'A KPI cannot be its own parent.');
+        }
+
+        if ($request->filled('weightage') && (float) $request->weightage !== (float) ($before['weightage'] ?? -1)) {
+            $error = $this->weightageOverageError(
+                $supabase, $company, (float) $request->weightage,
+                $request->parent_kpi_id ?: null, $request->company_goal_id ?: null, $kpi,
+            );
+            if ($error) {
+                return back()->withInput()->with('error', $error);
+            }
         }
 
         $after = [
@@ -311,6 +514,14 @@ class KpiController extends Controller
             'unit' => $request->unit,
             'frequency' => $request->frequency,
             'visibility' => $request->input('visibility', $before['visibility']),
+            'company_goal_id' => $request->company_goal_id ?: null,
+            'parent_kpi_id' => $request->parent_kpi_id ?: null,
+            'department_id' => $request->department_id ?: null,
+            'owner_user_id' => $request->owner_user_id ?: null,
+            'measurement_unit' => $request->input('measurement_unit', $before['measurement_unit'] ?? 'number'),
+            'measurement_direction' => $request->input('measurement_direction', $before['measurement_direction'] ?? 'higher_is_better'),
+            'stretch_target' => $request->stretch_target,
+            'weightage' => $request->weightage,
         ];
 
         try {

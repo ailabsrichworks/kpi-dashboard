@@ -52,7 +52,7 @@ class DepartmentController extends Controller
             ? []
             : $supabase->get('department_users', [
                 'department_id' => 'in.(' . implode(',', $departmentIds) . ')',
-                'select' => 'department_id,user_id,role,role_id,users(name,email)',
+                'select' => 'department_id,user_id,role,role_id,manager_user_id,position_title,join_date,employment_status,employment_type,employee_grade,location,mobile_number,users(name,email)',
             ]);
 
         $roles = empty($departmentIds)
@@ -67,9 +67,12 @@ class DepartmentController extends Controller
         // `company_users.status`, not anything `department_users` carries —
         // fetched separately and keyed by user_id so the department member
         // list can show each person's actual membership status.
+        // Includes name/email so the reporting-structure UI can offer a
+        // company-wide manager picker (a manager may sit in a different
+        // department from the person reporting to them).
         $memberStatus = $supabase->get('company_users', [
             'company_id' => 'eq.' . $company,
-            'select' => 'user_id,role,status',
+            'select' => 'user_id,role,status,users(name,email)',
         ]);
 
         return Inertia::render('Platform/Departments/Index', [
@@ -88,16 +91,36 @@ class DepartmentController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'code' => 'required|string|max:50',
+            'unit_type' => 'nullable|in:business_unit,branch,department,team',
+            'parent_department_id' => 'nullable|uuid',
         ]);
 
         /** @var SupabaseUserService $supabase */
         $supabase = $request->attributes->get('platformSupabase');
+
+        // Confirm the chosen parent actually belongs to this company before
+        // it ever reaches Postgres — trg_prevent_circular_department_hierarchy
+        // would reject a cross-company parent anyway, but this gives a clean
+        // error instead of a raw trigger exception.
+        if ($request->filled('parent_department_id')) {
+            $parentBelongsToCompany = $supabase->first('departments', [
+                'id' => 'eq.' . $request->parent_department_id,
+                'company_id' => 'eq.' . $company,
+                'select' => 'id',
+            ]);
+
+            if (!$parentBelongsToCompany) {
+                return back()->withInput()->with('error', 'Choose a parent unit that belongs to this company.');
+            }
+        }
 
         try {
             $newDepartment = $supabase->insert('departments', [
                 'company_id' => $company,
                 'name' => $request->name,
                 'code' => strtoupper($request->code),
+                'unit_type' => $request->unit_type ?? 'department',
+                'parent_department_id' => $request->parent_department_id,
             ]);
 
             // Guardrail: a department with zero roles has nothing to assign
@@ -138,8 +161,15 @@ class DepartmentController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email',
-            'role' => 'required|in:executive,employee',
+            'role' => 'required|in:executive,employee,hr,hod,manager',
             'role_id' => 'required|uuid',
+            'manager_user_id' => 'nullable|uuid',
+            'position_title' => 'nullable|string|max:255',
+            'join_date' => 'nullable|date',
+            'employment_type' => 'nullable|string|max:100',
+            'employee_grade' => 'nullable|string|max:100',
+            'location' => 'nullable|string|max:255',
+            'mobile_number' => 'nullable|string|max:50',
         ]);
 
         /** @var SupabaseUserService $supabase */
@@ -158,6 +188,18 @@ class DepartmentController extends Controller
 
         if (!$roleBelongsToDepartment) {
             return back()->withInput()->with('error', 'Choose a role that belongs to this department.');
+        }
+
+        if ($request->filled('manager_user_id')) {
+            $managerIsCompanyMember = $supabase->first('company_users', [
+                'company_id' => 'eq.' . $company,
+                'user_id' => 'eq.' . $request->manager_user_id,
+                'select' => 'user_id',
+            ]);
+
+            if (!$managerIsCompanyMember) {
+                return back()->withInput()->with('error', 'Choose a manager who is already a member of this company.');
+            }
         }
 
         // Phase 11: as in CompanyController::storeAdmin(), no password is
@@ -212,6 +254,13 @@ class DepartmentController extends Controller
                 'user_id' => $newUser['id'],
                 'role' => $request->role,
                 'role_id' => $request->role_id,
+                'manager_user_id' => $request->manager_user_id,
+                'position_title' => $request->position_title,
+                'join_date' => $request->join_date,
+                'employment_type' => $request->employment_type,
+                'employee_grade' => $request->employee_grade,
+                'location' => $request->location,
+                'mobile_number' => $request->mobile_number,
             ]);
         } catch (\Throwable $e) {
             return back()->with('error', 'Account was created but could not be linked to the department: ' . $e->getMessage());
@@ -232,7 +281,13 @@ class DepartmentController extends Controller
             'select' => 'name',
         ]);
 
-        $roleLabel = $request->role === 'executive' ? 'an Executive' : 'an Employee';
+        $roleLabel = match ($request->role) {
+            'executive' => 'an Executive',
+            'hr' => 'an HR member',
+            'hod' => 'a Head of Department',
+            'manager' => 'a Manager',
+            default => 'an Employee',
+        };
 
         try {
             Mail::to($request->email)->send(new PlatformInviteMail(
@@ -268,7 +323,7 @@ class DepartmentController extends Controller
         $this->ensureCompanyAdmin($request, $company);
 
         $request->validate([
-            'role' => 'required|in:executive,employee',
+            'role' => 'required|in:executive,employee,hr,hod,manager',
             'role_id' => 'required|uuid',
         ]);
 
@@ -319,6 +374,86 @@ class DepartmentController extends Controller
         }
 
         return back()->with('success', 'Role updated.');
+    }
+
+    /**
+     * Changes just a member's manager (and/or the plain profile fields
+     * introduced alongside it) without touching their role — deliberately
+     * separate from updateUserRole() above, which is about access tier, not
+     * reporting line. Backs the onboarding wizard's "Configure reporting
+     * hierarchy" step, previously an honest `builtYet: false` placeholder
+     * (see OnboardingController) because no manager column existed anywhere
+     * in the Platform schema.
+     */
+    public function updateReporting(Request $request, string $company, string $department, string $user)
+    {
+        $this->ensureCompanyAdmin($request, $company);
+
+        $request->validate([
+            'manager_user_id' => 'nullable|uuid',
+            'position_title' => 'nullable|string|max:255',
+            'join_date' => 'nullable|date',
+            'employment_status' => 'nullable|in:active,inactive,on_leave,resigned,terminated,archived',
+            'employment_type' => 'nullable|string|max:100',
+            'employee_grade' => 'nullable|string|max:100',
+            'location' => 'nullable|string|max:255',
+            'mobile_number' => 'nullable|string|max:50',
+        ]);
+
+        if ($request->filled('manager_user_id') && $request->manager_user_id === $user) {
+            return back()->with('error', 'An employee cannot be their own manager.');
+        }
+
+        /** @var SupabaseUserService $supabase */
+        $supabase = $request->attributes->get('platformSupabase');
+
+        if ($request->filled('manager_user_id')) {
+            $managerIsCompanyMember = $supabase->first('company_users', [
+                'company_id' => 'eq.' . $company,
+                'user_id' => 'eq.' . $request->manager_user_id,
+                'select' => 'user_id',
+            ]);
+
+            if (!$managerIsCompanyMember) {
+                return back()->with('error', 'Choose a manager who is already a member of this company.');
+            }
+        }
+
+        $before = $supabase->first('department_users', [
+            'department_id' => 'eq.' . $department,
+            'user_id' => 'eq.' . $user,
+            'select' => 'manager_user_id,position_title,join_date,employment_status,employment_type,employee_grade,location,mobile_number',
+        ]);
+
+        $after = [
+            'manager_user_id' => $request->manager_user_id,
+            'position_title' => $request->position_title,
+            'join_date' => $request->join_date,
+            'employment_status' => $request->employment_status ?? ($before['employment_status'] ?? 'active'),
+            'employment_type' => $request->employment_type,
+            'employee_grade' => $request->employee_grade,
+            'location' => $request->location,
+            'mobile_number' => $request->mobile_number,
+        ];
+
+        try {
+            $supabase->update('department_users', [
+                'department_id' => 'eq.' . $department,
+                'user_id' => 'eq.' . $user,
+            ], $after);
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Could not update this member\'s reporting details: ' . $e->getMessage());
+        }
+
+        try {
+            $this->logCompanyAction($request, 'update_reporting', $company, $user, [
+                'department_id' => $department,
+            ], 'department_user', $user, $before, $after);
+        } catch (\Throwable) {
+            return back()->with('error', 'Reporting details were updated, but the action could not be logged — contact support before continuing.');
+        }
+
+        return back()->with('success', 'Reporting details updated.');
     }
 
     /**

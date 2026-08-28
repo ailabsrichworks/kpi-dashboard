@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Platform;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Platform\Concerns\LogsAdminActions;
+use App\Services\KpiCalculationService;
 use App\Services\SupabaseUserService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -44,7 +45,7 @@ class KpiSubmissionController extends Controller
         return ['can_submit' => $isDepartmentMember];
     }
 
-    public function index(Request $request, string $company, string $department)
+    public function index(Request $request, string $company, string $department, KpiCalculationService $calc)
     {
         $access = $this->ensureDepartmentAccess($request, $company, $department);
 
@@ -66,9 +67,24 @@ class KpiSubmissionController extends Controller
 
         $submissions = $supabase->get('kpi_submissions', [
             'department_id' => 'eq.' . $department,
-            'select' => '*,kpis(name,unit,target),users(name)',
+            'select' => '*,kpis(name,unit,target,stretch_target,measurement_direction),users(name)',
             'order' => 'submission_date.desc',
         ]);
+
+        // Status engine (spec §16), server-computed via KpiCalculationService
+        // so it can't drift from what any other page's calculation says —
+        // no expected-progress context here (a single submission's own
+        // period, not a year-to-date figure), so this falls back to flat
+        // achievement thresholds.
+        $submissions = array_map(function ($submission) use ($calc) {
+            $target = $submission['kpis']['target'] ?? null;
+            $stretch = $submission['kpis']['stretch_target'] ?? null;
+            $direction = $submission['kpis']['measurement_direction'] ?? 'higher_is_better';
+
+            $achievement = $calc->achievement((float) $submission['value'], $target !== null ? (float) $target : null, $stretch !== null ? (float) $stretch : null, $direction);
+
+            return $submission + ['computed_status' => $calc->status($achievement)];
+        }, $submissions);
 
         return Inertia::render('Platform/Submissions/Index', [
             'department' => $departmentRow,

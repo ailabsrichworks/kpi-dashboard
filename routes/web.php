@@ -200,6 +200,9 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::patch('/companies/{company}/departments/{department}/users/{user}/role', [\App\Http\Controllers\Platform\DepartmentController::class, 'updateUserRole'])
         ->name('platform.departments.users.role.update');
 
+    Route::patch('/companies/{company}/departments/{department}/users/{user}/reporting', [\App\Http\Controllers\Platform\DepartmentController::class, 'updateReporting'])
+        ->name('platform.departments.users.reporting.update');
+
     Route::post('/companies/{company}/users/{user}/suspend', [\App\Http\Controllers\Platform\DepartmentController::class, 'suspendUser'])
         ->name('platform.companies.users.suspend');
 
@@ -211,6 +214,15 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
 
     Route::delete('/companies/{company}/departments/{department}/roles/{role}', [\App\Http\Controllers\Platform\RoleController::class, 'destroy'])
         ->name('platform.roles.destroy');
+
+    Route::get('/companies/{company}/goals', [\App\Http\Controllers\Platform\CompanyGoalController::class, 'index'])
+        ->name('platform.goals.index');
+
+    Route::post('/companies/{company}/goals', [\App\Http\Controllers\Platform\CompanyGoalController::class, 'store'])
+        ->name('platform.goals.store');
+
+    Route::patch('/companies/{company}/goals/{goal}', [\App\Http\Controllers\Platform\CompanyGoalController::class, 'update'])
+        ->name('platform.goals.update');
 
     Route::get('/companies/{company}/kpis', [\App\Http\Controllers\Platform\KpiController::class, 'index'])
         ->name('platform.kpis.index');
@@ -226,6 +238,9 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
 
     Route::post('/companies/{company}/kpis/apply-template', [\App\Http\Controllers\Platform\KpiController::class, 'applyTemplate'])
         ->name('platform.kpis.apply-template');
+
+    Route::post('/companies/{company}/kpis/{kpi}/period-targets', [\App\Http\Controllers\Platform\KpiPeriodTargetController::class, 'store'])
+        ->name('platform.kpis.period-targets.store');
 
     Route::post('/companies/{company}/kpis/{kpi}/grants', [\App\Http\Controllers\Platform\KpiController::class, 'storeGrant'])
         ->name('platform.kpis.grants.store');

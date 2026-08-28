@@ -7,11 +7,13 @@ use App\Http\Controllers\Platform\Concerns\LogsAdminActions;
 use App\Http\Controllers\Platform\Concerns\PlatformAuthorization;
 use App\Mail\PlatformInviteMail;
 use App\Services\CompanyLifecycleService;
+use App\Services\PerformancePeriodService;
 use App\Services\SupabaseAuthService;
 use App\Services\SupabaseService;
 use App\Services\SupabaseUserService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 
 /**
@@ -27,6 +29,10 @@ class CompanyController extends Controller
 {
     use LogsAdminActions;
     use PlatformAuthorization;
+
+    private const RESERVED_SUBDOMAINS = [
+        'admin', 'demo', 'www', 'api', 'support', 'status', 'mail', 'app', 'login',
+    ];
 
     /**
      * The lifecycle: draft -> onboarding -> configuring -> active ->
@@ -101,12 +107,42 @@ class CompanyController extends Controller
         $this->ensureSuperAdmin($request);
 
         $request->validate([
-            'name' => 'required|string|max:255',
-            'code' => 'required|string|max:50',
+            'legal_name' => 'required|string|max:255',
+            'display_name' => 'required|string|max:255',
+            'registration_number' => 'nullable|string|max:100',
+            'industry' => 'required|string|max:100',
+            'country' => 'required|string|max:100',
+            'timezone' => 'required|string|max:100',
+            'financial_year_start' => 'required|string|max:30',
+            'financial_year_end' => 'required|string|max:30',
+            'estimated_employee_count' => 'required|integer|min:0|max:1000000',
+            'primary_contact_name' => 'required|string|max:255',
+            'primary_contact_email' => 'required|email|max:255',
+            'primary_contact_phone' => 'nullable|string|max:50',
+            'company_admin_name' => 'required|string|max:255',
+            'company_admin_email' => 'required|email|max:255',
+            'cam_name' => 'nullable|string|max:255',
+            'subscription_plan' => 'required|string|max:100',
+            'contract_start_date' => 'nullable|date',
+            'contract_end_date' => 'nullable|date|after_or_equal:contract_start_date',
+            'user_limit' => 'required|integer|min:1|max:1000000',
+            'subdomain' => 'required|string|max:63|regex:/^[a-z0-9-]+$/',
         ]);
+
+        $subdomain = Str::lower($request->string('subdomain')->toString());
+        if (in_array($subdomain, self::RESERVED_SUBDOMAINS, true)) {
+            return back()->withInput()->with('error', "The subdomain '{$subdomain}' is reserved for Performix infrastructure.");
+        }
 
         /** @var SupabaseUserService $supabase */
         $supabase = $request->attributes->get('platformSupabase');
+
+        if ($supabase->first('companies', [
+            'subdomain' => 'ilike.' . $subdomain,
+            'select' => 'id',
+        ])) {
+            return back()->withInput()->with('error', "The subdomain '{$subdomain}' is already used.");
+        }
 
         try {
             // Explicit, not left to the column default ('active') — a brand
@@ -118,9 +154,30 @@ class CompanyController extends Controller
             // 'draft' — not 'onboarding' — because nothing has actually
             // started yet; storeAdmin() below is what advances it.
             $newCompany = $supabase->insert('companies', [
-                'name' => $request->name,
-                'code' => strtoupper($request->code),
+                'name' => $request->display_name,
+                'code' => strtoupper(Str::slug($subdomain, '_')),
                 'status' => 'draft',
+                'legal_name' => $request->legal_name,
+                'display_name' => $request->display_name,
+                'registration_number' => $request->registration_number,
+                'industry' => $request->industry,
+                'country' => $request->country,
+                'timezone' => $request->timezone,
+                'financial_year_start' => $request->financial_year_start,
+                'financial_year_start_month' => PerformancePeriodService::monthNumberFromName($request->financial_year_start),
+                'financial_year_end' => $request->financial_year_end,
+                'estimated_employee_count' => $request->estimated_employee_count,
+                'primary_contact_name' => $request->primary_contact_name,
+                'primary_contact_email' => $request->primary_contact_email,
+                'primary_contact_phone' => $request->primary_contact_phone,
+                'company_admin_name' => $request->company_admin_name,
+                'company_admin_email' => $request->company_admin_email,
+                'cam_name' => $request->cam_name,
+                'subscription_plan' => $request->subscription_plan,
+                'contract_start_date' => $request->contract_start_date,
+                'contract_end_date' => $request->contract_end_date,
+                'user_limit' => $request->user_limit,
+                'subdomain' => $subdomain,
             ]);
         } catch (\Throwable $e) {
             return back()->withInput()->with('error', 'Could not create company: ' . $e->getMessage());
@@ -128,15 +185,16 @@ class CompanyController extends Controller
 
         try {
             $this->logAdminAction($request, 'create_company', $newCompany[0]['id'], null, [], 'company', $newCompany[0]['id'], null, [
-                'name' => $request->name,
+                'name' => $request->display_name,
                 'code' => $newCompany[0]['code'],
                 'status' => 'draft',
+                'subdomain' => $subdomain,
             ]);
         } catch (\Throwable) {
             return back()->with('error', 'Company was created, but the action could not be logged — contact support before continuing.');
         }
 
-        return back()->with('success', 'Company "' . $request->name . '" created.');
+        return back()->with('success', 'Onboarding created for "' . $request->display_name . '".');
     }
 
     /**
