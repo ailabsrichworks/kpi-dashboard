@@ -183,6 +183,20 @@ function SidebarContent({ platformUser, company, currentUrl }: { platformUser: P
                         >
                             Tasks
                         </NavLink>
+                        <NavLink
+                            href={`/platform/companies/${contextCompany.id}/approvals`}
+                            icon={<ClipboardCheckIcon className="w-[18px] h-[18px]" />}
+                            currentUrl={currentUrl}
+                        >
+                            My Approvals
+                        </NavLink>
+                        <NavLink
+                            href={`/platform/companies/${contextCompany.id}/periods`}
+                            icon={<AdjustmentsIcon className="w-[18px] h-[18px]" />}
+                            currentUrl={currentUrl}
+                        >
+                            Periods
+                        </NavLink>
                         {isAdminHere && (
                             <NavLink
                                 href={`/platform/companies/${contextCompany.id}/onboarding`}

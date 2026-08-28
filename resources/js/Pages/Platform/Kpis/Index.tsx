@@ -81,6 +81,17 @@ interface Member {
     users: { name: string; email: string };
 }
 
+interface PendingTargetRevision {
+    id: string;
+    kpi_id: string;
+    old_target: number | null;
+    new_target: number;
+    reason: string;
+    effective_financial_year: number;
+    requested_at: string;
+    users: { name: string } | null;
+}
+
 interface KpisPageProps {
     company: Company;
     categories: Category[];
@@ -91,6 +102,7 @@ interface KpisPageProps {
     goals: Goal[];
     departments: Department[];
     members: Member[];
+    pendingTargetRevisions: PendingTargetRevision[];
     [key: string]: unknown;
 }
 
@@ -809,19 +821,123 @@ function KpiRow({
     );
 }
 
-export default function KpisIndex({ company, categories, kpis, templates, templateItems, grants, goals, departments, members }: KpisPageProps) {
+function RequestTargetRevisionForm({ companyId, kpis }: { companyId: string; kpis: Kpi[] }) {
+    const [open, setOpen] = useState(false);
+    const { data, setData, post, processing, reset, errors } = useForm({
+        kpi_id: kpis[0]?.id ?? '',
+        new_target: '',
+        reason: '',
+        effective_financial_year: new Date().getFullYear(),
+    });
+
+    if (!open) {
+        return (
+            <SecondaryButton type="button" onClick={() => setOpen(true)} className="mb-4">
+                Request Target Revision
+            </SecondaryButton>
+        );
+    }
+
+    const submit: FormEventHandler = (e) => {
+        e.preventDefault();
+        post(`/platform/companies/${companyId}/kpis/${data.kpi_id}/target-revisions`, {
+            onSuccess: () => {
+                reset();
+                setOpen(false);
+            },
+        });
+    };
+
+    return (
+        <form onSubmit={submit} className="grid grid-cols-2 gap-3 mb-6 bg-slate-50 rounded-xl p-4">
+            <div className="col-span-2">
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                    KPI <InfoTooltip text="A target change doesn't take effect immediately — it stays proposed until whoever's assigned to approve it decides. Calculations keep using the current target until then." />
+                </label>
+                <select value={data.kpi_id} onChange={(e) => setData('kpi_id', e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                    {kpis.map((k) => (
+                        <option key={k.id} value={k.id}>
+                            {k.name} (current target {k.target ?? '—'})
+                        </option>
+                    ))}
+                </select>
+            </div>
+            <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Proposed new target</label>
+                <input value={data.new_target} onChange={(e) => setData('new_target', e.target.value)} type="number" step="any" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" required />
+                {errors.new_target && <p className="text-xs text-red-600 mt-1">{errors.new_target}</p>}
+            </div>
+            <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Effective financial year</label>
+                <input
+                    value={data.effective_financial_year}
+                    onChange={(e) => setData('effective_financial_year', Number(e.target.value))}
+                    type="number"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    required
+                />
+            </div>
+            <div className="col-span-2">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Reason</label>
+                <input value={data.reason} onChange={(e) => setData('reason', e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" required />
+                {errors.reason && <p className="text-xs text-red-600 mt-1">{errors.reason}</p>}
+            </div>
+            <div className="col-span-2 flex items-center gap-2">
+                <PrimaryButton type="submit" disabled={processing}>
+                    Submit for approval
+                </PrimaryButton>
+                <SecondaryButton type="button" onClick={() => setOpen(false)}>
+                    Cancel
+                </SecondaryButton>
+            </div>
+        </form>
+    );
+}
+
+function PendingTargetRevisionsCard({ revisions, kpis }: { revisions: PendingTargetRevision[]; kpis: Kpi[] }) {
+    if (revisions.length === 0) {
+        return null;
+    }
+
+    return (
+        <Card title="Pending target revisions" description="Proposed changes awaiting approval — current targets stay in effect until then." className="mb-4">
+            <ul className="divide-y divide-slate-100">
+                {revisions.map((r) => {
+                    const kpi = kpis.find((k) => k.id === r.kpi_id);
+                    return (
+                        <li key={r.id} className="py-2.5 flex items-center justify-between gap-4">
+                            <div>
+                                <p className="text-sm font-semibold text-slate-800">
+                                    {kpi?.name ?? 'KPI'}: {r.old_target ?? '—'} → {r.new_target}
+                                </p>
+                                <p className="text-xs text-slate-400">
+                                    {r.reason} · requested by {r.users?.name ?? 'someone'} · effective FY{r.effective_financial_year}
+                                </p>
+                            </div>
+                            <Badge tone="warning">Awaiting approval</Badge>
+                        </li>
+                    );
+                })}
+            </ul>
+        </Card>
+    );
+}
+
+export default function KpisIndex({ company, categories, kpis, templates, templateItems, grants, goals, departments, members, pendingTargetRevisions }: KpisPageProps) {
     return (
         <PlatformLayout
             title="KPIs"
             description="The metrics this company tracks — what's measured, how often, who's expected to report against it, and how it rolls up into company goals."
             company={company}
         >
+            <PendingTargetRevisionsCard revisions={pendingTargetRevisions} kpis={kpis} />
             <Card>
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
                     <CreateKpiPanel companyId={company.id} categories={categories} goals={goals} departments={departments} members={members} kpis={kpis} />
                 </div>
                 <ApplyTemplateForm companyId={company.id} templates={templates} templateItems={templateItems} />
                 <CreateCategoryForm companyId={company.id} />
+                {kpis.length > 0 && <RequestTargetRevisionForm companyId={company.id} kpis={kpis} />}
 
                 {kpis.length === 0 ? (
                     <EmptyState

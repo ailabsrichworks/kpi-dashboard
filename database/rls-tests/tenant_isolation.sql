@@ -61,6 +61,11 @@ declare
   v_user_hr uuid;
   v_goal_a uuid;
   v_kpi_child uuid;
+  v_submission_id uuid;
+  v_request_id uuid;
+  v_request_id2 uuid;
+  v_revision_id uuid;
+  v_achievement numeric;
 begin
   -- ---------------------------------------------------------------------
   -- Fixtures (run as the connecting superuser/owner -- RLS doesn't apply
@@ -654,6 +659,174 @@ begin
 
   execute 'reset role';
   raise notice 'PASS (19a/19b): company_goals is readable by any company member, cross-company read denied';
+
+  -- ---------------------------------------------------------------------
+  -- Scenario 20: kpi_calc_achievement() (the SQL port of
+  -- KpiCalculationService::achievement()/kpiAchievement.ts, since a Postgres
+  -- view can't call into either) must agree with the other two ports on the
+  -- same inputs -- these three specific cases are the exact ones
+  -- tests/Unit/KpiCalculationServiceTest.php asserts in PHP.
+  -- ---------------------------------------------------------------------
+  select kpi_calc_achievement(80, 100, null, 'higher_is_better') into v_achievement;
+  if v_achievement <> 80.0 then raise exception 'FAIL (20a): kpi_calc_achievement higher_is_better below target got %, want 80', v_achievement; end if;
+
+  select kpi_calc_achievement(575000, 500000, null, 'lower_is_better') into v_achievement;
+  if abs(v_achievement - 86.96) > 0.01 then raise exception 'FAIL (20b): kpi_calc_achievement lower_is_better overshoot got %, want ~86.96 (spec Part 11''s own example -- must not read as "exceeded")', v_achievement; end if;
+
+  select kpi_calc_achievement(1, null, null, 'binary_completion') into v_achievement;
+  if v_achievement <> 100.0 then raise exception 'FAIL (20c): kpi_calc_achievement binary_completion got %, want 100', v_achievement; end if;
+
+  raise notice 'PASS (20): kpi_calc_achievement() SQL port agrees with KpiCalculationService/kpiAchievement.ts on all 3 cross-checked cases';
+
+  -- ---------------------------------------------------------------------
+  -- Scenario 21: approval-gated kpi_submissions_update. v_user_a2 submits;
+  -- an approval_requests/approval_request_steps pair is created by hand
+  -- (mirroring what ApprovalRequestService::createRequest() would do) with
+  -- v_user_a resolved as the CURRENT step's approver. Three checks: (a) the
+  -- submitter themselves cannot decide their own submission (spec Part 8:
+  -- self-approval is blocked at the data layer, not just the UI), (b) the
+  -- actual resolved approver CAN -- proving the mechanism grants access, not
+  -- just denies it, (c) a second, non-current step's resolved approver
+  -- (here, deliberately Company B's own admin, so this also doubles as a
+  -- tenant-isolation check) cannot act on a step that isn't current yet.
+  -- ---------------------------------------------------------------------
+  insert into kpi_submissions (
+    company_id, department_id, kpi_id, value, submitted_by, status,
+    revision_number, financial_year, period_type, period_number
+  ) values (
+    v_company_a, v_dept_a, v_kpi_a, 42, v_user_a2, 'pending_review',
+    1, 2027, 'month', 1
+  ) returning id into v_submission_id;
+
+  insert into approval_requests (company_id, workflow_type, object_type, object_id, department_id, submitted_by)
+  values (v_company_a, 'actual_submission', 'kpi_submission', v_submission_id, v_dept_a, v_user_a2)
+  returning id into v_request_id;
+
+  insert into approval_request_steps (request_id, step_order, approver_type, resolved_approver_user_id, status)
+  values (v_request_id, 1, 'submitter_manager', v_user_a, 'pending');
+  insert into approval_request_steps (request_id, step_order, approver_type, resolved_approver_user_id, status)
+  values (v_request_id, 2, 'role', v_user_b, 'pending');
+
+  -- (a) the submitter cannot decide their own submission.
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_a2)::text, true);
+  execute 'set local role authenticated';
+
+  update kpi_submissions set status = 'approved' where id = v_submission_id;
+  get diagnostics v_rows = row_count;
+  if v_rows <> 0 then raise exception 'FAIL (21a): a submitter approved/updated their own kpi_submission'; end if;
+
+  execute 'reset role';
+
+  -- (c) the step-2 approver (not yet current) cannot act early -- also
+  -- cross-company, so this doubles as an isolation check.
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_b)::text, true);
+  execute 'set local role authenticated';
+
+  update kpi_submissions set status = 'approved' where id = v_submission_id;
+  get diagnostics v_rows = row_count;
+  if v_rows <> 0 then raise exception 'FAIL (21c): a non-current step''s resolved approver updated the submission early'; end if;
+
+  execute 'reset role';
+  raise notice 'PASS (21a/21c): submitter cannot self-approve; a non-current step''s approver cannot act early';
+
+  -- (b) the actual current-step resolved approver CAN.
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_a)::text, true);
+  execute 'set local role authenticated';
+
+  update kpi_submissions set status = 'approved', decided_by = v_user_a where id = v_submission_id;
+  get diagnostics v_rows = row_count;
+  if v_rows <> 1 then raise exception 'FAIL (21b): the correctly-resolved current-step approver could not decide the submission'; end if;
+
+  execute 'reset role';
+  raise notice 'PASS (21b): the resolved current-step approver can decide the submission';
+
+  -- ---------------------------------------------------------------------
+  -- Scenario 22: apply_approved_target_revision() re-checks authorization
+  -- and status itself (it's SECURITY DEFINER, so outer RLS on `kpis` doesn't
+  -- gate it) -- must reject a not-yet-approved revision, then reject an
+  -- unrelated company's caller even once approved, then succeed for the
+  -- actual company admin.
+  -- ---------------------------------------------------------------------
+  insert into kpi_target_revisions (company_id, kpi_id, old_target, new_target, reason, requested_by, effective_financial_year, status)
+  values (v_company_a, v_kpi_a, 100, 250, 'RLS test revision', v_user_a, 2027, 'pending')
+  returning id into v_revision_id;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_a)::text, true);
+  execute 'set local role authenticated';
+
+  begin
+    perform apply_approved_target_revision(v_revision_id);
+    raise exception 'FAIL (22a): applied a target revision that was not yet approved';
+  exception
+    when others then
+      if SQLERRM like '%is not approved%' then
+        raise notice 'PASS (22a): applying a not-yet-approved target revision is rejected';
+      else
+        raise;
+      end if;
+  end;
+
+  execute 'reset role';
+
+  -- Approve it (as the superuser/table owner doing test setup, bypassing
+  -- RLS deliberately here -- getting the row into 'approved' status is
+  -- fixture setup, not the thing being tested).
+  update kpi_target_revisions set status = 'approved' where id = v_revision_id;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_b)::text, true);
+  execute 'set local role authenticated';
+
+  begin
+    perform apply_approved_target_revision(v_revision_id);
+    raise exception 'FAIL (22b): an unrelated company''s user applied another company''s approved target revision';
+  exception
+    when others then
+      if SQLERRM like '%not authorized%' then
+        raise notice 'PASS (22b): an unrelated company cannot apply another company''s target revision';
+      else
+        raise;
+      end if;
+  end;
+
+  execute 'reset role';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_a)::text, true);
+  execute 'set local role authenticated';
+
+  perform apply_approved_target_revision(v_revision_id);
+
+  select target into v_achievement from kpis where id = v_kpi_a;
+  if v_achievement <> 250 then raise exception 'FAIL (22c): apply_approved_target_revision did not update kpis.target (got %)', v_achievement; end if;
+
+  execute 'reset role';
+  raise notice 'PASS (22c): the company''s own admin can apply an approved target revision, and kpis.target is actually updated';
+
+  -- ---------------------------------------------------------------------
+  -- Scenario 23: company_performance_periods (period lifecycle overrides)
+  -- can only be written by whoever can administer the company.
+  -- ---------------------------------------------------------------------
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_a2)::text, true);
+  execute 'set local role authenticated';
+
+  begin
+    insert into company_performance_periods (company_id, financial_year, period_type, period_number, status)
+    values (v_company_a, 2027, 'quarter', 3, 'closed');
+    raise exception 'FAIL (23a): a plain employee closed a company performance period';
+  exception
+    when insufficient_privilege then
+      raise notice 'PASS (23a): non-admin cannot set a period''s lifecycle status';
+  end;
+
+  execute 'reset role';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_a)::text, true);
+  execute 'set local role authenticated';
+
+  insert into company_performance_periods (company_id, financial_year, period_type, period_number, status, set_by)
+  values (v_company_a, 2027, 'quarter', 3, 'closed', v_user_a);
+
+  execute 'reset role';
+  raise notice 'PASS (23b): a company admin can set a period''s lifecycle status';
 
   raise notice '=== ALL RLS ISOLATION SCENARIOS COMPLETED ===';
 

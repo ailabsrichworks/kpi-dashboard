@@ -248,6 +248,21 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::delete('/companies/{company}/kpis/{kpi}/grants/{grant}', [\App\Http\Controllers\Platform\KpiController::class, 'destroyGrant'])
         ->name('platform.kpis.grants.destroy');
 
+    Route::post('/companies/{company}/kpis/{kpi}/target-revisions', [\App\Http\Controllers\Platform\TargetRevisionController::class, 'store'])
+        ->name('platform.kpis.target-revisions.store');
+
+    Route::get('/companies/{company}/periods', [\App\Http\Controllers\Platform\PeriodController::class, 'index'])
+        ->name('platform.periods.index');
+
+    Route::post('/companies/{company}/periods', [\App\Http\Controllers\Platform\PeriodController::class, 'update'])
+        ->name('platform.periods.update');
+
+    Route::get('/companies/{company}/approvals', [\App\Http\Controllers\Platform\ApprovalController::class, 'index'])
+        ->name('platform.approvals.index');
+
+    Route::post('/companies/{company}/approvals/{approvalRequest}/decide', [\App\Http\Controllers\Platform\ApprovalController::class, 'decide'])
+        ->name('platform.approvals.decide');
+
     Route::get('/companies/{company}/tasks', [\App\Http\Controllers\Platform\TaskController::class, 'index'])
         ->name('platform.tasks.index');
 

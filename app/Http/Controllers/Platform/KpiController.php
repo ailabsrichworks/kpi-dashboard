@@ -98,6 +98,17 @@ class KpiController extends Controller
 
         $kpis = $this->attachComputedPerformance($supabase, $kpis, $companyRow, $calc);
 
+        // Pending target revisions (spec Part 7): shown alongside each KPI so
+        // "a change is proposed but not yet in effect" is visible without a
+        // separate page — the KPI's own `target` field above is untouched
+        // until this is approved.
+        $pendingTargetRevisions = $supabase->get('kpi_target_revisions', [
+            'company_id' => 'eq.' . $company,
+            'status' => 'eq.pending',
+            'select' => 'id,kpi_id,old_target,new_target,reason,effective_financial_year,requested_at,requested_by,users(name)',
+            'order' => 'requested_at.desc',
+        ]);
+
         return Inertia::render('Platform/Kpis/Index', [
             'company' => $companyRow,
             'categories' => $categories,
@@ -108,6 +119,7 @@ class KpiController extends Controller
             'goals' => $goals,
             'departments' => $departments,
             'members' => $members,
+            'pendingTargetRevisions' => $pendingTargetRevisions,
         ]);
     }
 
@@ -139,11 +151,16 @@ class KpiController extends Controller
 
         $kpiIds = array_column($kpis, 'id');
 
-        // Latest submission per KPI this financial year — reduced in PHP
-        // from one ordered query rather than one query per KPI.
+        // Latest APPROVED submission per KPI this financial year — reduced in
+        // PHP from one ordered query rather than one query per KPI. Spec
+        // Part 4: official calculations (dashboards, reports, ANIRA) use
+        // approved performance only, never a pending/unreviewed revision —
+        // this is the one place that guarantee is enforced for every reader
+        // of `computed_achievement`/`computed_status`/`rollup_achievement`.
         $submissions = $supabase->get('kpi_submissions', [
             'kpi_id' => 'in.(' . implode(',', $kpiIds) . ')',
             'submission_date' => 'gte.' . $fyStart->toDateString(),
+            'status' => 'eq.approved',
             'select' => 'kpi_id,value,submission_date',
             'order' => 'submission_date.desc',
         ]);
@@ -151,6 +168,22 @@ class KpiController extends Controller
         $latestValueByKpi = [];
         foreach ($submissions as $submission) {
             $latestValueByKpi[$submission['kpi_id']] ??= (float) $submission['value'];
+        }
+
+        // A separate, purely informational "there's a pending revision
+        // awaiting approval" flag — the KPI list can show this next to the
+        // approved figure without ever letting it influence the approved
+        // achievement/status/roll-up computed above.
+        $pendingSubmissions = $supabase->get('kpi_submissions', [
+            'kpi_id' => 'in.(' . implode(',', $kpiIds) . ')',
+            'status' => 'eq.pending_review',
+            'select' => 'kpi_id,value,submission_date',
+            'order' => 'submission_date.desc',
+        ]);
+
+        $pendingValueByKpi = [];
+        foreach ($pendingSubmissions as $submission) {
+            $pendingValueByKpi[$submission['kpi_id']] ??= (float) $submission['value'];
         }
 
         // This FY's quarterly period targets, if any were set — used for a
@@ -196,6 +229,11 @@ class KpiController extends Controller
                 'computed_expected_progress' => $expectedProgress,
                 'computed_status' => $status,
                 'rollup_achievement' => null,
+                // Informational only (spec Part 4): a pending revision never
+                // feeds into computed_achievement/computed_status/rollup_achievement
+                // above — it's surfaced here purely so the UI can show
+                // "Approved: X — Pending: Y (awaiting approval)" side by side.
+                'pending_value' => $pendingValueByKpi[$kpi['id']] ?? null,
             ];
         }
 

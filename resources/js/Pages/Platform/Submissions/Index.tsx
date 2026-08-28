@@ -40,11 +40,31 @@ interface Kpi {
     frequency: string;
 }
 
+type ApprovalStatus = 'pending_review' | 'approved' | 'rejected' | 'returned';
+
+const APPROVAL_LABELS: Record<ApprovalStatus, string> = {
+    pending_review: 'Awaiting approval',
+    approved: 'Approved',
+    rejected: 'Rejected',
+    returned: 'Returned for revision',
+};
+
+const APPROVAL_TONE: Record<ApprovalStatus, 'neutral' | 'danger' | 'warning' | 'success'> = {
+    pending_review: 'warning',
+    approved: 'success',
+    rejected: 'danger',
+    returned: 'danger',
+};
+
 interface Submission {
     id: string;
     value: number;
     submission_date: string;
     notes: string | null;
+    evidence_note: string | null;
+    status: ApprovalStatus;
+    revision_number: number;
+    is_current_approved: boolean;
     kpis: { name: string; unit: string | null; target: number | null; stretch_target: number | null; measurement_direction: MeasurementDirection };
     users: { name: string };
     /** Server-computed (KpiCalculationService), not derived from the client-side achievementPct() below. */
@@ -55,21 +75,42 @@ interface PlatformUser {
     company_memberships: Array<{ company_id: string; companies?: { name: string; code: string } }>;
 }
 
+interface PeriodState {
+    allowed: boolean;
+    quarter_status: string;
+    month_status: string;
+}
+
 interface SubmissionsPageProps {
     department: Department;
     kpis: Kpi[];
     submissions: Submission[];
     canSubmit: boolean;
+    periodState: PeriodState;
     [key: string]: unknown;
 }
 
-function SubmitForm({ companyId, departmentId, kpis }: { companyId: string; departmentId: string; kpis: Kpi[] }) {
+function PeriodBanner({ periodState }: { periodState: PeriodState }) {
+    if (periodState.allowed) {
+        return null;
+    }
+
+    return (
+        <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-xs text-amber-800">
+            This period isn't currently open for submissions (quarter: <strong>{periodState.quarter_status}</strong>, month:{' '}
+            <strong>{periodState.month_status}</strong>). Ask your Company Admin to reopen it if you need to report a value for this date.
+        </div>
+    );
+}
+
+function SubmitForm({ companyId, departmentId, kpis, periodState }: { companyId: string; departmentId: string; kpis: Kpi[]; periodState: PeriodState }) {
     const today = new Date().toISOString().slice(0, 10);
     const { data, setData, post, processing, reset } = useForm({
         kpi_id: kpis[0]?.id ?? '',
         value: '',
         submission_date: today,
         notes: '',
+        evidence_note: '',
     });
 
     const submit: FormEventHandler = (e) => {
@@ -85,6 +126,7 @@ function SubmitForm({ companyId, departmentId, kpis }: { companyId: string; depa
 
     return (
         <form onSubmit={submit} className="grid grid-cols-2 gap-3 mb-6 bg-slate-50 rounded-xl p-4">
+            <PeriodBanner periodState={periodState} />
             <div className="col-span-2">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Which KPI are you reporting?</label>
                 <select value={data.kpi_id} onChange={(e) => setData('kpi_id', e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
@@ -108,9 +150,22 @@ function SubmitForm({ companyId, departmentId, kpis }: { companyId: string; depa
                 <input value={data.notes} onChange={(e) => setData('notes', e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Any context worth adding?" />
             </div>
             <div className="col-span-2">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Evidence (optional)</label>
+                <input
+                    value={data.evidence_note}
+                    onChange={(e) => setData('evidence_note', e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    placeholder="A link or short description of supporting evidence"
+                />
+            </div>
+            <div className="col-span-2">
                 <PrimaryButton type="submit" disabled={processing}>
-                    Submit
+                    Submit for approval
                 </PrimaryButton>
+                <p className="text-[11px] text-slate-400 mt-2">
+                    This creates a new, versioned revision — it won't replace any earlier value until approved. Dashboards keep using the last
+                    approved value until then.
+                </p>
             </div>
         </form>
     );
@@ -140,7 +195,7 @@ function AchievementBar({ pct }: { pct: number | null }) {
     );
 }
 
-export default function SubmissionsIndex({ department, kpis, submissions, canSubmit }: SubmissionsPageProps) {
+export default function SubmissionsIndex({ department, kpis, submissions, canSubmit, periodState }: SubmissionsPageProps) {
     const { platformUser } = usePage<{ platformUser: PlatformUser | null }>().props;
     const membership = platformUser?.company_memberships.find((m) => m.company_id === department.company_id);
     const company = {
@@ -149,13 +204,20 @@ export default function SubmissionsIndex({ department, kpis, submissions, canSub
         code: membership?.companies?.code ?? '',
     };
 
-    const scored = submissions.map((s) => achievementPct(s)).filter((p): p is number => p !== null);
-    const avgAchievement = scored.length > 0 ? Math.round(scored.reduce((a, b) => a + b, 0) / scored.length) : null;
+    const approvedScored = submissions
+        .filter((s) => s.status === 'approved')
+        .map((s) => achievementPct(s))
+        .filter((p): p is number => p !== null);
+    const avgAchievement = approvedScored.length > 0 ? Math.round(approvedScored.reduce((a, b) => a + b, 0) / approvedScored.length) : null;
 
     return (
         <PlatformLayout
             title={`${department.name} — KPI Submissions`}
-            description={avgAchievement !== null ? `Average achievement so far: ${avgAchievement}%` : 'Report your KPI values here as often as required.'}
+            description={
+                avgAchievement !== null
+                    ? `Average achievement (approved values only) so far: ${avgAchievement}%`
+                    : 'Report your KPI values here as often as required.'
+            }
             company={company}
         >
             <Card
@@ -167,7 +229,7 @@ export default function SubmissionsIndex({ department, kpis, submissions, canSub
                 }
             >
                 {canSubmit ? (
-                    <SubmitForm companyId={department.company_id} departmentId={department.id} kpis={kpis} />
+                    <SubmitForm companyId={department.company_id} departmentId={department.id} kpis={kpis} periodState={periodState} />
                 ) : (
                     <p className="text-xs text-slate-400 mb-4">You can view this department's submissions but aren't assigned to it, so you can't submit here.</p>
                 )}
@@ -182,6 +244,7 @@ export default function SubmissionsIndex({ department, kpis, submissions, canSub
                                     <p className="text-sm font-semibold text-slate-800">
                                         {s.kpis.name}: {s.value}
                                         {s.kpis.unit ?? ''}
+                                        <span className="text-[11px] font-normal text-slate-400 ml-1.5">V{s.revision_number}</span>
                                         {s.kpis.target !== null && (
                                             <span className="text-xs text-slate-400 ml-2">
                                                 (target {s.kpis.target}
@@ -192,12 +255,19 @@ export default function SubmissionsIndex({ department, kpis, submissions, canSub
                                     <p className="text-xs text-slate-400">
                                         {s.submission_date} · by {s.users.name}
                                         {s.notes ? ` · ${s.notes}` : ''}
+                                        {s.evidence_note ? ` · evidence: ${s.evidence_note}` : ''}
                                     </p>
                                 </div>
                                 <div className="flex-none flex items-center gap-2">
-                                    <AchievementBar pct={achievementPct(s)} />
-                                    <AchievementBadge pct={achievementPct(s)} />
-                                    {s.computed_status !== 'not_scored' && <Badge tone={STATUS_TONE[s.computed_status]}>{STATUS_LABELS[s.computed_status]}</Badge>}
+                                    <Badge tone={APPROVAL_TONE[s.status]}>{APPROVAL_LABELS[s.status]}</Badge>
+                                    {s.status === 'approved' && (
+                                        <>
+                                            <AchievementBar pct={achievementPct(s)} />
+                                            <AchievementBadge pct={achievementPct(s)} />
+                                            {s.computed_status !== 'not_scored' && <Badge tone={STATUS_TONE[s.computed_status]}>{STATUS_LABELS[s.computed_status]}</Badge>}
+                                            {s.is_current_approved && <Badge tone="info">Current</Badge>}
+                                        </>
+                                    )}
                                 </div>
                             </li>
                         ))}
