@@ -1,5 +1,7 @@
 import { router } from '@inertiajs/react';
 import { useState } from 'react';
+import { Bar } from 'react-chartjs-2';
+import '@/lib/chartSetup';
 import PlatformLayout from '@/Components/Platform/PlatformLayout';
 import { Badge, Card, EmptyState, InfoTooltip, PrimaryButton, SecondaryButton, StatCard } from '@/Components/Platform/ui';
 import { ClipboardCheckIcon, RocketIcon, TargetIcon, UsersIcon } from '@/Components/Platform/Icons';
@@ -43,12 +45,20 @@ interface DepartmentAchievementRow {
     avg_achievement_pct: number | null;
 }
 
+interface TrendPoint {
+    financial_year: number;
+    period_number: number;
+    avg_achievement_pct: number | null;
+    kpi_count: number;
+}
+
 interface WidgetData {
     company_overview?: CompanyOverviewData | null;
     pending_approvals?: PendingApprovalsData;
     recent_submissions?: RecentSubmission[];
     period_status?: PeriodStatusData | null;
     department_achievement?: DepartmentAchievementRow[];
+    achievement_trend?: TrendPoint[];
     [key: string]: unknown;
 }
 
@@ -58,6 +68,7 @@ const WIDGET_LABELS: Record<string, string> = {
     recent_submissions: 'Recent Submissions',
     period_status: 'Period Status',
     department_achievement: 'Department Achievement',
+    achievement_trend: 'Achievement Trend',
 };
 
 const PERIOD_STATUS_TONE: Record<string, 'neutral' | 'danger' | 'warning' | 'success' | 'info'> = {
@@ -213,6 +224,52 @@ function DepartmentAchievementWidget({ data }: { data: DepartmentAchievementRow[
     );
 }
 
+function AchievementTrendWidget({ data }: { data: TrendPoint[] | undefined }) {
+    const points = (data ?? []).filter((p) => p.avg_achievement_pct !== null);
+
+    if (points.length === 0) {
+        return (
+            <Card title={WIDGET_LABELS.achievement_trend}>
+                <EmptyState title="No approved submissions in recent quarters yet" />
+            </Card>
+        );
+    }
+
+    return (
+        <Card title={WIDGET_LABELS.achievement_trend} description="Company-wide average achievement, most recent quarters">
+            <div style={{ height: 160, position: 'relative' }}>
+                <Bar
+                    data={{
+                        labels: points.map((p) => `Q${p.period_number} FY${p.financial_year}`),
+                        datasets: [
+                            {
+                                label: 'Avg. achievement',
+                                data: points.map((p) => p.avg_achievement_pct as number),
+                                backgroundColor: '#6366f1bb',
+                                borderColor: '#6366f1',
+                                borderWidth: 1.5,
+                                borderRadius: 4,
+                            },
+                        ],
+                    }}
+                    options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { callbacks: { label: (c) => ` ${(c.parsed as { y: number }).y.toFixed(1)}%` } },
+                        },
+                        scales: {
+                            x: { ticks: { font: { size: 11, weight: 'bold' } }, grid: { display: false } },
+                            y: { min: 0, ticks: { callback: (v) => v + '%', font: { size: 10 } }, grid: { color: '#f1f5f9' } },
+                        },
+                    }}
+                />
+            </div>
+        </Card>
+    );
+}
+
 function WidgetRenderer({ type, widgetData, companyId }: { type: string; widgetData: WidgetData; companyId: string }) {
     switch (type) {
         case 'company_overview':
@@ -225,6 +282,8 @@ function WidgetRenderer({ type, widgetData, companyId }: { type: string; widgetD
             return <PeriodStatusWidget data={widgetData.period_status} />;
         case 'department_achievement':
             return <DepartmentAchievementWidget data={widgetData.department_achievement} />;
+        case 'achievement_trend':
+            return <AchievementTrendWidget data={widgetData.achievement_trend} />;
         default:
             return null;
     }

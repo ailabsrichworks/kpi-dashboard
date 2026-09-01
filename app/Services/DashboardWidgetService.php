@@ -17,7 +17,9 @@ use Illuminate\Support\Carbon;
  */
 class DashboardWidgetService
 {
-    public const AVAILABLE_WIDGETS = ['company_overview', 'pending_approvals', 'recent_submissions', 'period_status', 'department_achievement'];
+    public const AVAILABLE_WIDGETS = ['company_overview', 'pending_approvals', 'recent_submissions', 'period_status', 'department_achievement', 'achievement_trend'];
+
+    private const TREND_QUARTERS = 4;
 
     public const DEFAULT_LAYOUT = ['company_overview', 'period_status', 'pending_approvals', 'recent_submissions'];
 
@@ -39,6 +41,7 @@ class DashboardWidgetService
                 'recent_submissions' => $this->recentSubmissions($companyId),
                 'period_status' => $this->periodStatus($companyId),
                 'department_achievement' => $this->departmentAchievement($companyId),
+                'achievement_trend' => $this->achievementTrend($companyId),
                 default => null,
             };
         }
@@ -120,6 +123,30 @@ class DashboardWidgetService
         }
 
         return $rows;
+    }
+
+    /**
+     * `company_period_kpi_summary` groups by (financial_year, period_number)
+     * rather than looking at each KPI's single latest submission, so a past
+     * quarter's number here is stable — it doesn't move every time a new
+     * quarter's actual comes in, which company_kpi_summary's own "latest
+     * wins" design would do if reused here. Returned in chronological order
+     * (oldest first) since that's what a trend chart's x-axis needs.
+     */
+    private function achievementTrend(string $companyId): array
+    {
+        try {
+            $rows = $this->supabase->get('company_period_kpi_summary', [
+                'company_id' => 'eq.' . $companyId,
+                'select' => 'financial_year,period_number,avg_achievement_pct,kpi_count',
+                'order' => 'financial_year.desc,period_number.desc',
+                'limit' => self::TREND_QUARTERS,
+            ]);
+        } catch (\Throwable) {
+            return [];
+        }
+
+        return array_reverse($rows);
     }
 
     private function periodStatus(string $companyId): ?array

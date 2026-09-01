@@ -142,6 +142,32 @@ class CompanyWidgetDashboardTest extends TestCase
             ->where('widgetData.department_achievement.1.avg_achievement_pct', null));
     }
 
+    public function test_achievement_trend_widget_data_is_passed_through_in_chronological_order(): void
+    {
+        $this->fakeSingleCompanyMember();
+        Http::fake([
+            '*/rest/v1/company_dashboard_widgets*' => Http::response([
+                ['widget_type' => 'achievement_trend'],
+            ], 200),
+            '*/rest/v1/company_period_kpi_summary*' => Http::response([
+                ['financial_year' => 2026, 'period_number' => 2, 'avg_achievement_pct' => 95.0, 'kpi_count' => 1],
+                ['financial_year' => 2026, 'period_number' => 1, 'avg_achievement_pct' => 80.0, 'kpi_count' => 1],
+            ], 200),
+        ] + $this->existingFakes());
+
+        $response = $this->withSession(['platform_access_token' => $this->fakeToken('company-admin-auth-id')])
+            ->get('/platform/dashboard');
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page
+            ->component('Platform/CompanyDashboard')
+            ->where('layout', ['achievement_trend'])
+            ->where('widgetData.achievement_trend.0.period_number', 1)
+            ->where('widgetData.achievement_trend.0.avg_achievement_pct', 80)
+            ->where('widgetData.achievement_trend.1.period_number', 2)
+            ->where('widgetData.achievement_trend.1.avg_achievement_pct', 95));
+    }
+
     public function test_a_platform_admin_with_multiple_companies_still_sees_the_company_list(): void
     {
         Http::fake([
