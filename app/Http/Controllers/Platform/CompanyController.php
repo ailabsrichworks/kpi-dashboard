@@ -96,9 +96,15 @@ class CompanyController extends Controller
                 'select' => 'company_id,users(name,email)',
             ]);
 
+        $plans = $supabase->get('subscription_plans', [
+            'select' => 'id,name,price_cents,billing_period,is_active',
+            'order' => 'name.asc',
+        ]);
+
         return Inertia::render('Platform/Companies/Index', [
             'companies' => $companies,
             'admins' => $admins,
+            'plans' => $plans,
         ]);
     }
 
@@ -501,5 +507,55 @@ class CompanyController extends Controller
         }
 
         return back()->with('success', 'Branding updated.');
+    }
+
+    /**
+     * Assigns/changes a company's subscription plan + status — Control
+     * Centre authority specifically, narrower than general company
+     * administration. Enforced twice: this route is Super-Admin-only, and
+     * `trg_prevent_non_super_admin_subscription_change` (2026_09_01_000000)
+     * refuses the write at the database layer even if some other code path
+     * ever tried to reach it, the same defense-in-depth every other
+     * immutability rule in this schema already uses.
+     */
+    public function updateSubscription(Request $request, string $company)
+    {
+        $this->ensureSuperAdmin($request);
+
+        $request->validate([
+            'subscription_plan_id' => 'nullable|uuid',
+            'subscription_status' => 'nullable|in:trialing,active,past_due,canceled',
+            'subscription_current_period_end' => 'nullable|date',
+        ]);
+
+        /** @var SupabaseUserService $supabase */
+        $supabase = $request->attributes->get('platformSupabase');
+
+        $before = $supabase->first('companies', [
+            'id' => 'eq.' . $company,
+            'select' => 'subscription_plan_id,subscription_status,subscription_current_period_end',
+        ]);
+
+        try {
+            $supabase->update('companies', ['id' => 'eq.' . $company], [
+                'subscription_plan_id' => $request->subscription_plan_id,
+                'subscription_status' => $request->subscription_status,
+                'subscription_current_period_end' => $request->subscription_current_period_end,
+            ]);
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Could not update subscription: ' . $e->getMessage());
+        }
+
+        try {
+            $this->logAdminAction($request, 'update_company_subscription', $company, null, [], 'company', $company, $before, [
+                'subscription_plan_id' => $request->subscription_plan_id,
+                'subscription_status' => $request->subscription_status,
+                'subscription_current_period_end' => $request->subscription_current_period_end,
+            ]);
+        } catch (\Throwable) {
+            return back()->with('error', 'Subscription was updated, but the action could not be logged — contact support before continuing.');
+        }
+
+        return back()->with('success', 'Subscription updated.');
     }
 }

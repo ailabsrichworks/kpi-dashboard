@@ -178,3 +178,11 @@ export const PlusIcon = base(<path strokeLinecap="round" strokeLinejoin="round" 
 export const XMarkIcon = base(<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />);
 
 export const MenuIcon = base(<path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />);
+
+export const CreditCardIcon = base(
+    <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M2.25 8.25h19.5M2.25 9h19.5v9.75a1.5 1.5 0 01-1.5 1.5H3.75a1.5 1.5 0 01-1.5-1.5V9zm0 0V6.75a1.5 1.5 0 011.5-1.5h16.5a1.5 1.5 0 011.5 1.5V9M6 15.75h4.5"
+    />
+);

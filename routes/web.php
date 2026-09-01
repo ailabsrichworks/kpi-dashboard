@@ -163,6 +163,9 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::post('/companies/{company}/branding', [\App\Http\Controllers\Platform\CompanyController::class, 'updateBranding'])
         ->name('platform.companies.branding');
 
+    Route::post('/companies/{company}/subscription', [\App\Http\Controllers\Platform\CompanyController::class, 'updateSubscription'])
+        ->name('platform.companies.subscription');
+
     Route::get('/companies/{company}/onboarding', [\App\Http\Controllers\Platform\OnboardingController::class, 'index'])
         ->name('platform.onboarding.show');
 
@@ -297,6 +300,18 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
 
     Route::delete('/kpi-templates/{template}/items/{item}', [\App\Http\Controllers\Platform\KpiTemplateController::class, 'destroyItem'])
         ->name('platform.kpi-templates.items.destroy');
+
+    Route::get('/subscription-plans', [\App\Http\Controllers\Platform\SubscriptionPlanController::class, 'index'])
+        ->name('platform.subscription-plans.index');
+
+    Route::post('/subscription-plans', [\App\Http\Controllers\Platform\SubscriptionPlanController::class, 'store'])
+        ->name('platform.subscription-plans.store');
+
+    Route::patch('/subscription-plans/{plan}', [\App\Http\Controllers\Platform\SubscriptionPlanController::class, 'update'])
+        ->name('platform.subscription-plans.update');
+
+    Route::delete('/subscription-plans/{plan}', [\App\Http\Controllers\Platform\SubscriptionPlanController::class, 'destroy'])
+        ->name('platform.subscription-plans.destroy');
 
     Route::get('/companies/{company}/departments/{department}/submissions', [\App\Http\Controllers\Platform\KpiSubmissionController::class, 'index'])
         ->name('platform.submissions.index');

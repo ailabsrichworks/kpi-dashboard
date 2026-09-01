@@ -5,6 +5,7 @@ import {
     BuildingIcon,
     ChecklistIcon,
     ClipboardCheckIcon,
+    CreditCardIcon,
     DocumentDuplicateIcon,
     FlagIcon,
     HomeIcon,
@@ -235,6 +236,9 @@ function SidebarContent({ platformUser, company, currentUrl }: { platformUser: P
                         </NavLink>
                         <NavLink href="/platform/kpi-templates" icon={<DocumentDuplicateIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
                             KPI templates
+                        </NavLink>
+                        <NavLink href="/platform/subscription-plans" icon={<CreditCardIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                            Subscription plans
                         </NavLink>
                         <NavLink href="/platform/admins" icon={<AdjustmentsIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
                             Platform admins

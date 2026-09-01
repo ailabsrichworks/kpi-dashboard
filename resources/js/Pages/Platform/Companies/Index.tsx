@@ -14,6 +14,9 @@ interface Company {
     primary_color: string | null;
     secondary_color: string | null;
     subdomain: string | null;
+    subscription_plan_id: string | null;
+    subscription_status: string | null;
+    subscription_current_period_end: string | null;
 }
 
 interface AdminRow {
@@ -21,9 +24,16 @@ interface AdminRow {
     users: { name: string; email: string };
 }
 
+interface Plan {
+    id: string;
+    name: string;
+    is_active: boolean;
+}
+
 interface CompaniesPageProps {
     companies: Company[];
     admins: AdminRow[];
+    plans: Plan[];
     [key: string]: unknown;
 }
 
@@ -209,7 +219,72 @@ function BrandingForm({ company }: { company: Company }) {
     );
 }
 
-export default function CompaniesIndex({ companies, admins }: CompaniesPageProps) {
+function SubscriptionForm({ company, plans }: { company: Company; plans: Plan[] }) {
+    const [open, setOpen] = useState(false);
+    const { data, setData, post, processing } = useForm({
+        subscription_plan_id: company.subscription_plan_id ?? '',
+        subscription_status: company.subscription_status ?? '',
+        subscription_current_period_end: company.subscription_current_period_end ?? '',
+    });
+
+    const submit: FormEventHandler = (e) => {
+        e.preventDefault();
+        post(`/platform/companies/${company.id}/subscription`, { onSuccess: () => setOpen(false) });
+    };
+
+    const currentPlanName = plans.find((p) => p.id === company.subscription_plan_id)?.name;
+
+    if (!open) {
+        return (
+            <button onClick={() => setOpen(true)} className="text-xs font-semibold text-brand-800 hover:underline">
+                {currentPlanName ? `Plan: ${currentPlanName}${company.subscription_status ? ` (${company.subscription_status})` : ''} — change` : 'Assign plan'}
+            </button>
+        );
+    }
+
+    return (
+        <form onSubmit={submit} className="flex items-end gap-2 mt-2 flex-wrap">
+            <select
+                value={data.subscription_plan_id}
+                onChange={(e) => setData('subscription_plan_id', e.target.value)}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs"
+            >
+                <option value="">No plan</option>
+                {plans.map((plan) => (
+                    <option key={plan.id} value={plan.id} disabled={!plan.is_active && plan.id !== company.subscription_plan_id}>
+                        {plan.name}
+                        {!plan.is_active ? ' (inactive)' : ''}
+                    </option>
+                ))}
+            </select>
+            <select
+                value={data.subscription_status}
+                onChange={(e) => setData('subscription_status', e.target.value)}
+                className="rounded-lg border border-slate-300 px-2 py-1.5 text-xs"
+            >
+                <option value="">No status</option>
+                <option value="trialing">Trialing</option>
+                <option value="active">Active</option>
+                <option value="past_due">Past due</option>
+                <option value="canceled">Canceled</option>
+            </select>
+            <input
+                type="date"
+                value={data.subscription_current_period_end}
+                onChange={(e) => setData('subscription_current_period_end', e.target.value)}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs"
+            />
+            <button type="submit" disabled={processing} className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">
+                Save
+            </button>
+            <button type="button" onClick={() => setOpen(false)} className="text-xs text-slate-400">
+                Cancel
+            </button>
+        </form>
+    );
+}
+
+export default function CompaniesIndex({ companies, admins, plans }: CompaniesPageProps) {
     const adminsByCompany = admins.reduce<Record<string, AdminRow[]>>((acc, row) => {
         (acc[row.company_id] ??= []).push(row);
         return acc;
@@ -251,6 +326,7 @@ export default function CompaniesIndex({ companies, admins }: CompaniesPageProps
                                 <div className="mt-2.5 flex items-center gap-3">
                                     <StatusActions company={company} />
                                     <BrandingForm company={company} />
+                                    <SubscriptionForm company={company} plans={plans} />
                                 </div>
 
                                 <div className="mt-2.5 space-y-1">
