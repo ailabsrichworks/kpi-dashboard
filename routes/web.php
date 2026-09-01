@@ -166,6 +166,9 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::post('/companies/{company}/subscription', [\App\Http\Controllers\Platform\CompanyController::class, 'updateSubscription'])
         ->name('platform.companies.subscription');
 
+    Route::post('/companies/{company}/dashboard-layout', [\App\Http\Controllers\Platform\DashboardWidgetController::class, 'updateLayout'])
+        ->name('platform.companies.dashboard-layout');
+
     Route::get('/companies/{company}/onboarding', [\App\Http\Controllers\Platform\OnboardingController::class, 'index'])
         ->name('platform.onboarding.show');
 

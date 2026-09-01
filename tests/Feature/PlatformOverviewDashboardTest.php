@@ -71,15 +71,24 @@ class PlatformOverviewDashboardTest extends TestCase
                 'company_id' => 'company-1', 'role' => 'company_admin', 'status' => 'active',
                 'companies' => ['name' => 'QA Co', 'code' => 'QA'],
             ]], 200),
+            '*/rest/v1/platform_admin_assignments*' => Http::response([], 200),
             '*/rest/v1/companies*' => Http::response([['id' => 'company-1', 'name' => 'QA Co', 'code' => 'QA', 'status' => 'active']], 200),
             '*/rest/v1/company_kpi_summary*' => Http::response([], 200),
+            '*/rest/v1/company_dashboard_widgets*' => Http::response([], 200),
+            '*/rest/v1/company_performance_periods*' => Http::response([], 200),
+            '*/rest/v1/approval_request_steps*' => Http::response([], 200),
+            '*/rest/v1/kpi_submissions*' => Http::response([], 200),
         ]);
 
         $response = $this->withSession(['platform_access_token' => $this->fakeToken('company-admin-auth-id')])
             ->get('/platform/dashboard');
 
         $response->assertOk();
-        $response->assertInertia(fn ($page) => $page->component('Platform/Dashboard'));
+        // A single-company member gets their own company's customizable
+        // widget dashboard (CompanyWidgetDashboardTest covers that in
+        // detail) — what matters for THIS test is simply that it is never
+        // the Super-Admin-only operator component.
+        $response->assertInertia(fn ($page) => $page->component('Platform/CompanyDashboard'));
     }
 
     public function test_the_operator_dashboard_degrades_gracefully_if_companies_cannot_be_fetched(): void
