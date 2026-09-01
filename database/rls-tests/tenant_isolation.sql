@@ -74,11 +74,14 @@ begin
   insert into companies (name, code) values ('RLS Test Co A', 'RLSTEST_A') returning id into v_company_a;
   insert into companies (name, code) values ('RLS Test Co B', 'RLSTEST_B') returning id into v_company_b;
 
-  -- Inserted directly into both auth.users and public.users rather than
-  -- relying on the on_auth_user_created trigger: that trigger is documented
-  -- (SupabaseUserService::firstEventually()'s docblock) as writing the
-  -- public.users row asynchronously, which this synchronous test can't wait
-  -- on. Testing RLS policies doesn't require exercising the signup trigger.
+  -- Inserted into auth.users only; on_auth_user_created (added
+  -- 2026_08_28_100000) fires synchronously within this same transaction and
+  -- creates the matching public.users row itself, exactly as it does in
+  -- production -- the UPDATEs below just fill in the role/friendly-name
+  -- this test wants, they don't create the row. (Before that migration
+  -- existed, this fixture inserted both rows explicitly; now the trigger
+  -- owns the insert and a second explicit INSERT would collide on
+  -- users_auth_user_id_unique -- see the CI failure that caught this.)
   insert into auth.users (
     id, instance_id, aud, role, email, encrypted_password,
     email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data
@@ -92,10 +95,10 @@ begin
     (v_auth_center, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
      'rls-test-center@example.invalid', crypt('rls-test-password', gen_salt('bf')), now(), now(), now(), '{}', '{}');
 
-  insert into users (auth_user_id, name, email, role) values (v_auth_a, 'RLS Test User A', 'rls-test-a@example.invalid', 'member') returning id into v_user_a;
-  insert into users (auth_user_id, name, email, role) values (v_auth_a2, 'RLS Test User A2', 'rls-test-a2@example.invalid', 'member') returning id into v_user_a2;
-  insert into users (auth_user_id, name, email, role) values (v_auth_b, 'RLS Test User B', 'rls-test-b@example.invalid', 'member') returning id into v_user_b;
-  insert into users (auth_user_id, name, email, role) values (v_auth_center, 'RLS Test Center Admin', 'rls-test-center@example.invalid', 'richworks_super_admin') returning id into v_user_center;
+  update users set name = 'RLS Test User A' where auth_user_id = v_auth_a returning id into v_user_a;
+  update users set name = 'RLS Test User A2' where auth_user_id = v_auth_a2 returning id into v_user_a2;
+  update users set name = 'RLS Test User B' where auth_user_id = v_auth_b returning id into v_user_b;
+  update users set name = 'RLS Test Center Admin', role = 'richworks_super_admin' where auth_user_id = v_auth_center returning id into v_user_center;
 
   insert into company_users (company_id, user_id, role) values (v_company_a, v_user_a, 'company_admin');
   -- Second Company A member -- needed to exercise users_select's
@@ -327,7 +330,7 @@ begin
   -- ---------------------------------------------------------------------
   insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
     values (v_auth_a3, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'rls-test-a3@example.invalid', crypt('rls-test-password', gen_salt('bf')), now(), now(), now(), '{}', '{}');
-  insert into users (auth_user_id, name, email, role) values (v_auth_a3, 'RLS Test User A3 (suspended)', 'rls-test-a3@example.invalid', 'member') returning id into v_user_a3;
+  update users set name = 'RLS Test User A3 (suspended)' where auth_user_id = v_auth_a3 returning id into v_user_a3;
   insert into company_users (company_id, user_id, role, status) values (v_company_a, v_user_a3, 'employee', 'suspended');
   insert into department_users (department_id, user_id, company_id, role) values (v_dept_a, v_user_a3, v_company_a, 'employee');
 
@@ -547,7 +550,7 @@ begin
   ) values
     (v_auth_hr, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
      'rls-test-hr@example.invalid', crypt('rls-test-password', gen_salt('bf')), now(), now(), now(), '{}', '{}');
-  insert into users (auth_user_id, name, email, role) values (v_auth_hr, 'RLS Test HR', 'rls-test-hr@example.invalid', 'member') returning id into v_user_hr;
+  update users set name = 'RLS Test HR' where auth_user_id = v_auth_hr returning id into v_user_hr;
   insert into company_users (company_id, user_id, role) values (v_company_a, v_user_hr, 'hr');
   insert into department_users (department_id, user_id, role) values (v_dept_a, v_user_hr, 'hr');
 
