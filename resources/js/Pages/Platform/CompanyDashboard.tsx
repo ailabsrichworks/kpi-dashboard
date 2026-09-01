@@ -36,11 +36,19 @@ interface PeriodStatusData {
     end: string;
 }
 
+interface DepartmentAchievementRow {
+    department_id: string;
+    department_name: string;
+    kpi_count: number;
+    avg_achievement_pct: number | null;
+}
+
 interface WidgetData {
     company_overview?: CompanyOverviewData | null;
     pending_approvals?: PendingApprovalsData;
     recent_submissions?: RecentSubmission[];
     period_status?: PeriodStatusData | null;
+    department_achievement?: DepartmentAchievementRow[];
     [key: string]: unknown;
 }
 
@@ -49,6 +57,7 @@ const WIDGET_LABELS: Record<string, string> = {
     pending_approvals: 'Pending Approvals',
     recent_submissions: 'Recent Submissions',
     period_status: 'Period Status',
+    department_achievement: 'Department Achievement',
 };
 
 const PERIOD_STATUS_TONE: Record<string, 'neutral' | 'danger' | 'warning' | 'success' | 'info'> = {
@@ -174,6 +183,36 @@ function PeriodStatusWidget({ data }: { data: PeriodStatusData | null | undefine
     );
 }
 
+function DepartmentAchievementWidget({ data }: { data: DepartmentAchievementRow[] | undefined }) {
+    if (!data || data.length === 0) {
+        return (
+            <Card title={WIDGET_LABELS.department_achievement}>
+                <EmptyState title="No departments yet" />
+            </Card>
+        );
+    }
+
+    return (
+        <Card title={WIDGET_LABELS.department_achievement}>
+            <ul className="divide-y divide-slate-100">
+                {data.map((row) => (
+                    <li key={row.department_id} className="py-2.5 flex items-center justify-between">
+                        <div>
+                            <p className="text-sm text-slate-700">{row.department_name}</p>
+                            <p className="text-[11px] text-slate-400">
+                                {row.kpi_count} {row.kpi_count === 1 ? 'KPI' : 'KPIs'}
+                            </p>
+                        </div>
+                        <span className={`text-sm font-semibold tabular-nums ${row.avg_achievement_pct !== null && row.avg_achievement_pct >= 100 ? 'text-emerald-600' : 'text-slate-800'}`}>
+                            {row.avg_achievement_pct !== null ? `${row.avg_achievement_pct}%` : '—'}
+                        </span>
+                    </li>
+                ))}
+            </ul>
+        </Card>
+    );
+}
+
 function WidgetRenderer({ type, widgetData, companyId }: { type: string; widgetData: WidgetData; companyId: string }) {
     switch (type) {
         case 'company_overview':
@@ -184,6 +223,8 @@ function WidgetRenderer({ type, widgetData, companyId }: { type: string; widgetD
             return <RecentSubmissionsWidget data={widgetData.recent_submissions} />;
         case 'period_status':
             return <PeriodStatusWidget data={widgetData.period_status} />;
+        case 'department_achievement':
+            return <DepartmentAchievementWidget data={widgetData.department_achievement} />;
         default:
             return null;
     }

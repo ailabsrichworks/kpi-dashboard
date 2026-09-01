@@ -17,7 +17,7 @@ use Illuminate\Support\Carbon;
  */
 class DashboardWidgetService
 {
-    public const AVAILABLE_WIDGETS = ['company_overview', 'pending_approvals', 'recent_submissions', 'period_status'];
+    public const AVAILABLE_WIDGETS = ['company_overview', 'pending_approvals', 'recent_submissions', 'period_status', 'department_achievement'];
 
     public const DEFAULT_LAYOUT = ['company_overview', 'period_status', 'pending_approvals', 'recent_submissions'];
 
@@ -38,6 +38,7 @@ class DashboardWidgetService
                 'pending_approvals' => $this->pendingApprovals($companyId, $myUserId),
                 'recent_submissions' => $this->recentSubmissions($companyId),
                 'period_status' => $this->periodStatus($companyId),
+                'department_achievement' => $this->departmentAchievement($companyId),
                 default => null,
             };
         }
@@ -95,6 +96,30 @@ class DashboardWidgetService
         } catch (\Throwable) {
             return [];
         }
+    }
+
+    /**
+     * `company_department_kpi_summary` (2026_09_01_020000) is the exact
+     * department-level sibling of `company_kpi_summary` — same
+     * `kpi_calc_achievement()` function, `security_invoker`, so this can
+     * never disagree with the company-wide average it's built from.
+     * Departments with no department-owned KPIs yet get a null
+     * avg_achievement_pct rather than being hidden, so a Company Admin can
+     * see which departments haven't been set up yet.
+     */
+    private function departmentAchievement(string $companyId): array
+    {
+        try {
+            $rows = $this->supabase->get('company_department_kpi_summary', [
+                'company_id' => 'eq.' . $companyId,
+                'select' => 'department_id,department_name,kpi_count,avg_achievement_pct',
+                'order' => 'avg_achievement_pct.desc.nullslast',
+            ]);
+        } catch (\Throwable) {
+            return [];
+        }
+
+        return $rows;
     }
 
     private function periodStatus(string $companyId): ?array

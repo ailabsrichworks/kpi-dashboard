@@ -117,6 +117,31 @@ class CompanyWidgetDashboardTest extends TestCase
             ->where('canEditLayout', false));
     }
 
+    public function test_department_achievement_widget_data_is_passed_through(): void
+    {
+        $this->fakeSingleCompanyMember();
+        Http::fake([
+            '*/rest/v1/company_dashboard_widgets*' => Http::response([
+                ['widget_type' => 'department_achievement'],
+            ], 200),
+            '*/rest/v1/company_department_kpi_summary*' => Http::response([
+                ['department_id' => 'dept-1', 'department_name' => 'Sales', 'kpi_count' => 3, 'avg_achievement_pct' => 92.5],
+                ['department_id' => 'dept-2', 'department_name' => 'Ops', 'kpi_count' => 1, 'avg_achievement_pct' => null],
+            ], 200),
+        ] + $this->existingFakes());
+
+        $response = $this->withSession(['platform_access_token' => $this->fakeToken('company-admin-auth-id')])
+            ->get('/platform/dashboard');
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page
+            ->component('Platform/CompanyDashboard')
+            ->where('layout', ['department_achievement'])
+            ->where('widgetData.department_achievement.0.department_name', 'Sales')
+            ->where('widgetData.department_achievement.0.avg_achievement_pct', 92.5)
+            ->where('widgetData.department_achievement.1.avg_achievement_pct', null));
+    }
+
     public function test_a_platform_admin_with_multiple_companies_still_sees_the_company_list(): void
     {
         Http::fake([
