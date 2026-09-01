@@ -2,17 +2,11 @@
 
 namespace App\Http\Middleware;
 
-use App\Services\SupabaseService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
 {
-    public function __construct(private SupabaseService $supabase)
-    {
-    }
-
     /**
      * The root template that's loaded on the first page visit.
      *
@@ -53,50 +47,6 @@ class HandleInertiaRequests extends Middleware
             // on every page without each controller remembering to pass its
             // own copy of "who is this and what can they do."
             'platformUser' => fn () => $request->attributes->get('platformUser'),
-            'layout' => fn () => [
-                'companyCode' => session('company_code'),
-                'companyDisplayName' => session('company_display_name'),
-                'departmentCode' => session('department_code'),
-                'role' => session('role'),
-                'hrAccess' => session('hr_access', false),
-                'hasSubordinates' => session('has_subordinates', false),
-                'shortName' => session('short_name'),
-                'fullName' => session('full_name'),
-                'employeeName' => session('employee_name'),
-                'salutation' => session('salutation'),
-                'position' => session('position'),
-                'adminImpersonating' => session('admin_impersonating'),
-                'unreadNotificationCount' => $this->unreadNotificationCount(),
-                'themeAccent2' => session('theme_accent2') ?: '#6B9080',
-            ],
         ];
-    }
-
-    /**
-     * Mirrors AppServiceProvider's `partials.sidebar` view composer — that
-     * composer never fires for Inertia responses, so React needs the same
-     * count delivered as a shared prop instead.
-     */
-    private function unreadNotificationCount(): int
-    {
-        $employeeId = session('employee_uuid');
-
-        if (!$employeeId) {
-            return 0;
-        }
-
-        try {
-            $rows = $this->supabase->get('notifications', [
-                'recipient_employee_id' => 'eq.' . $employeeId,
-                'is_read' => 'eq.false',
-                'select' => 'id',
-            ]) ?? [];
-
-            return count($rows);
-        } catch (\Throwable $e) {
-            Log::warning('Failed to fetch unread notification count for layout props: ' . $e->getMessage());
-
-            return 0;
-        }
     }
 }

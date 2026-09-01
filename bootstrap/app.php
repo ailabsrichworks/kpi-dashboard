@@ -13,7 +13,6 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function ($middleware) {
         $middleware->alias([
-            'kpi.auth' => \App\Http\Middleware\KpiAuth::class,
             'telegram.webapp.auth' => \App\Http\Middleware\TelegramWebAppAuth::class,
             'telegram.webhook.secret' => \App\Http\Middleware\TelegramWebhookSecret::class,
             'telegram.cron.secret' => \App\Http\Middleware\TelegramCronSecret::class,

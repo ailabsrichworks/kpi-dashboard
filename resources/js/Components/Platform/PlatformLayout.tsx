@@ -3,14 +3,21 @@ import { ReactNode, useState } from 'react';
 import {
     AdjustmentsIcon,
     BuildingIcon,
+    CalendarIcon,
+    ChartBarIcon,
     ChecklistIcon,
     ClipboardCheckIcon,
     CreditCardIcon,
     DocumentDuplicateIcon,
     FlagIcon,
+    HeartIcon,
+    HierarchyIcon,
     HomeIcon,
+    IdentificationIcon,
+    LifebuoyIcon,
     LogoutIcon,
     MenuIcon,
+    PuzzlePieceIcon,
     RocketIcon,
     ShieldCheckIcon,
     SparklesIcon,
@@ -115,6 +122,159 @@ function NavSectionLabel({ children }: { children: ReactNode }) {
     return <p className="px-3 mt-5 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{children}</p>;
 }
 
+/**
+ * Company Admin's own nav (spec §22) — configuration and governance, not
+ * executive performance analysis. Several links intentionally share a
+ * destination (Employees/Reporting Lines/Users/Roles & Permissions all land
+ * on the Departments page) because that's genuinely where each of those is
+ * managed today — matching this codebase's own established precedent
+ * (OnboardingController::reportingHierarchy() redirects to the same page)
+ * rather than inventing separate screens nothing distinguishes yet.
+ */
+function CompanyAdminNav({ companyId, currentUrl, isSuperAdmin }: { companyId: string; currentUrl: string; isSuperAdmin: boolean }) {
+    const base = `/platform/companies/${companyId}`;
+
+    return (
+        <>
+            <NavSectionLabel>Company Setup</NavSectionLabel>
+            <NavLink href={`${base}/organisation`} icon={<HierarchyIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Organisation
+            </NavLink>
+            <NavLink href={`${base}/departments`} icon={<UsersIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Employees
+            </NavLink>
+            <NavLink href={`${base}/departments`} icon={<IdentificationIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Reporting Lines
+            </NavLink>
+
+            <NavSectionLabel>Performance Setup</NavSectionLabel>
+            <NavLink href={`${base}/goals`} icon={<FlagIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Company Goals
+            </NavLink>
+            <NavLink href={`${base}/kpis`} icon={<TargetIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                KPI
+            </NavLink>
+            <NavLink href={`${base}/periods`} icon={<CalendarIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Periods &amp; Targets
+            </NavLink>
+
+            <NavSectionLabel>Access</NavSectionLabel>
+            <NavLink href={`${base}/departments`} icon={<UsersIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Users
+            </NavLink>
+            <NavLink href={`${base}/departments`} icon={<AdjustmentsIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Roles &amp; Permissions
+            </NavLink>
+
+            <NavSectionLabel>Workflow</NavSectionLabel>
+            <NavLink href={`${base}/approvals`} icon={<ClipboardCheckIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Approvals
+            </NavLink>
+            <NavLink href={`${base}/review-settings`} icon={<DocumentDuplicateIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Review Settings
+            </NavLink>
+            <NavLink href={`${base}/tasks`} icon={<ChecklistIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Tasks
+            </NavLink>
+
+            <NavSectionLabel>Platform</NavSectionLabel>
+            <NavLink href={`${base}/onboarding`} icon={<RocketIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Onboarding
+            </NavLink>
+            {isSuperAdmin && (
+                <NavLink href={`${base}/import`} icon={<UploadIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                    Import data
+                </NavLink>
+            )}
+            <NavLink href={`${base}/audit-log`} icon={<ShieldCheckIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Audit Log
+            </NavLink>
+        </>
+    );
+}
+
+/** CEO / Top Management's own nav (spec §16/§26) — direction and gaps, not routine data entry. */
+function ExecutiveNav({ companyId, currentUrl }: { companyId: string; currentUrl: string }) {
+    const base = `/platform/companies/${companyId}`;
+
+    return (
+        <>
+            <NavLink href={`${base}/performance`} icon={<ChartBarIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Performance
+            </NavLink>
+
+            <NavSectionLabel>Goals &amp; KPI</NavSectionLabel>
+            <NavLink href={`${base}/goals`} icon={<FlagIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Company Goals
+            </NavLink>
+            <NavLink href={`${base}/kpis`} icon={<TargetIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Company KPI
+            </NavLink>
+
+            <NavSectionLabel>Execution</NavSectionLabel>
+            <NavLink href={`${base}/tasks`} icon={<ChecklistIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Actions
+            </NavLink>
+            <NavLink href={`${base}/approvals`} icon={<ClipboardCheckIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Approvals
+            </NavLink>
+
+            <NavSectionLabel>Organisation</NavSectionLabel>
+            <NavLink href={`${base}/organisation`} icon={<HierarchyIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Organisation
+            </NavLink>
+        </>
+    );
+}
+
+/** HR / People Management's own nav (spec §16/§35) — people performance and compliance, not company strategy. */
+function HrNav({ companyId, currentUrl }: { companyId: string; currentUrl: string }) {
+    const base = `/platform/companies/${companyId}`;
+
+    return (
+        <>
+            <NavLink href={`${base}/people`} icon={<HeartIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                People Performance
+            </NavLink>
+
+            <NavSectionLabel>People</NavSectionLabel>
+            <NavLink href={`${base}/organisation`} icon={<HierarchyIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Organisation
+            </NavLink>
+            <NavLink href={`${base}/people/employees`} icon={<UsersIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Employees
+            </NavLink>
+
+            <NavSectionLabel>Monitoring</NavSectionLabel>
+            <NavLink href={`${base}/people/managers`} icon={<IdentificationIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Manager Effectiveness
+            </NavLink>
+        </>
+    );
+}
+
+/** Executive/Employee's own nav — later phases (spec §50): own department/team/self scope, no configuration surface at all. */
+function MemberNav({ companyId, currentUrl }: { companyId: string; currentUrl: string }) {
+    const base = `/platform/companies/${companyId}`;
+
+    return (
+        <>
+            <NavLink href={`${base}/organisation`} icon={<HierarchyIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Organisation
+            </NavLink>
+            <NavLink href={`${base}/kpis`} icon={<TargetIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                KPI
+            </NavLink>
+            <NavLink href={`${base}/tasks`} icon={<ChecklistIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Tasks
+            </NavLink>
+            <NavLink href={`${base}/approvals`} icon={<ClipboardCheckIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                Approvals
+            </NavLink>
+        </>
+    );
+}
+
 function SidebarContent({ platformUser, company, currentUrl }: { platformUser: PlatformUser | null; company?: CompanyRef | null; currentUrl: string }) {
     const contextCompany =
         company ??
@@ -128,6 +288,9 @@ function SidebarContent({ platformUser, company, currentUrl }: { platformUser: P
 
     const isAdminHere = contextCompany ? canAdminister(platformUser, contextCompany.id) : false;
     const isMemberHere = contextCompany ? isCompanyMember(platformUser, contextCompany.id) : false;
+    const myRoleHere = contextCompany
+        ? platformUser?.company_memberships.find((m) => m.company_id === contextCompany.id)?.role
+        : undefined;
 
     return (
         <div className="flex h-full flex-col">
@@ -154,92 +317,56 @@ function SidebarContent({ platformUser, company, currentUrl }: { platformUser: P
                 {contextCompany && isMemberHere && (
                     <>
                         <NavSectionLabel>{contextCompany.name}</NavSectionLabel>
-                        {isAdminHere && (
-                            <NavLink
-                                href={`/platform/companies/${contextCompany.id}/departments`}
-                                icon={<UsersIcon className="w-[18px] h-[18px]" />}
-                                currentUrl={currentUrl}
-                            >
-                                Departments &amp; People
-                            </NavLink>
-                        )}
-                        <NavLink
-                            href={`/platform/companies/${contextCompany.id}/goals`}
-                            icon={<FlagIcon className="w-[18px] h-[18px]" />}
-                            currentUrl={currentUrl}
-                        >
-                            Company Goals
-                        </NavLink>
-                        <NavLink
-                            href={`/platform/companies/${contextCompany.id}/kpis`}
-                            icon={<TargetIcon className="w-[18px] h-[18px]" />}
-                            currentUrl={currentUrl}
-                        >
-                            KPIs
-                        </NavLink>
-                        <NavLink
-                            href={`/platform/companies/${contextCompany.id}/tasks`}
-                            icon={<ChecklistIcon className="w-[18px] h-[18px]" />}
-                            currentUrl={currentUrl}
-                        >
-                            Tasks
-                        </NavLink>
-                        <NavLink
-                            href={`/platform/companies/${contextCompany.id}/approvals`}
-                            icon={<ClipboardCheckIcon className="w-[18px] h-[18px]" />}
-                            currentUrl={currentUrl}
-                        >
-                            My Approvals
-                        </NavLink>
-                        <NavLink
-                            href={`/platform/companies/${contextCompany.id}/periods`}
-                            icon={<AdjustmentsIcon className="w-[18px] h-[18px]" />}
-                            currentUrl={currentUrl}
-                        >
-                            Periods
-                        </NavLink>
-                        {isAdminHere && (
-                            <NavLink
-                                href={`/platform/companies/${contextCompany.id}/onboarding`}
-                                icon={<RocketIcon className="w-[18px] h-[18px]" />}
-                                currentUrl={currentUrl}
-                            >
-                                Onboarding
-                            </NavLink>
-                        )}
-                        {platformUser?.is_super_admin && (
-                            <NavLink
-                                href={`/platform/companies/${contextCompany.id}/import`}
-                                icon={<UploadIcon className="w-[18px] h-[18px]" />}
-                                currentUrl={currentUrl}
-                            >
-                                Import data
-                            </NavLink>
-                        )}
-                        {isAdminHere && (
-                            <NavLink
-                                href={`/platform/companies/${contextCompany.id}/audit-log`}
-                                icon={<ShieldCheckIcon className="w-[18px] h-[18px]" />}
-                                currentUrl={currentUrl}
-                            >
-                                Audit log
-                            </NavLink>
+                        {isAdminHere ? (
+                            <CompanyAdminNav companyId={contextCompany.id} currentUrl={currentUrl} isSuperAdmin={!!platformUser?.is_super_admin} />
+                        ) : myRoleHere === 'slt' ? (
+                            <ExecutiveNav companyId={contextCompany.id} currentUrl={currentUrl} />
+                        ) : myRoleHere === 'hr' ? (
+                            <HrNav companyId={contextCompany.id} currentUrl={currentUrl} />
+                        ) : (
+                            <MemberNav companyId={contextCompany.id} currentUrl={currentUrl} />
                         )}
                     </>
                 )}
 
                 {platformUser?.is_super_admin && (
                     <>
-                        <NavSectionLabel>Richworks Center</NavSectionLabel>
+                        <NavSectionLabel>Clients</NavSectionLabel>
                         <NavLink href="/platform/companies" icon={<BuildingIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
                             Companies
                         </NavLink>
+                        <NavLink href="/platform/hq/client-health" icon={<HeartIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                            Client Health
+                        </NavLink>
+                        <NavLink href="/platform/hq/renewals" icon={<CalendarIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                            Renewals
+                        </NavLink>
+
+                        <NavSectionLabel>Client Success</NavSectionLabel>
+                        <NavLink href="/platform/hq/cam-team" icon={<IdentificationIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                            CAM Team
+                        </NavLink>
+                        <NavLink href="/platform/hq/actions" icon={<ChecklistIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                            Actions
+                        </NavLink>
+
+                        <NavSectionLabel>Platform</NavSectionLabel>
+                        <NavLink href="/platform/hq/modules" icon={<PuzzlePieceIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                            Modules
+                        </NavLink>
+                        <NavLink href="/platform/hq/support" icon={<LifebuoyIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                            Support
+                        </NavLink>
+
+                        <NavSectionLabel>Commercial</NavSectionLabel>
                         <NavLink href="/platform/kpi-templates" icon={<DocumentDuplicateIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
                             KPI templates
                         </NavLink>
                         <NavLink href="/platform/subscription-plans" icon={<CreditCardIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
                             Subscription plans
                         </NavLink>
+
+                        <NavSectionLabel>Admin</NavSectionLabel>
                         <NavLink href="/platform/admins" icon={<AdjustmentsIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
                             Platform admins
                         </NavLink>

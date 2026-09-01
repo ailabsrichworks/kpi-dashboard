@@ -275,6 +275,20 @@ class OnboardingController extends Controller
         ]);
     }
 
+    /**
+     * Company Admin sidebar's "Review Settings" (spec §22's Workflow group)
+     * — an honest placeholder like the two above it. There's no performance-
+     * review data model anywhere in this schema (see PeopleController's own
+     * docblock), so there's nothing real to configure yet.
+     */
+    public function reviewSettings(Request $request, string $company)
+    {
+        return $this->comingSoon($request, $company, [
+            'title' => 'Review Settings',
+            'body' => "Performance reviews aren't tracked in Performix yet — there's no review-cycle table, no review-status column on any submission, and nothing computes review completion anywhere in the schema (see the HR People Performance page's own honest 'not tracked yet' card). Configuring a review cycle here would have nothing real to attach to until that feature exists. Skipping this never blocks anything else.",
+        ]);
+    }
+
     private function comingSoon(Request $request, string $company, array $copy)
     {
         $this->ensureCompanyAdmin($request, $company);
