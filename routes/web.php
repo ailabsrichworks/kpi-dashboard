@@ -17,7 +17,7 @@ use App\Http\Controllers\AiController;
 */
 
 Route::get('/', function () {
-    return redirect()->route('login');
+    return redirect()->route('platform.login');
 });
 
 // Telegram Mini App shell — opened inside Telegram's WebView, no Laravel session
@@ -27,16 +27,21 @@ Route::view('/telegram/app', 'telegram.app', [
     'botUsername' => env('TELEGRAM_BOT_USERNAME', ''),
 ])->name('telegram.app');
 
-// This IS the working login for this company's real production data
-// (confirmed live, 2026-08-18): `users` genuinely has `password_hash`/
-// `is_active`, `employees` genuinely exists, and Supabase Auth (auth.users)
-// has zero accounts in this project -- so /platform/login can never
-// succeed here. An earlier redirect to /platform/login, based on the
-// opposite (unverified) assumption, made this real, working form
-// unreachable. See CLAUDE.md's "Login system correction" for how this was
-// confirmed before re-enabling it.
-Route::get('/login', [AuthController::class, 'showLogin'])
-    ->name('login');
+// Login system correction, reversed (2026-09-01): the reasoning below was
+// correct for the production project active at the time (`employees`/
+// `users.password_hash` were real and live there, Supabase Auth had zero
+// accounts). Production has since moved to `drmgngqgnqggfmtkqthb`, where
+// the opposite is true -- confirmed directly against the live database:
+// no `employees` table exists at all, and a real Supabase Auth Super Admin
+// account now exists and works end-to-end. So this legacy form is the one
+// that can never succeed here, and /platform/login is the one that can.
+// The legacy routes below are left in place, unlinked, rather than deleted
+// -- same as this codebase's other confirmed-dead legacy paths (Telegram,
+// AiController) -- in case a future production project ever reintroduces
+// the legacy schema this depends on.
+Route::get('/login', function () {
+    return redirect()->route('platform.login');
+})->name('login');
 
 Route::post('/login', [AuthController::class, 'submitLogin'])
     ->name('login.submit');
