@@ -1,12 +1,5 @@
 import { ReactNode } from 'react';
 
-const LOGIN_BG_STYLE = {
-    background:
-        'radial-gradient(circle at top left, rgba(196,184,150,.35), transparent 32%), ' +
-        'radial-gradient(circle at bottom right, rgba(166,147,116,.25), transparent 38%), ' +
-        'linear-gradient(135deg, #F1EBE0 0%, #E9E0D1 45%, #DED2BC 78%, #F1EBE0 100%)',
-};
-
 /**
  * Shared shell for the three pages someone sees before they're ever
  * authenticated (Login, Forgot Password, Set Password) — no sidebar makes
@@ -15,34 +8,43 @@ const LOGIN_BG_STYLE = {
  * independently-styled forms that happen to sit next to each other in the
  * codebase.
  *
- * Visual style (cream/gold gradient, blurred corner accents, gold-topped
- * card) intentionally follows the legacy app's own resources/views/auth/
- * login.blade.php — same product family, one consistent pre-auth look.
- * The brand identity stays "Performix" (this is the Platform, a genuinely
- * different, current system from that legacy page) — only the styling was
- * asked to match, not the legacy app's own name/copy.
+ * Visual style: dark backdrop, a blue-to-violet gradient logo mark and top
+ * accent strip, indigo/violet accents throughout — this Platform's own
+ * identity, deliberately distinct from the legacy app's cream/gold
+ * resources/views/auth/login.blade.php rather than matching it.
  */
-export default function AuthCard({ title, description, children, footer }: { title: string; description?: string; children: ReactNode; footer?: ReactNode }) {
+export default function AuthCard({ title, description, children, footer }: { title?: string; description?: string; children: ReactNode; footer?: ReactNode }) {
     return (
-        <div className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden" style={LOGIN_BG_STYLE}>
-            <div className="pointer-events-none absolute -top-16 -left-16 w-72 h-72 rounded-full bg-[#C9B896]/25 blur-3xl" />
-            <div className="pointer-events-none absolute -bottom-20 -right-10 w-80 h-80 rounded-full bg-[#C9B896]/20 blur-3xl" />
-
+        <div className="min-h-screen flex items-center justify-center p-6 bg-[#0B1120]">
             <div className="relative w-full max-w-sm">
-                <div className="flex items-center justify-center gap-2.5 mb-6">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#3A3128] text-base font-bold text-[#C9B896]">P</span>
-                    <span className="text-slate-900 font-bold text-lg">Performix</span>
-                </div>
+                <div className="bg-white rounded-2xl overflow-hidden shadow-[0_25px_70px_rgba(0,0,0,.45)]">
+                    <div className="h-1.5 w-full bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-500" />
 
-                <div className="bg-white rounded-2xl overflow-hidden shadow-[0_25px_70px_rgba(0,0,0,.18)] border-t-[3px] border-t-[#C9B896] p-7">
-                    <div className="mb-6">
-                        <h1 className="text-base font-bold text-slate-900">{title}</h1>
-                        {description && <p className="text-xs text-slate-500 mt-1">{description}</p>}
+                    <div className="px-8 pt-8 pb-6">
+                        <div className="flex flex-col items-center text-center mb-6">
+                            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-violet-600 text-2xl font-black text-white shadow-lg shadow-indigo-500/30 mb-3">
+                                P
+                            </span>
+                            <h1 className="text-2xl font-black text-slate-900 leading-tight">Performix</h1>
+                            <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-[0.2em] mt-1">Performance System</p>
+                        </div>
+
+                        {title && (
+                            <div className="mb-6 text-center">
+                                <h2 className="text-base font-bold text-slate-900">{title}</h2>
+                                {description && <p className="text-xs text-slate-500 mt-1">{description}</p>}
+                            </div>
+                        )}
+
+                        {children}
                     </div>
-                    {children}
-                </div>
 
-                {footer && <div className="mt-5 text-center text-xs text-[#6B5D4F]">{footer}</div>}
+                    {footer && (
+                        <div className="bg-slate-50 px-8 py-3.5 text-center text-xs font-semibold text-slate-500">
+                            {footer}
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
