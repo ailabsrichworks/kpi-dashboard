@@ -7,6 +7,7 @@ import {
     ChartBarIcon,
     ChecklistIcon,
     ClipboardCheckIcon,
+    CogIcon,
     CreditCardIcon,
     DocumentDuplicateIcon,
     FlagIcon,
@@ -372,6 +373,9 @@ function SidebarContent({ platformUser, company, currentUrl }: { platformUser: P
                         </NavLink>
                         <NavLink href="/platform/audit-log" icon={<ClipboardCheckIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
                             Audit log
+                        </NavLink>
+                        <NavLink href="/platform/settings" icon={<CogIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
+                            Settings
                         </NavLink>
                     </>
                 )}

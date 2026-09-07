@@ -377,4 +377,25 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
 
     Route::patch('/hq/support/{ticket}', [\App\Http\Controllers\Platform\SupportController::class, 'update'])
         ->name('platform.hq.support.update');
+
+    /*
+    |----------------------------------------------------------------------
+    | Performix HQ — Settings hub (Super Admin only, see PlatformAuthorization)
+    |----------------------------------------------------------------------
+    */
+
+    Route::get('/settings', [\App\Http\Controllers\Platform\SettingsController::class, 'index'])
+        ->name('platform.settings.index');
+
+    Route::get('/settings/integrations', [\App\Http\Controllers\Platform\SettingsController::class, 'integrations'])
+        ->name('platform.settings.integrations');
+
+    Route::get('/settings/api-keys', [\App\Http\Controllers\Platform\SettingsController::class, 'apiKeys'])
+        ->name('platform.settings.api-keys');
+
+    Route::get('/settings/billing', [\App\Http\Controllers\Platform\SettingsController::class, 'billing'])
+        ->name('platform.settings.billing');
+
+    Route::get('/settings/compliance', [\App\Http\Controllers\Platform\SettingsController::class, 'compliance'])
+        ->name('platform.settings.compliance');
 });
