@@ -415,6 +415,23 @@
                         <!-- QUARTER UPDATE -->
                         @if($type === 'quarter_update')
 
+                            @php
+                                // Unit-aware, thousands-separated formatting -- mirrors
+                                // $sec2FmtVal in performance/report.blade.php, so the same
+                                // number reads consistently everywhere it's shown. Decimals
+                                // are kept only when the value actually has a fractional
+                                // part (87.58 stays 87.58; 45 stays 45, not 45.00).
+                                $fmtApprovalVal = function ($v, $u) {
+                                    if ($v === null || $v === '') return '0';
+                                    $n = (float) $v;
+                                    $dp = (fmod($n, 1) !== 0.0) ? 2 : 0;
+                                    if ($u === 'currency')   return 'RM ' . number_format($n, max($dp, 2));
+                                    if ($u === 'percentage') return number_format($n, max($dp, 2)) . '%';
+                                    return number_format($n, $dp);
+                                };
+                                $approvalUnit = $approval['unit'] ?? '';
+                            @endphp
+
                             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
 
                                 <div class="rounded-2xl bg-slate-50 border border-slate-100 p-4">
@@ -425,7 +442,7 @@
 
                                     <h3 class="text-xl font-black mt-2">
 
-                                        {{ $approval['old_actual'] ?? 0 }}
+                                        {{ $fmtApprovalVal($approval['old_actual'] ?? 0, $approvalUnit) }}
 
                                     </h3>
 
@@ -439,7 +456,7 @@
 
                                     <h3 class="text-xl font-black mt-2 text-[#6B3F2A]">
 
-                                        {{ $approval['requested_actual'] ?? 0 }}
+                                        {{ $fmtApprovalVal($approval['requested_actual'] ?? 0, $approvalUnit) }}
 
                                     </h3>
 
@@ -453,7 +470,7 @@
 
                                     <h3 class="text-xl font-black mt-2 text-emerald-700">
 
-                                        {{ $approval['quarter_target'] ?? 0 }}
+                                        {{ $fmtApprovalVal($approval['quarter_target'] ?? 0, $approvalUnit) }}
 
                                     </h3>
 

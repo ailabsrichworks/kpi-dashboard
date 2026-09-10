@@ -711,6 +711,9 @@ Route::middleware(['kpi.auth'])->group(function () {
     Route::post('/ai/suggest-kpi', [AiController::class, 'suggestKpi'])
         ->name('ai.suggest-kpi');
 
+    Route::post('/ai/rephrase-appraiser-comment', [AiController::class, 'rephraseAppraiserComment'])
+        ->name('ai.rephrase-appraiser-comment');
+
     /*
     |--------------------------------------------------------------------------
     | ADMIN — VIEW AS (BTS department only)

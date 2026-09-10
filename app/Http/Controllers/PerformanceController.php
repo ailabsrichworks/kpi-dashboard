@@ -506,13 +506,24 @@ class PerformanceController extends Controller
         $reportStatus = !empty($savedRows) ? ($savedRows[0]['status'] ?? 'draft') : 'draft';
         $submittedAt  = !empty($savedRows) ? ($savedRows[0]['updated_at'] ?? null) : null;
 
+        // Once the manager's section is locked, the appraiser shown here must
+        // stay whoever actually appraised it — snapshotted at submission time
+        // in appraiserSave() — rather than a live reports_to_id lookup, which
+        // can drift afterwards (reorg, promotion, a BTS delegation ending).
+        // Reports completed before this snapshot existed fall back to Part
+        // D's own saved appraiser name/designation, which was already being
+        // captured at submission time, before falling back further to a live
+        // lookup for a report that isn't locked yet.
+        $frozenAppraiserName     = $savedData['_manager_appraiser_name'] ?? $savedData['part_d_name'] ?? null;
+        $frozenAppraiserPosition = $savedData['_manager_appraiser_position'] ?? $savedData['part_d_designation'] ?? null;
+
         return view('performance.report', [
             'user'                 => $user,
             'currentUserName'      => $user['full_name'] ?? $user['short_name'] ?? 'User',
             'userPosition'         => $user['position'] ?? $user['role'] ?? '-',
             'departmentName'       => $department['name'] ?? $user['department_code'] ?? '-',
-            'reportsToName'        => $reportsTo ? ($reportsTo['full_name'] ?? $reportsTo['short_name'] ?? '-') : '-',
-            'reportsToPosition'    => $reportsTo['position'] ?? $reportsTo['role'] ?? '-',
+            'reportsToName'        => $frozenAppraiserName ?? ($reportsTo ? ($reportsTo['full_name'] ?? $reportsTo['short_name'] ?? '-') : '-'),
+            'reportsToPosition'    => $frozenAppraiserPosition ?? ($reportsTo['position'] ?? $reportsTo['role'] ?? '-'),
             'joinDate'             => $joinDate ? \Carbon\Carbon::parse($joinDate)->format('d M Y') : '—',
             'tenure'               => $tenure,
             'currentFinancialYear' => $this->currentFinancialYear,
@@ -831,12 +842,20 @@ class PerformanceController extends Controller
             $tenure = $parts ? implode(' ', $parts) : 'Less than 1 month';
         }
 
-        // Reports-to (the current appraiser)
-        $appraiserEmployee = $supabase->get('employees', [
-            'id'     => 'eq.' . session('employee_uuid'),
-            'select' => 'id,short_name,full_name,role,position',
-        ]);
-        $reportsTo = $appraiserEmployee[0] ?? null;
+        // Reports-to — the employee's own manager (per reports_to_id), same
+        // as every self-view page. Deliberately not session('employee_uuid'):
+        // this used to show whichever appraiser (manager/VP/SLT) happened to
+        // be viewing the report, so the same employee's "Reporting To" field
+        // changed depending on who opened it instead of reflecting their
+        // actual reporting line.
+        $reportsTo = null;
+        if (!empty($user['reports_to_id'])) {
+            $managers  = $supabase->get('employees', [
+                'id'     => 'eq.' . $user['reports_to_id'],
+                'select' => 'id,short_name,full_name,role,position',
+            ]);
+            $reportsTo = $managers[0] ?? null;
+        }
 
         // Department
         $department = null;
@@ -982,13 +1001,24 @@ class PerformanceController extends Controller
         // there's no dedicated column per level.
         $myLevelLocked = !empty($savedData["_{$appraiserLevel}_locked"]);
 
+        // Once the manager's section is locked, the appraiser shown here must
+        // stay whoever actually appraised it — snapshotted at submission time
+        // in appraiserSave() — rather than a live reports_to_id lookup, which
+        // can drift afterwards (reorg, promotion, a BTS delegation ending).
+        // Reports completed before this snapshot existed fall back to Part
+        // D's own saved appraiser name/designation, which was already being
+        // captured at submission time, before falling back further to a live
+        // lookup for a report that isn't locked yet.
+        $frozenAppraiserName     = $savedData['_manager_appraiser_name'] ?? $savedData['part_d_name'] ?? null;
+        $frozenAppraiserPosition = $savedData['_manager_appraiser_position'] ?? $savedData['part_d_designation'] ?? null;
+
         return view('performance.report', [
             'user'                 => $user,
             'currentUserName'      => $user['full_name'] ?? $user['short_name'] ?? 'User',
             'userPosition'         => $user['position'] ?? $user['role'] ?? '-',
             'departmentName'       => $department['name'] ?? $user['department_code'] ?? '-',
-            'reportsToName'        => $reportsTo ? ($reportsTo['full_name'] ?? $reportsTo['short_name'] ?? '-') : '-',
-            'reportsToPosition'    => $reportsTo['position'] ?? $reportsTo['role'] ?? '-',
+            'reportsToName'        => $frozenAppraiserName ?? ($reportsTo ? ($reportsTo['full_name'] ?? $reportsTo['short_name'] ?? '-') : '-'),
+            'reportsToPosition'    => $frozenAppraiserPosition ?? ($reportsTo['position'] ?? $reportsTo['role'] ?? '-'),
             'joinDate'             => $joinDate ? \Carbon\Carbon::parse($joinDate)->format('d M Y') : '—',
             'tenure'               => $tenure,
             'currentFinancialYear' => $this->currentFinancialYear,
@@ -1163,6 +1193,15 @@ class PerformanceController extends Controller
             }
 
             $mergedData[$lockKey] = true;
+
+            // Snapshot who actually appraised this level, frozen at the moment
+            // of submission. employees.reports_to_id/manager_id/vp_id can
+            // change afterwards (reorg, promotion, a BTS delegation ending),
+            // which must never retroactively change who a completed section
+            // is displayed as having been appraised by.
+            $viewer = $supabase->first('employees', ['id' => 'eq.' . $viewerId, 'select' => 'full_name,short_name,position,role']);
+            $mergedData["_{$appraiserLevel}_appraiser_name"]     = $viewer['full_name'] ?? $viewer['short_name'] ?? null;
+            $mergedData["_{$appraiserLevel}_appraiser_position"] = $viewer['position'] ?? $viewer['role'] ?? null;
         }
 
         $newData = $mergedData;
@@ -1190,8 +1229,7 @@ class PerformanceController extends Controller
         // Manager's submit is what unlocks the appraisee's own acknowledgment
         // signature — tell them their turn has come, in-app and via Telegram.
         if ($action === 'submit' && $appraiserLevel === 'manager' && $status === 'appraised') {
-            $appraiser     = $supabase->first('employees', ['id' => 'eq.' . $viewerId, 'select' => 'full_name,short_name']);
-            $appraiserName = $appraiser['full_name'] ?? $appraiser['short_name'] ?? 'Your appraiser';
+            $appraiserName = $newData['_manager_appraiser_name'] ?? 'Your appraiser';
 
             $notifications->notify(
                 [$employeeId],

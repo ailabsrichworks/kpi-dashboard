@@ -509,11 +509,11 @@
                     <td></td>
                     <td class="text-center text-[10px] font-bold text-slate-400">{{ $kpiNo }}.{{ $s }}</td>
                     <td><input type="text" placeholder="Describe initiative {{ $kpiNo }}.{{ $s }}…" class="t-input"></td>
-                    <td class="text-center"><input type="number" step="any" min="0" value="{{ $s===1 && $dbAct!=='' ? $dbAct : '' }}" placeholder="—" class="n-input sec2-actual"></td>
-                    <td class="text-center"><input type="number" step="any" min="0" value="{{ $s===1 && $dbTgt!=='' ? $dbTgt : '' }}" placeholder="—" class="n-input sec2-target"></td>
+                    <td class="text-center"><input type="number" inputmode="decimal" step="any" min="0" value="{{ $s===1 && $dbAct!=='' ? $dbAct : '' }}" placeholder="—" class="n-input sec2-actual"></td>
+                    <td class="text-center"><input type="number" inputmode="decimal" step="any" min="0" value="{{ $s===1 && $dbTgt!=='' ? $dbTgt : '' }}" placeholder="—" class="n-input sec2-target"></td>
                     <td class="text-center"><span class="sec2-score font-black text-sm sc-none">—</span></td>
-                    <td class="text-center"><input type="number" step="0.1" min="0" max="5" placeholder="—" class="n-input"></td>
-                    <td class="text-center"><input type="number" step="0.1" min="0" max="5" placeholder="—" class="n-input"></td>
+                    <td class="text-center"><input type="number" inputmode="decimal" step="0.1" min="0" max="5" placeholder="—" class="n-input"></td>
+                    <td class="text-center"><input type="number" inputmode="decimal" step="0.1" min="0" max="5" placeholder="—" class="n-input"></td>
                 </tr>
                 @endfor
                 @endforeach

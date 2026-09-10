@@ -638,6 +638,7 @@
                         <th class="c" style="width:68px;">B<br><span style="font-weight:500;text-transform:none;font-size:8px;">Target</span></th>
                         <th class="c" style="width:72px;">C · Score<br><span style="font-weight:400;text-transform:none;font-size:8px;">(A÷B)×5</span></th>
                         <th class="c" style="width:72px;">Appraiser<br><span style="font-weight:400;text-transform:none;font-size:8px;">Score</span></th>
+                        <th class="c no-print" style="width:80px;">Comment<br><span style="font-weight:400;text-transform:none;font-size:8px;">Optional</span></th>
                         @if($isAppraiserView ?? false)
                         <th class="c no-print" style="width:56px;">View</th>
                         @endif
@@ -645,7 +646,7 @@
                 </thead>
                 <tbody>
                 @php
-                    $sec2Colspan = ($isAppraiserView ?? false) ? 7 : 6;
+                    $sec2Colspan = ($isAppraiserView ?? false) ? 8 : 7;
                     $sec2StatusEchoes = ['not started', 'on track', 'at risk', 'in trouble', 'completed'];
                     $sec2IsRealRemark = fn ($text) => $text !== '' && !in_array(strtolower($text), $sec2StatusEchoes, true);
                     // Actual/Target were rendered as bare numbers with no unit cue --
@@ -750,7 +751,11 @@
                         <span class="sec2-score font-black text-sm sc-none">—</span>
                         <input type="hidden" name="kpi_self_{{ $kpi['id'] }}" data-wt="{{ $kpi['weightage'] ?? 0 }}" class="kpi-self-hidden">
                     </td>
-                    <td class="text-center"><input type="number" name="kpi_app_{{ $kpi['id'] }}" data-wt="{{ $kpi['weightage'] ?? 0 }}" step="0.1" min="0" max="5" placeholder="—" class="n-input kpi-app-input" readonly style="pointer-events:none;opacity:0.55;background:#f8fafc;cursor:not-allowed;"></td>
+                    <td class="text-center"><input type="number" inputmode="decimal" name="kpi_app_{{ $kpi['id'] }}" data-wt="{{ $kpi['weightage'] ?? 0 }}" step="0.1" min="0" max="5" placeholder="—" class="n-input kpi-app-input" readonly style="pointer-events:none;opacity:0.55;background:#f8fafc;cursor:not-allowed;"></td>
+                    <td class="text-center no-print">
+                        <textarea name="kpi_app_comment_{{ $kpi['id'] }}" class="kpi-app-comment-hidden" style="display:none;"></textarea>
+                        <button type="button" class="kpi-comment-btn" data-kpi-id="{{ $kpi['id'] }}" data-kpi-title="{{ e($kpi['kpi_title'] ?? '') }}" onclick="openCommentModal(this)" style="display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:800;color:#4a7c6b;background:#f0f9f6;border:1px solid #d1e7e0;border-radius:8px;padding:5px 9px;cursor:pointer;">💬 Add</button>
+                    </td>
                     @if($isAppraiserView ?? false)
                     <td class="text-center no-print">
                         <button type="button" class="kpi-view-btn" data-detail="{{ json_encode($qDetail, JSON_UNESCAPED_UNICODE) }}" onclick="openQuarterDetail(this)" style="display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:800;color:#4a7c6b;background:#f0f9f6;border:1px solid #d1e7e0;border-radius:8px;padding:5px 9px;cursor:pointer;">👁 View</button>
@@ -1532,6 +1537,139 @@ function renderAniraScore(data) {
 }
 </script>
 @endif
+
+{{-- Score justification comment — optional, per-KPI. Editable by the Manager
+     appraiser only (while Section 2 is unlocked); read-only for everyone else
+     (VP/SLT, and the appraisee themself), so the appraisee can see why they
+     were given that score. Rendered unconditionally (unlike the appraiser-only
+     "View" modal above) since the appraisee must be able to open it too. --}}
+<div id="commentModal" class="no-print" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(15,23,42,.55);align-items:center;justify-content:center;padding:24px;" onclick="if(event.target===this) closeCommentModal()">
+    <div style="background:#fff;border-radius:20px;max-width:480px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(15,23,42,.35);">
+        <div style="position:sticky;top:0;background:#fff;padding:16px 20px 0;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;z-index:1;">
+            <div style="min-width:0;">
+                <p style="font-size:9px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin:0 0 4px;">Score justification</p>
+                <p id="commentModalTitle" style="font-size:13px;font-weight:900;color:#1a3d34;line-height:1.35;margin:0;"></p>
+                <p style="font-size:10px;color:#94a3b8;margin:4px 0 0;">Appraiser score: <span id="commentModalScore" style="font-weight:700;color:#334155;"></span></p>
+            </div>
+            <button type="button" onclick="closeCommentModal()" style="background:#f1f5f9;border:1px solid #e2e8f0;width:28px;height:28px;border-radius:50%;font-size:14px;color:#64748b;cursor:pointer;flex-shrink:0;">✕</button>
+        </div>
+        <div style="padding:16px 20px 22px;">
+            <textarea id="commentModalTextarea" maxlength="2000" rows="5" placeholder="Explain why you gave this score (optional)…" style="width:100%;font-size:12px;color:#334155;line-height:1.6;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;resize:vertical;font-family:inherit;"></textarea>
+            <p id="commentModalViewText" style="display:none;font-size:12px;color:#334155;line-height:1.6;margin:0;white-space:pre-wrap;"></p>
+            <div id="commentModalEditFooter" style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <button type="button" id="commentModalRephraseBtn" onclick="rephraseAppraiserComment()" style="display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;color:#4a7c6b;background:#f0f9f6;border:1px solid #d1e7e0;border-radius:8px;padding:6px 11px;cursor:pointer;">✨ Rephrase with AI</button>
+                <button type="button" onclick="closeCommentModal()" style="font-size:10px;font-weight:800;color:#fff;background:#1a3d34;border:none;border-radius:8px;padding:6px 14px;cursor:pointer;">Done</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function openCommentModal(btn) {
+    var kpiId    = btn.dataset.kpiId;
+    var kpiTitle = btn.dataset.kpiTitle;
+    var hidden   = document.querySelector('textarea[name="kpi_app_comment_' + kpiId + '"]');
+    var scoreInp = document.querySelector('input[name="kpi_app_' + kpiId + '"]');
+
+    window._currentCommentKpiId = kpiId;
+
+    document.getElementById('commentModalTitle').textContent = kpiTitle || 'KPI';
+    document.getElementById('commentModalScore').textContent = (scoreInp && scoreInp.value !== '') ? (scoreInp.value + ' / 5') : '—';
+
+    var editable = (typeof _appraiserLevel !== 'undefined') && _appraiserLevel === 'manager' && !_myLevelLocked;
+    var ta       = document.getElementById('commentModalTextarea');
+    var viewText = document.getElementById('commentModalViewText');
+    var footer   = document.getElementById('commentModalEditFooter');
+    var current  = hidden ? hidden.value : '';
+
+    if (editable) {
+        ta.style.display = '';
+        ta.value = current;
+        footer.style.display = 'flex';
+        viewText.style.display = 'none';
+    } else {
+        ta.style.display = 'none';
+        footer.style.display = 'none';
+        viewText.style.display = '';
+        viewText.textContent = current.trim() !== '' ? current : 'No justification comment was given for this score.';
+    }
+
+    document.getElementById('commentModal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeCommentModal() {
+    var kpiId = window._currentCommentKpiId;
+    var ta    = document.getElementById('commentModalTextarea');
+    if (kpiId && ta.style.display !== 'none') {
+        var hidden = document.querySelector('textarea[name="kpi_app_comment_' + kpiId + '"]');
+        if (hidden) { hidden.value = ta.value; updateCommentBtnState(kpiId); }
+    }
+    document.getElementById('commentModal').style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+function updateCommentBtnState(kpiId) {
+    var hidden = document.querySelector('textarea[name="kpi_app_comment_' + kpiId + '"]');
+    var btn    = document.querySelector('.kpi-comment-btn[data-kpi-id="' + kpiId + '"]');
+    if (!hidden || !btn) return;
+    var has = hidden.value && hidden.value.trim() !== '';
+    btn.textContent      = has ? '💬 View' : '💬 Add';
+    btn.style.background = has ? '#eef2ff' : '#f0f9f6';
+    btn.style.color      = has ? '#4338ca' : '#4a7c6b';
+    btn.style.borderColor = has ? '#c7d2fe' : '#d1e7e0';
+}
+
+function rephraseAppraiserComment() {
+    var kpiId = window._currentCommentKpiId;
+    var ta    = document.getElementById('commentModalTextarea');
+    var btn   = document.getElementById('commentModalRephraseBtn');
+    var title = document.getElementById('commentModalTitle').textContent;
+    var scoreInp = document.querySelector('input[name="kpi_app_' + kpiId + '"]');
+
+    if (!ta.value || !ta.value.trim()) { showToast('Write a comment first before rephrasing.', false); return; }
+
+    var originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '✨ Rephrasing…';
+
+    fetch('{{ route('ai.rephrase-appraiser-comment') }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+            kpi_title: title,
+            score:     scoreInp ? scoreInp.value : '',
+            comment:   ta.value,
+        }),
+    })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            if (!data.success) throw new Error(data.message || 'Failed');
+            ta.value = data.comment;
+        })
+        .catch(function (err) {
+            console.error('rephraseAppraiserComment failed:', err);
+            showToast('AI rephrase failed. Please try again.', false);
+        })
+        .finally(function () {
+            btn.disabled = false;
+            btn.textContent = originalLabel;
+        });
+}
+
+// Reflect saved comments (View vs Add) on every button once the form's saved
+// data has been restored — mirrors how restoreFormData() populates every
+// other named field on load.
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.kpi-comment-btn').forEach(function (btn) {
+        updateCommentBtnState(btn.dataset.kpiId);
+    });
+});
+</script>
 
 <script>
 (function(){

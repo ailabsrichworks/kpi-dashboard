@@ -396,16 +396,16 @@
                                             <p style="font-size:11px;font-weight:700;color:#334155;">Section 2</p>
                                             <p style="font-size:9px;color:#94a3b8;">KPI Performance</p>
                                         </td>
-                                        <td class="text-center"><input type="number" min="0" max="100" placeholder="—" class="n-input s4-input"></td>
-                                        <td class="text-center"><input type="number" min="0" max="100" placeholder="—" class="n-input s4-input"></td>
+                                        <td class="text-center"><input type="number" inputmode="decimal" step="any" min="0" max="100" placeholder="—" class="n-input s4-input"></td>
+                                        <td class="text-center"><input type="number" inputmode="decimal" step="any" min="0" max="100" placeholder="—" class="n-input s4-input"></td>
                                     </tr>
                                     <tr class="bg-slate-50/50" style="border-bottom:1px solid rgba(107,144,128,.10);">
                                         <td style="padding:12px 14px;">
                                             <p style="font-size:11px;font-weight:700;color:#334155;">Section 3</p>
                                             <p style="font-size:9px;color:#94a3b8;">Attitude &amp; Competency</p>
                                         </td>
-                                        <td class="text-center"><input type="number" min="0" max="100" placeholder="—" class="n-input s4-input"></td>
-                                        <td class="text-center"><input type="number" min="0" max="100" placeholder="—" class="n-input s4-input"></td>
+                                        <td class="text-center"><input type="number" inputmode="decimal" step="any" min="0" max="100" placeholder="—" class="n-input s4-input"></td>
+                                        <td class="text-center"><input type="number" inputmode="decimal" step="any" min="0" max="100" placeholder="—" class="n-input s4-input"></td>
                                     </tr>
                                     <tr style="background:linear-gradient(90deg,rgba(26,61,52,.06),rgba(107,144,128,.04));">
                                         <td style="padding:12px 14px;">
