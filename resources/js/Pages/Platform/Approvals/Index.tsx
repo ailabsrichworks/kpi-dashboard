@@ -3,6 +3,7 @@ import { FormEventHandler, useState } from 'react';
 import PlatformLayout from '@/Components/Platform/PlatformLayout';
 import { Badge, Card, EmptyState, PrimaryButton, SecondaryButton } from '@/Components/Platform/ui';
 import { ClipboardCheckIcon } from '@/Components/Platform/Icons';
+import { formatLinkageValue, LinkageUnit } from '@/lib/linkageFormat';
 
 interface ApprovalRequest {
     id: string;
@@ -18,11 +19,12 @@ interface ApprovalRequest {
 interface SubmissionObject {
     id: string;
     value: number;
+    previous_approved_value: number | null;
     submission_date: string;
     notes: string | null;
     evidence_note: string | null;
     revision_number: number;
-    kpis: { name: string; target: number | null; unit: string | null };
+    kpis: { name: string; target: number | null; unit: string | null; measurement_unit: LinkageUnit };
     users: { name: string };
 }
 
@@ -32,7 +34,7 @@ interface TargetRevisionObject {
     new_target: number;
     reason: string;
     effective_financial_year: number;
-    kpis: { name: string; unit: string | null };
+    kpis: { name: string; unit: string | null; measurement_unit: LinkageUnit };
 }
 
 interface ApprovalStep {
@@ -73,17 +75,25 @@ function ApprovalSummary({ step }: { step: ApprovalStep }) {
 
     if (isSubmission(step.object)) {
         const o = step.object;
+        const unit = o.kpis.measurement_unit;
         return (
             <div>
-                <p className="text-sm font-semibold text-slate-800">
-                    {o.kpis.name} — proposed value: {o.value}
-                    {o.kpis.unit ?? ''}
-                    <span className="text-xs font-normal text-slate-400 ml-2">
-                        revision {o.revision_number} · target {o.kpis.target ?? '—'}
-                        {o.kpis.unit ?? ''}
+                <p className="text-sm font-semibold text-slate-800">{o.kpis.name}</p>
+                <div className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 mt-1">
+                    {o.previous_approved_value !== null && (
+                        <span className="text-xs text-slate-400">
+                            Previous: <span className="font-semibold text-slate-600">{formatLinkageValue(o.previous_approved_value, unit)}</span>
+                        </span>
+                    )}
+                    <span className="text-xs text-slate-400">
+                        Requested: <span className="font-semibold text-[#8B5E4A]">{formatLinkageValue(o.value, unit)}</span>
                     </span>
-                </p>
-                <p className="text-xs text-slate-400 mt-0.5">
+                    <span className="text-xs text-slate-400">
+                        Target: <span className="font-semibold text-emerald-700">{o.kpis.target !== null ? formatLinkageValue(o.kpis.target, unit) : '—'}</span>
+                    </span>
+                    <span className="text-[11px] text-slate-400">revision {o.revision_number}</span>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
                     {o.submission_date} · submitted by {o.users.name}
                     {o.notes ? ` · ${o.notes}` : ''}
                 </p>
@@ -93,11 +103,12 @@ function ApprovalSummary({ step }: { step: ApprovalStep }) {
     }
 
     const o = step.object;
+    const unit = o.kpis.measurement_unit;
     return (
         <div>
             <p className="text-sm font-semibold text-slate-800">
-                {o.kpis.name} — target revision: {o.old_target ?? '—'} → {o.new_target}
-                {o.kpis.unit ?? ''}
+                {o.kpis.name} — target revision: {o.old_target !== null ? formatLinkageValue(o.old_target, unit) : '—'} →{' '}
+                {formatLinkageValue(o.new_target, unit)}
                 <span className="text-xs font-normal text-slate-400 ml-2">effective FY{o.effective_financial_year}</span>
             </p>
             <p className="text-xs text-slate-400 mt-0.5">Reason: {o.reason}</p>

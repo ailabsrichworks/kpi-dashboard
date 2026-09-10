@@ -51,6 +51,22 @@ class KpiSubmissionController extends Controller
         return ['can_submit' => $isDepartmentMember];
     }
 
+    /**
+     * The submitter's own direct manager — same `department_users.manager_user_id`
+     * lookup `ApprovalWorkflowService::resolveCandidates()`'s 'submitter_manager'
+     * step type already uses, kept here as a one-hop, one-purpose helper rather
+     * than reaching for the full workflow engine (scoring isn't an approval step).
+     */
+    private function resolveAppraiserFor(SupabaseUserService $supabase, string $submittedByUserId): ?string
+    {
+        $row = $supabase->first('department_users', [
+            'user_id' => 'eq.' . $submittedByUserId,
+            'select' => 'manager_user_id',
+        ]);
+
+        return $row['manager_user_id'] ?? null;
+    }
+
     public function index(Request $request, string $company, string $department, KpiCalculationService $calc)
     {
         $access = $this->ensureDepartmentAccess($request, $company, $department);
@@ -84,7 +100,7 @@ class KpiSubmissionController extends Controller
         // V3 without the two being confused for each other.
         $submissions = $supabase->get('kpi_submissions', [
             'department_id' => 'eq.' . $department,
-            'select' => '*,kpis(name,unit,target,stretch_target,measurement_direction),users(name)',
+            'select' => '*,kpis(name,unit,target,stretch_target,measurement_direction,measurement_unit),users(name)',
             'order' => 'submission_date.desc,revision_number.desc',
         ]);
 
@@ -114,6 +130,32 @@ class KpiSubmissionController extends Controller
                 && (int) $submission['revision_number'] === ($latestApprovedRevisionByPeriod[$key] ?? null);
 
             return $submission + ['computed_status' => $calc->status($achievement), 'is_current_approved' => $isCurrentApproved];
+        }, $submissions);
+
+        // Appraiser scores — one batched lookup for every submission id on
+        // the page, rather than a query per row. `can_score` only resolves an
+        // appraiser (an extra Supabase call per row) for the rows that could
+        // actually need it: approved, not yet scored.
+        $submissionIds = collect($submissions)->pluck('id')->filter()->values();
+        $scoresBySubmissionId = [];
+        if ($submissionIds->isNotEmpty()) {
+            $scores = $supabase->get('kpi_submission_scores', [
+                'kpi_submission_id' => 'in.(' . $submissionIds->implode(',') . ')',
+                'select' => 'kpi_submission_id,score,comment,users(name)',
+            ]);
+            foreach ($scores as $score) {
+                $scoresBySubmissionId[$score['kpi_submission_id']] = $score;
+            }
+        }
+
+        $myUserId = $request->attributes->get('platformUser')['id'];
+        $submissions = array_map(function ($submission) use ($supabase, $scoresBySubmissionId, $myUserId) {
+            $score = $scoresBySubmissionId[$submission['id']] ?? null;
+            $canScore = $submission['status'] === 'approved'
+                && !$score
+                && $this->resolveAppraiserFor($supabase, $submission['submitted_by']) === $myUserId;
+
+            return $submission + ['score' => $score, 'can_score' => $canScore];
         }, $submissions);
 
         // Period gating info for the submit form — "can I submit right now"
@@ -255,5 +297,70 @@ class KpiSubmissionController extends Controller
         }
 
         return back()->with('success', 'Submission saved (revision ' . $nextRevision . ') and sent for approval.');
+    }
+
+    /**
+     * Appraiser scoring — a submitted-and-approved KPI value gets a numeric
+     * score plus an optional justification comment from the submitter's own
+     * manager, one time only (no re-scoring path; kpi_submission_scores has
+     * no update policy). The RLS insert policy is the real boundary
+     * (`resolved_appraiser_user_id = auth_current_user_id()`); the explicit
+     * check here exists only to turn a would-be opaque RLS denial into a
+     * clear 403 with an explanation.
+     */
+    public function score(Request $request, string $company, string $department, string $submission)
+    {
+        $this->ensureDepartmentAccess($request, $company, $department);
+
+        $request->validate([
+            'score' => 'required|numeric|min:0|max:5',
+            'comment' => 'nullable|string|max:2000',
+        ]);
+
+        $platformUser = $request->attributes->get('platformUser');
+
+        /** @var SupabaseUserService $supabase */
+        $supabase = $request->attributes->get('platformSupabase');
+
+        $submissionRow = $supabase->first('kpi_submissions', [
+            'id' => 'eq.' . $submission,
+            'department_id' => 'eq.' . $department,
+            'select' => 'id,submitted_by,status',
+        ]);
+
+        if (!$submissionRow) {
+            abort(404, 'Submission not found.');
+        }
+
+        abort_unless($submissionRow['status'] === 'approved', 422, 'Only an approved submission can be scored.');
+
+        $resolvedAppraiser = $this->resolveAppraiserFor($supabase, $submissionRow['submitted_by']);
+
+        abort_unless($resolvedAppraiser === $platformUser['id'], 403, 'You are not this employee\'s manager, so you cannot score this submission.');
+
+        try {
+            // return=minimal (3rd arg false): same RLS-recursion-on-RETURNING
+            // gotcha store() already works around above — kpi_submission_scores_select
+            // routes through auth_can_view_company_wide()/auth_is_submitter_of_kpi_submission(),
+            // which would otherwise be evaluated against this INSERT's own RETURNING clause.
+            $supabase->insert('kpi_submission_scores', [
+                'kpi_submission_id' => $submission,
+                'resolved_appraiser_user_id' => $platformUser['id'],
+                'score' => $request->score,
+                'comment' => $request->comment,
+            ], false);
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Could not save score: ' . $e->getMessage());
+        }
+
+        try {
+            $this->logCompanyAction($request, 'score_kpi_submission', $company, null, [
+                'department_id' => $department,
+            ], 'kpi_submission', $submission, null, ['score' => $request->score]);
+        } catch (\Throwable) {
+            return back()->with('error', 'Score was saved, but the action could not be logged — contact support before continuing.');
+        }
+
+        return back()->with('success', 'Score saved.');
     }
 }

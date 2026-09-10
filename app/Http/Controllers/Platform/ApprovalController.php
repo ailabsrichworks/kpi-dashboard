@@ -97,16 +97,39 @@ class ApprovalController extends Controller
     private function loadObjectSummary(SupabaseUserService $supabase, array $req): ?array
     {
         if ($req['object_type'] === 'kpi_submission') {
-            return $supabase->first('kpi_submissions', [
+            $submission = $supabase->first('kpi_submissions', [
                 'id' => 'eq.' . $req['object_id'],
-                'select' => 'id,value,submission_date,notes,evidence_note,revision_number,kpis(name,target,unit),users(name)',
+                'select' => 'id,kpi_id,value,submission_date,notes,evidence_note,revision_number,financial_year,period_type,period_number,kpis(name,target,unit,measurement_unit),users(name)',
             ]);
+
+            if (!$submission) {
+                return null;
+            }
+
+            // The current record of truth for this exact KPI+period, if one
+            // exists — a targeted single-row lookup (we already know the
+            // exact key from the submission itself), not the full-history
+            // scan KpiSubmissionController::index() does across a whole
+            // department. Omitted entirely (not "0") when this is the KPI's
+            // first-ever submission for this period.
+            $previousApproved = $supabase->first('kpi_submissions', [
+                'kpi_id' => 'eq.' . $submission['kpi_id'],
+                'financial_year' => 'eq.' . $submission['financial_year'],
+                'period_type' => 'eq.' . $submission['period_type'],
+                'period_number' => 'eq.' . $submission['period_number'],
+                'status' => 'eq.approved',
+                'id' => 'neq.' . $submission['id'],
+                'order' => 'revision_number.desc',
+                'select' => 'value',
+            ]);
+
+            return $submission + ['previous_approved_value' => $previousApproved['value'] ?? null];
         }
 
         if ($req['object_type'] === 'kpi_target_revision') {
             return $supabase->first('kpi_target_revisions', [
                 'id' => 'eq.' . $req['object_id'],
-                'select' => 'id,old_target,new_target,reason,effective_financial_year,kpis(name,unit)',
+                'select' => 'id,old_target,new_target,reason,effective_financial_year,kpis(name,unit,measurement_unit)',
             ]);
         }
 

@@ -1,9 +1,11 @@
 import { useForm, usePage } from '@inertiajs/react';
-import { FormEventHandler } from 'react';
+import axios from 'axios';
+import { FormEventHandler, useState } from 'react';
 import PlatformLayout from '@/Components/Platform/PlatformLayout';
-import { Badge, Card, EmptyState, InfoTooltip, PrimaryButton } from '@/Components/Platform/ui';
-import { ClipboardCheckIcon } from '@/Components/Platform/Icons';
+import { Badge, Card, EmptyState, InfoTooltip, PrimaryButton, SecondaryButton } from '@/Components/Platform/ui';
+import { ClipboardCheckIcon, SparklesIcon } from '@/Components/Platform/Icons';
 import { calculateAchievement, MeasurementDirection } from '@/lib/kpiAchievement';
+import { formatLinkageValue, LinkageUnit } from '@/lib/linkageFormat';
 
 type ComputedStatus = 'not_scored' | 'critical' | 'at_risk' | 'on_track' | 'achieved' | 'exceeded';
 
@@ -56,6 +58,12 @@ const APPROVAL_TONE: Record<ApprovalStatus, 'neutral' | 'danger' | 'warning' | '
     returned: 'danger',
 };
 
+interface SubmissionScore {
+    score: number;
+    comment: string | null;
+    users: { name: string };
+}
+
 interface Submission {
     id: string;
     value: number;
@@ -65,10 +73,14 @@ interface Submission {
     status: ApprovalStatus;
     revision_number: number;
     is_current_approved: boolean;
-    kpis: { name: string; unit: string | null; target: number | null; stretch_target: number | null; measurement_direction: MeasurementDirection };
+    kpis: { name: string; unit: string | null; target: number | null; stretch_target: number | null; measurement_direction: MeasurementDirection; measurement_unit: LinkageUnit };
     users: { name: string };
     /** Server-computed (KpiCalculationService), not derived from the client-side achievementPct() below. */
     computed_status: ComputedStatus;
+    /** Present once the submitter's manager has scored this (approved) submission — read-only for everyone once given. */
+    score: SubmissionScore | null;
+    /** True only for the caller's own resolved appraiser, on an approved-but-unscored submission. */
+    can_score: boolean;
 }
 
 interface PlatformUser {
@@ -195,6 +207,102 @@ function AchievementBar({ pct }: { pct: number | null }) {
     );
 }
 
+/**
+ * Score justification comment — optional. Editable only by the submitter's
+ * resolved manager (server-checked; `can_score` is just what tells the UI
+ * whether to offer the form at all), read-only for everyone else once given,
+ * so the submitter can see why they were given that score. One-shot: there's
+ * no edit path once a score exists (kpi_submission_scores has no update
+ * policy), matching kpi_submissions' own "never edit, only ever create"
+ * posture.
+ */
+function ScoreForm({ companyId, departmentId, submissionId, kpiName }: { companyId: string; departmentId: string; submissionId: string; kpiName: string }) {
+    const [rephrasing, setRephrasing] = useState(false);
+    const { data, setData, post, processing } = useForm({ score: '', comment: '' });
+
+    const submit: FormEventHandler = (e) => {
+        e.preventDefault();
+        post(`/platform/companies/${companyId}/departments/${departmentId}/submissions/${submissionId}/score`);
+    };
+
+    const rephrase = async () => {
+        if (!data.comment.trim()) {
+            return;
+        }
+        setRephrasing(true);
+        try {
+            const response = await axios.post('/platform/ai/rephrase-appraiser-comment', {
+                kpi_name: kpiName,
+                score: data.score || undefined,
+                comment: data.comment,
+            });
+            if (response.data.success) {
+                setData('comment', response.data.comment);
+            }
+        } catch {
+            // Best-effort — leave the draft comment untouched on failure.
+        } finally {
+            setRephrasing(false);
+        }
+    };
+
+    return (
+        <form onSubmit={submit} className="mt-2 w-full max-w-md bg-slate-50 rounded-xl p-3">
+            <p className="text-xs font-semibold text-slate-600 mb-1.5">Score this submission</p>
+            <div className="flex items-center gap-2 mb-2">
+                <input
+                    value={data.score}
+                    onChange={(e) => setData('score', e.target.value)}
+                    type="number"
+                    step="any"
+                    min="0"
+                    max="5"
+                    placeholder="0–5"
+                    className="w-20 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+                    required
+                />
+                <span className="text-xs text-slate-400">out of 5</span>
+            </div>
+            <textarea
+                value={data.comment}
+                onChange={(e) => setData('comment', e.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm mb-2"
+                placeholder="Justification comment (optional) — why did you give this score?"
+                rows={2}
+            />
+            <div className="flex items-center gap-2">
+                <PrimaryButton type="submit" disabled={processing}>
+                    Save score
+                </PrimaryButton>
+                <SecondaryButton type="button" onClick={rephrase} disabled={rephrasing || !data.comment.trim()}>
+                    <span className="inline-flex items-center gap-1">
+                        <SparklesIcon className="w-3.5 h-3.5" /> {rephrasing ? 'Rephrasing…' : 'Rephrase'}
+                    </span>
+                </SecondaryButton>
+            </div>
+        </form>
+    );
+}
+
+function ScoreBlock({ submission, companyId, departmentId }: { submission: Submission; companyId: string; departmentId: string }) {
+    if (submission.score) {
+        return (
+            <div className="mt-1.5 flex items-start gap-2 text-xs text-slate-500">
+                <Badge tone="info">Score: {submission.score.score}/5</Badge>
+                <p className="italic">
+                    {submission.score.comment ? `"${submission.score.comment}"` : 'No comment given'} — {submission.score.users.name}
+                </p>
+            </div>
+        );
+    }
+
+    if (submission.can_score) {
+        return <ScoreForm companyId={companyId} departmentId={departmentId} submissionId={submission.id} kpiName={submission.kpis.name} />;
+    }
+
+    return null;
+}
+
 export default function SubmissionsIndex({ department, kpis, submissions, canSubmit, periodState }: SubmissionsPageProps) {
     const { platformUser } = usePage<{ platformUser: PlatformUser | null }>().props;
     const membership = platformUser?.company_memberships.find((m) => m.company_id === department.company_id);
@@ -239,17 +347,13 @@ export default function SubmissionsIndex({ department, kpis, submissions, canSub
                 ) : (
                     <ul className="divide-y divide-slate-100">
                         {submissions.map((s) => (
-                            <li key={s.id} className="py-3.5 flex items-center justify-between gap-4">
+                            <li key={s.id} className="py-3.5 flex items-center justify-between gap-4 flex-wrap">
                                 <div className="min-w-0">
                                     <p className="text-sm font-semibold text-slate-800">
-                                        {s.kpis.name}: {s.value}
-                                        {s.kpis.unit ?? ''}
+                                        {s.kpis.name}: {formatLinkageValue(s.value, s.kpis.measurement_unit)}
                                         <span className="text-[11px] font-normal text-slate-400 ml-1.5">V{s.revision_number}</span>
                                         {s.kpis.target !== null && (
-                                            <span className="text-xs text-slate-400 ml-2">
-                                                (target {s.kpis.target}
-                                                {s.kpis.unit ?? ''})
-                                            </span>
+                                            <span className="text-xs text-slate-400 ml-2">(target {formatLinkageValue(s.kpis.target, s.kpis.measurement_unit)})</span>
                                         )}
                                     </p>
                                     <p className="text-xs text-slate-400">
@@ -257,6 +361,7 @@ export default function SubmissionsIndex({ department, kpis, submissions, canSub
                                         {s.notes ? ` · ${s.notes}` : ''}
                                         {s.evidence_note ? ` · evidence: ${s.evidence_note}` : ''}
                                     </p>
+                                    {s.status === 'approved' && <ScoreBlock submission={s} companyId={department.company_id} departmentId={department.id} />}
                                 </div>
                                 <div className="flex-none flex items-center gap-2">
                                     <Badge tone={APPROVAL_TONE[s.status]}>{APPROVAL_LABELS[s.status]}</Badge>

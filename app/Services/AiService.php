@@ -743,6 +743,39 @@ PROMPT;
      * from general knowledge — a chatty-model problem, not a data-boundary
      * one. Never treat it as the guarantee; the caller-side filtering is.
      */
+    /*
+    |--------------------------------------------------------------------------
+    | REPHRASE APPRAISER SCORE JUSTIFICATION COMMENT
+    |--------------------------------------------------------------------------
+    */
+
+    public function rephraseAppraiserComment(string $kpiName, string $score, string $draft): string
+    {
+        $system = 'You are ANIRA, helping a manager write a clear, professional justification for the '
+            . 'score they gave an employee on one KPI submission. Keep their meaning and intent completely '
+            . 'intact — only improve clarity, tone, and phrasing. Respond with the rephrased comment only — '
+            . 'no headings, no quotes, no extra commentary.';
+
+        $user = "KPI: \"$kpiName\"\nScore given: $score / 5\n\n"
+            . "Rephrase this justification comment to be clearer and more professional, in 1-3 sentences, "
+            . "without changing what it actually says:\n\n\"$draft\"";
+
+        $response = $this->request()->post('https://api.openai.com/v1/chat/completions', [
+            'model' => $this->model,
+            'max_completion_tokens' => 200,
+            'messages' => [
+                ['role' => 'system', 'content' => $system],
+                ['role' => 'user', 'content' => $user],
+            ],
+        ]);
+
+        if (!$response->successful()) {
+            throw new \RuntimeException('OpenAI request failed: ' . $response->body());
+        }
+
+        return trim($response->json('choices.0.message.content', ''));
+    }
+
     public function chatForPlatform(array $context, array $messages): string
     {
         $system = $this->buildPlatformSystemPrompt($context);

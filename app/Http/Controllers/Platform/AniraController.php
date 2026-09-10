@@ -96,4 +96,37 @@ class AniraController extends Controller
 
         return response()->json(['success' => true, 'reply' => $reply]);
     }
+
+    /**
+     * Rephrases a manager's draft justification comment for an appraiser
+     * score. Gated on the same login check as chat() for consistency, even
+     * though it touches no tenant data — the kpi_name/score/comment all come
+     * from the request body as free text, not looked up server-side.
+     */
+    public function rephraseComment(Request $request, AiService $ai)
+    {
+        $request->validate([
+            'kpi_name' => 'required|string|max:255',
+            'score' => 'nullable|string|max:20',
+            'comment' => 'required|string|max:2000',
+        ]);
+
+        $scope = AuthorizedDataScope::fromSession();
+
+        if (!$scope) {
+            return response()->json(['success' => false, 'message' => 'Please log in first.'], 401);
+        }
+
+        try {
+            $rephrased = $ai->rephraseAppraiserComment(
+                $request->kpi_name,
+                $request->score ?? '—',
+                $request->comment
+            );
+        } catch (\Throwable) {
+            return response()->json(['success' => false, 'message' => 'AI rephrase failed. Please try again.'], 500);
+        }
+
+        return response()->json(['success' => true, 'comment' => $rephrased]);
+    }
 }

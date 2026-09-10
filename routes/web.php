@@ -99,6 +99,9 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::post('/ai/chat', [\App\Http\Controllers\Platform\AniraController::class, 'chat'])
         ->name('platform.ai.chat');
 
+    Route::post('/ai/rephrase-appraiser-comment', [\App\Http\Controllers\Platform\AniraController::class, 'rephraseComment'])
+        ->name('platform.ai.rephrase-appraiser-comment');
+
     Route::get('/admins', [\App\Http\Controllers\Platform\PlatformAdminController::class, 'index'])
         ->name('platform.admins.index');
 
@@ -302,6 +305,9 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
 
     Route::post('/companies/{company}/departments/{department}/submissions', [\App\Http\Controllers\Platform\KpiSubmissionController::class, 'store'])
         ->name('platform.submissions.store');
+
+    Route::post('/companies/{company}/departments/{department}/submissions/{submission}/score', [\App\Http\Controllers\Platform\KpiSubmissionController::class, 'score'])
+        ->name('platform.submissions.score');
 
     /*
     |----------------------------------------------------------------------
