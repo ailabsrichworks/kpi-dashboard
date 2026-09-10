@@ -254,6 +254,7 @@ function ScoreForm({ companyId, departmentId, submissionId, kpiName }: { company
                     value={data.score}
                     onChange={(e) => setData('score', e.target.value)}
                     type="number"
+                    inputMode="decimal"
                     step="any"
                     min="0"
                     max="5"
