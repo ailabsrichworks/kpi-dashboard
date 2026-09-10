@@ -415,6 +415,24 @@
                         <!-- QUARTER UPDATE -->
                         @if($type === 'quarter_update')
 
+                            @php
+                                // Comma-grouped and decimal-aware: if any of the
+                                // three values in this card row actually has a
+                                // fractional part, all three align to 2dp so the
+                                // row reads consistently — otherwise all three
+                                // round to whole numbers, no stray ".00".
+                                $qcRawPrev = (float) ($approval['old_actual'] ?? 0);
+                                $qcRawReq  = (float) ($approval['requested_actual'] ?? 0);
+                                $qcRawTgt  = (float) ($approval['quarter_target'] ?? 0);
+                                $qcHasDecimal = fmod($qcRawPrev, 1) !== 0.0
+                                    || fmod($qcRawReq, 1) !== 0.0
+                                    || fmod($qcRawTgt, 1) !== 0.0;
+                                $qcDecimals = $qcHasDecimal ? 2 : 0;
+                                $qcFmtPrev = number_format($qcRawPrev, $qcDecimals);
+                                $qcFmtReq  = number_format($qcRawReq, $qcDecimals);
+                                $qcFmtTgt  = number_format($qcRawTgt, $qcDecimals);
+                            @endphp
+
                             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
 
                                 <div class="rounded-2xl bg-slate-50 border border-slate-100 p-4">
@@ -425,7 +443,7 @@
 
                                     <h3 class="text-xl font-black mt-2">
 
-                                        {{ $approval['old_actual'] ?? 0 }}
+                                        {{ $qcFmtPrev }}
 
                                     </h3>
 
@@ -439,7 +457,7 @@
 
                                     <h3 class="text-xl font-black mt-2 text-[#6B3F2A]">
 
-                                        {{ $approval['requested_actual'] ?? 0 }}
+                                        {{ $qcFmtReq }}
 
                                     </h3>
 
@@ -453,7 +471,7 @@
 
                                     <h3 class="text-xl font-black mt-2 text-emerald-700">
 
-                                        {{ $approval['quarter_target'] ?? 0 }}
+                                        {{ $qcFmtTgt }}
 
                                     </h3>
 
@@ -587,6 +605,19 @@
                         @elseif($type === 'target_change')
                         @php
 
+                            // Base and Stretch are independent metrics, each
+                            // with its own current/requested pair — decimals
+                            // align within a pair (both show 2dp if either
+                            // value actually has one), not across the two
+                            // unrelated metrics.
+                            $tcRawOldBase = (float) ($approval['old_base_target'] ?? 0);
+                            $tcRawNewBase = (float) ($approval['new_base_target'] ?? 0);
+                            $tcBaseDecimals = (fmod($tcRawOldBase, 1) !== 0.0 || fmod($tcRawNewBase, 1) !== 0.0) ? 2 : 0;
+
+                            $tcRawOldStretch = (float) ($approval['old_stretch_target'] ?? 0);
+                            $tcRawNewStretch = (float) ($approval['new_stretch_target'] ?? 0);
+                            $tcStretchDecimals = (fmod($tcRawOldStretch, 1) !== 0.0 || fmod($tcRawNewStretch, 1) !== 0.0) ? 2 : 0;
+
                             $baseImpact = 0;
 
                             if(
@@ -632,7 +663,7 @@
                                 </p>
 
                                 <h3 class="text-xl font-black mt-2">
-                                    {{ number_format($approval['old_base_target'] ?? 0,0) }}
+                                    {{ number_format($tcRawOldBase, $tcBaseDecimals) }}
                                 </h3>
 
                             </div>
@@ -644,7 +675,7 @@
                                 </p>
 
                                 <h3 class="text-xl font-black mt-2 text-[#6B3F2A]">
-                                    {{ number_format($approval['new_base_target'] ?? 0,0) }}
+                                    {{ number_format($tcRawNewBase, $tcBaseDecimals) }}
                                 </h3>
 
                             </div>
@@ -656,7 +687,7 @@
                                 </p>
 
                                 <h3 class="text-xl font-black mt-2">
-                                    {{ number_format($approval['old_stretch_target'] ?? 0,0) }}
+                                    {{ number_format($tcRawOldStretch, $tcStretchDecimals) }}
                                 </h3>
 
                             </div>
@@ -668,7 +699,7 @@
                                 </p>
 
                                 <h3 class="text-xl font-black mt-2 text-[#6B3F2A]">
-                                    {{ number_format($approval['new_stretch_target'] ?? 0,0) }}
+                                    {{ number_format($tcRawNewStretch, $tcStretchDecimals) }}
                                 </h3>
 
                             </div>
