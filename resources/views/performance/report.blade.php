@@ -1149,7 +1149,8 @@
                         @foreach([['label'=>'Strengths','name'=>'s6_strengths'],['label'=>'Work Ethics / Attitude','name'=>'s6_ethics'],['label'=>'Areas Need Improvement','name'=>'s6_improvement'],['label'=>'Training Required','name'=>'s6_training']] as $pf)
                         <div>
                             <div class="flex items-center gap-2 mb-2"><span class="w-1.5 h-1.5 rounded-full bg-[#6B9080] flex-shrink-0"></span><p class="f-label">{{ $pf['label'] }}</p></div>
-                            <input type="text" name="{{ $pf['name'] }}" placeholder="—" class="f-input" readonly style="pointer-events:none;opacity:0.55;background:#f8fafc;cursor:not-allowed;">
+                            <input type="text" name="{{ $pf['name'] }}" placeholder="—" class="f-input perf-analysis-input" readonly style="pointer-events:none;opacity:0.55;background:#f8fafc;cursor:not-allowed;">
+                            <button type="button" class="perf-rephrase-btn no-print" data-field-label="{{ $pf['label'] }}" onclick="rephrasePerfField(this)" style="display:inline-flex;align-items:center;gap:3px;margin-top:6px;font-size:8px;font-weight:800;color:#4a7c6b;background:#f0f9f6;border:1px solid #d1e7e0;border-radius:6px;padding:3px 7px;cursor:pointer;">✨ Rephrase</button>
                         </div>
                         @endforeach
                     </div>
@@ -1594,6 +1595,47 @@ function rephraseAttComment(btn) {
         })
         .catch(function (err) {
             console.error('rephraseAttComment failed:', err);
+            if (typeof showToast === 'function') showToast("Couldn't rephrase right now. Try again.", false);
+        })
+        .finally(function () {
+            btn.disabled = false;
+            btn.textContent = originalLabel;
+        });
+}
+
+function rephrasePerfField(btn) {
+    var input = btn.previousElementSibling;
+    var text = (input && input.value || '').trim();
+
+    if (!text) {
+        if (typeof showToast === 'function') showToast('Write something first, then rephrase it.', false);
+        return;
+    }
+
+    var originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '✨ …';
+
+    fetch('{{ route('ai.rephrase-comment') }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+            comment:   text,
+            kpi_title: 'Performance Analysis — ' + (btn.dataset.fieldLabel || ''),
+        }),
+    })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            if (!data.success) throw new Error(data.message || 'Failed');
+            input.value = data.rephrased || text;
+            if (typeof showToast === 'function') showToast('Rephrased.', true);
+        })
+        .catch(function (err) {
+            console.error('rephrasePerfField failed:', err);
             if (typeof showToast === 'function') showToast("Couldn't rephrase right now. Try again.", false);
         })
         .finally(function () {
