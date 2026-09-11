@@ -640,12 +640,13 @@
                         <th class="c" style="width:72px;">Appraiser<br><span style="font-weight:400;text-transform:none;font-size:8px;">Score</span></th>
                         @if($isAppraiserView ?? false)
                         <th class="c no-print" style="width:56px;">View</th>
+                        <th class="c no-print" style="width:64px;">Comment</th>
                         @endif
                     </tr>
                 </thead>
                 <tbody>
                 @php
-                    $sec2Colspan = ($isAppraiserView ?? false) ? 7 : 6;
+                    $sec2Colspan = ($isAppraiserView ?? false) ? 8 : 6;
                     $sec2StatusEchoes = ['not started', 'on track', 'at risk', 'in trouble', 'completed'];
                     $sec2IsRealRemark = fn ($text) => $text !== '' && !in_array(strtolower($text), $sec2StatusEchoes, true);
                     // Actual/Target were rendered as bare numbers with no unit cue --
@@ -755,6 +756,10 @@
                     <td class="text-center no-print">
                         <button type="button" class="kpi-view-btn" data-detail="{{ json_encode($qDetail, JSON_UNESCAPED_UNICODE) }}" onclick="openQuarterDetail(this)" style="display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:800;color:#4a7c6b;background:#f0f9f6;border:1px solid #d1e7e0;border-radius:8px;padding:5px 9px;cursor:pointer;">👁 View</button>
                     </td>
+                    <td class="text-center no-print">
+                        <input type="hidden" name="kpi_comment_{{ $kpi['id'] }}" class="kpi-comment-hidden">
+                        <button type="button" class="kpi-comment-btn" data-kpi-id="{{ $kpi['id'] }}" data-kpi-title="{{ $kpi['kpi_title'] ?? '' }}" data-quarter="{{ $qLabel }}" onclick="openKpiComment(this)" style="display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:800;color:#94a3b8;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px;cursor:pointer;">💬 <span class="kpi-comment-label">Add</span></button>
+                    </td>
                     @endif
                 </tr>
                 @endforeach
@@ -766,12 +771,12 @@
                         <td colspan="4" class="text-right font-black text-xs text-[#1a3d34] uppercase tracking-wide px-4 py-3">Total Score Section 2</td>
                         <td class="text-center py-3"><span id="sec2Total" class="font-black text-base sc-none">—</span></td>
                         <td class="text-center"><span id="sec2AppPct" class="text-xs font-bold text-slate-400">—</span></td>
-                        @if($isAppraiserView ?? false)<td class="no-print"></td>@endif
+                        @if($isAppraiserView ?? false)<td class="no-print"></td><td class="no-print"></td>@endif
                     </tr>
                     <tr style="background:rgba(26,61,52,.03);">
                         <td colspan="4" class="text-right text-[9px] font-bold text-slate-400 uppercase tracking-wide px-4 py-2">% Total (Score ÷ 30 × 70)</td>
                         <td colspan="2" class="text-center"><span id="sec2Pct" class="text-sm font-black text-slate-400">—</span></td>
-                        @if($isAppraiserView ?? false)<td class="no-print"></td>@endif
+                        @if($isAppraiserView ?? false)<td class="no-print"></td><td class="no-print"></td>@endif
                     </tr>
                 </tfoot>
             </table>
@@ -1355,6 +1360,44 @@
     </div>
 </div>
 
+{{-- Section 2 "Comment" popup — why the appraiser gave that score, with an
+     optional AI rephrase pass so a terse/unclear note reads clearly to
+     anyone who reads it later (the employee, VP/SLT, HR). The actual value
+     lives in a hidden field per row (kpi_comment_{kpi id}) so it saves
+     and restores through the exact same collectFormData()/restoreFormData()
+     path as every other field on this page — no separate persistence. --}}
+<div id="kpiCommentModal" class="no-print" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(15,23,42,.55);align-items:center;justify-content:center;padding:24px;" onclick="if(event.target===this) closeKpiComment()">
+    <div style="background:#fff;border-radius:20px;max-width:480px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(15,23,42,.35);">
+        <div style="position:sticky;top:0;background:#fff;padding:16px 20px 0;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;z-index:1;">
+            <div style="min-width:0;">
+                <p style="font-size:9px;font-weight:900;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin:0 0 4px;">Appraiser Comment</p>
+                <p id="kcmTitle" style="font-size:14px;font-weight:900;color:#1a3d34;line-height:1.35;margin:0 0 6px;"></p>
+                <span id="kcmQuarter" class="q-tag"></span>
+            </div>
+            <button type="button" onclick="closeKpiComment()" style="background:#f1f5f9;border:1px solid #e2e8f0;width:28px;height:28px;border-radius:50%;font-size:14px;color:#64748b;cursor:pointer;flex-shrink:0;">✕</button>
+        </div>
+        <div style="padding:16px 20px 22px;">
+            <p style="font-size:10px;color:#94a3b8;margin:0 0 8px;line-height:1.5;">Why did you give this score? A clear comment helps the employee — and anyone reviewing later — understand the reasoning.</p>
+            <textarea id="kcmText" rows="5" maxlength="2000" placeholder="e.g. Actual came in below target this quarter because of the payment platform migration; scored a 3 since the team still made visible progress." style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;font-size:12px;font-family:inherit;color:#1e293b;resize:vertical;box-sizing:border-box;"></textarea>
+            <div id="kcmAiBox" style="display:none;margin-top:10px;background:#f0f9f6;border:1px solid #d1e7e0;border-radius:12px;padding:10px 12px;">
+                <p style="font-size:9px;font-weight:900;color:#4a7c6b;text-transform:uppercase;letter-spacing:.06em;margin:0 0 6px;">✨ ANIRA suggested rephrase</p>
+                <p id="kcmAiText" style="font-size:11px;color:#1a3d34;line-height:1.6;margin:0 0 8px;white-space:pre-wrap;"></p>
+                <div style="display:flex;gap:8px;">
+                    <button type="button" onclick="acceptKcmRephrase()" style="font-size:9px;font-weight:800;color:#fff;background:#4a7c6b;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;">Use this</button>
+                    <button type="button" onclick="dismissKcmRephrase()" style="font-size:9px;font-weight:800;color:#64748b;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;cursor:pointer;">Dismiss</button>
+                </div>
+            </div>
+            <p id="kcmError" style="display:none;font-size:10px;color:#dc2626;margin:8px 0 0;"></p>
+            <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center;">
+                <button type="button" id="kcmRephraseBtn" onclick="rephraseKpiComment()" style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;color:#4a7c6b;background:#f0f9f6;border:1px solid #d1e7e0;border-radius:10px;padding:8px 12px;cursor:pointer;">✨ Rephrase with AI</button>
+                <div style="flex:1;"></div>
+                <button type="button" id="kcmCancelBtn" onclick="closeKpiComment()" style="font-size:10px;font-weight:800;color:#64748b;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:10px;padding:8px 14px;cursor:pointer;">Close</button>
+                <button type="button" id="kcmSaveBtn" onclick="saveKpiComment()" style="font-size:10px;font-weight:800;color:#fff;background:#1a3d34;border:none;border-radius:10px;padding:8px 14px;cursor:pointer;">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 var _aniraScoreCache = {};
 
@@ -1529,6 +1572,129 @@ function renderAniraScore(data) {
         });
         body.appendChild(ul);
     }
+}
+
+// ── Section 2 "Comment" popup ──────────────────────────────────────────────
+var _kcmKpiId = null;
+var _kcmHiddenEl = null;
+var _kcmBtnEl = null;
+
+function openKpiComment(btn) {
+    _kcmKpiId = btn.dataset.kpiId;
+    _kcmBtnEl = btn;
+    _kcmHiddenEl = document.querySelector('[name="kpi_comment_' + _kcmKpiId + '"]');
+
+    document.getElementById('kcmTitle').textContent = btn.dataset.kpiTitle || '';
+    document.getElementById('kcmQuarter').textContent = btn.dataset.quarter || '';
+
+    var textEl = document.getElementById('kcmText');
+    textEl.value = (_kcmHiddenEl && _kcmHiddenEl.value) || '';
+
+    // Only the manager appraiser may write/rephrase a comment -- everyone
+    // else in the appraiser chain (VP/SLT) can open this to read why the
+    // score was given, same as they can already see the score itself.
+    var editable = (typeof _appraiserLevel !== 'undefined') && _appraiserLevel === 'manager';
+    textEl.readOnly = !editable;
+    textEl.style.background = editable ? '' : '#f8fafc';
+    document.getElementById('kcmRephraseBtn').style.display = editable ? '' : 'none';
+    document.getElementById('kcmSaveBtn').style.display = editable ? '' : 'none';
+
+    document.getElementById('kcmAiBox').style.display = 'none';
+    document.getElementById('kcmError').style.display = 'none';
+
+    document.getElementById('kpiCommentModal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeKpiComment() {
+    document.getElementById('kpiCommentModal').style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+function saveKpiComment() {
+    if (_kcmHiddenEl) {
+        _kcmHiddenEl.value = document.getElementById('kcmText').value.trim();
+        // Keep the row button's label honest about whether a comment exists,
+        // so nobody has to open every row to find the ones already filled in.
+        if (_kcmBtnEl) {
+            var label = _kcmBtnEl.querySelector('.kpi-comment-label');
+            if (label) label.textContent = _kcmHiddenEl.value ? 'Edit' : 'Add';
+            _kcmBtnEl.style.color = _kcmHiddenEl.value ? '#4a7c6b' : '#94a3b8';
+            _kcmBtnEl.style.background = _kcmHiddenEl.value ? '#f0f9f6' : '#f8fafc';
+            _kcmBtnEl.style.borderColor = _kcmHiddenEl.value ? '#d1e7e0' : '#e2e8f0';
+        }
+    }
+    closeKpiComment();
+}
+
+function rephraseKpiComment() {
+    var textEl = document.getElementById('kcmText');
+    var comment = textEl.value.trim();
+    var errEl = document.getElementById('kcmError');
+    errEl.style.display = 'none';
+
+    if (!comment) {
+        errEl.textContent = 'Write a comment first, then rephrase it.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    var btn = document.getElementById('kcmRephraseBtn');
+    var originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '✨ Rephrasing…';
+
+    fetch('{{ route('ai.rephrase-comment') }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': _csrfToken,
+            'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+            comment:   comment,
+            kpi_title: document.getElementById('kcmTitle').textContent,
+            quarter:   document.getElementById('kcmQuarter').textContent,
+        }),
+    })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            if (!data.success) throw new Error(data.message || 'Failed');
+            document.getElementById('kcmAiText').textContent = data.rephrased || '';
+            document.getElementById('kcmAiBox').style.display = 'block';
+        })
+        .catch(function (err) {
+            console.error('rephraseKpiComment failed:', err);
+            errEl.textContent = "Couldn't rephrase right now. Try again.";
+            errEl.style.display = 'block';
+        })
+        .finally(function () {
+            btn.disabled = false;
+            btn.textContent = originalLabel;
+        });
+}
+
+function acceptKcmRephrase() {
+    document.getElementById('kcmText').value = document.getElementById('kcmAiText').textContent;
+    document.getElementById('kcmAiBox').style.display = 'none';
+}
+
+function dismissKcmRephrase() {
+    document.getElementById('kcmAiBox').style.display = 'none';
+}
+
+// Reflect any comments already saved (restored via restoreFormData) onto
+// each row's button label/color once the page's saved data has loaded.
+function refreshKpiCommentButtons() {
+    document.querySelectorAll('.kpi-comment-btn').forEach(function (btn) {
+        var hidden = document.querySelector('[name="kpi_comment_' + btn.dataset.kpiId + '"]');
+        var has = !!(hidden && hidden.value);
+        var label = btn.querySelector('.kpi-comment-label');
+        if (label) label.textContent = has ? 'Edit' : 'Add';
+        btn.style.color = has ? '#4a7c6b' : '#94a3b8';
+        btn.style.background = has ? '#f0f9f6' : '#f8fafc';
+        btn.style.borderColor = has ? '#d1e7e0' : '#e2e8f0';
+    });
 }
 </script>
 @endif
@@ -2252,6 +2418,7 @@ document.querySelectorAll('.sig-pad-wrap').forEach(function(wrap) {
 
 // ── on page load ──────────────────────────────────────────────────────────────
 if (_savedData) { restoreFormData(_savedData); restoreAllSigs(); updateS3(); }
+if (typeof refreshKpiCommentButtons === 'function') refreshKpiCommentButtons();
 updateS6();
 if (_isAppraiserView) {
     // Lock form body then unlock appraiser sections — keeps header buttons accessible.

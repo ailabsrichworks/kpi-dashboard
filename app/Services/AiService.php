@@ -368,6 +368,51 @@ PROMPT;
 
     /*
     |--------------------------------------------------------------------------
+    | REPHRASE APPRAISER COMMENT (Section 2 "Comment" popup, appraiser side)
+    |--------------------------------------------------------------------------
+    */
+
+    public function rephraseAppraiserComment(
+        string $comment,
+        string $kpiTitle = '',
+        string $quarter = ''
+    ): string {
+        $systemPrompt = 'You are ANIRA, helping a manager rephrase a short note explaining why they gave a '
+            . 'KPI score. Rewrite it so anyone reading it later — the employee, a VP, HR — understands the '
+            . 'reasoning clearly. Keep it factual and specific to what was written: never invent a reason, '
+            . 'number, or detail that was not in the original note. Expand a terse or vague note (e.g. a '
+            . 'single word) into one clear, complete, professional sentence or two. Keep the same tone — '
+            . 'constructive if the original is constructive, direct if it is direct — never add unwarranted '
+            . 'praise or criticism. Respond with the rephrased comment only — no quotes, no headings, no '
+            . 'extra commentary.';
+
+        $context = trim(($kpiTitle ? "KPI: \"$kpiTitle\". " : '') . ($quarter ? "Quarter: $quarter. " : ''));
+
+        $userPrompt = ($context ? "$context\n\n" : '')
+            . "Original comment from the appraiser: \"$comment\"\n\n"
+            . 'Rephrase this so it clearly explains the reasoning behind the score to someone who was not there.';
+
+        $response = $this->request()->post('https://api.openai.com/v1/chat/completions', [
+            'model'                 => $this->model,
+            'max_completion_tokens' => 250,
+            'temperature'           => 0.3,
+            'messages'              => [
+                ['role' => 'system', 'content' => $systemPrompt],
+                ['role' => 'user',   'content' => $userPrompt],
+            ],
+        ]);
+
+        if (!$response->successful()) {
+            throw new \RuntimeException('OpenAI request failed: ' . $response->body());
+        }
+
+        return trim(
+            $response->json('choices.0.message.content', '')
+        );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | SUGGEST QUARTERLY TARGETS
     |--------------------------------------------------------------------------
     */

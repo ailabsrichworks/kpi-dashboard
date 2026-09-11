@@ -1113,7 +1113,7 @@ class PerformanceController extends Controller
         // manager's Section 6B / KPI scores, or another level's Section 7
         // block, even if the client were tampered with.
         $allowedPrefixes = match ($appraiserLevel) {
-            'manager' => ['kpi_app_', 'att_comment_', 'att_count_', 'sup_', 'cv_app_', 'cv_remark_', 's6_', 'sig_appraiser', 's7_manager_'],
+            'manager' => ['kpi_app_', 'kpi_comment_', 'att_comment_', 'att_count_', 'sup_', 'cv_app_', 'cv_remark_', 's6_', 'sig_appraiser', 's7_manager_'],
             'vp'      => ['s7_vp_'],
             'slt'     => ['s7_slt_'],
             default   => [],
