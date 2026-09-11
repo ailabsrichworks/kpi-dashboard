@@ -299,6 +299,14 @@ class AuthController extends Controller
                 'company_name' => $company['name'] ?? $roleAccess['company_code'],
 
                 'company_display_name' => $company['display_name'] ?? ($company['name'] ?? $roleAccess['company_code']),
+                // companies.logo_url wins when set; otherwise falls back to
+                // whichever public/images/{code}-Logo(.png|-black.png) file
+                // actually shows up against this card's light background.
+                'logo_url' => \App\Services\CompanyLogoService::resolve(
+                    $roleAccess['company_code'],
+                    $company['logo_url'] ?? null,
+                    '#F8FAFC'
+                ),
 
                 'manager_code' => $employee['manager_code'] ?? null,
                 'vp_code' => $employee['vp_code'] ?? null,

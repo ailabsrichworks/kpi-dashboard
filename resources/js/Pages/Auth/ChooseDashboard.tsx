@@ -6,6 +6,7 @@ interface DashboardOption {
     company_code: string;
     company_name?: string;
     company_display_name?: string;
+    logo_url?: string | null;
     full_name?: string;
     short_name?: string;
     role: string;
@@ -82,8 +83,16 @@ export default function ChooseDashboard({ dashboards, userName }: ChooseDashboar
                                         className="w-full text-left bg-white rounded-2xl border border-[#E5E7EB] border-t-[3px] border-t-[#C9B896] shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all group"
                                     >
                                         <div className="p-4 flex items-center gap-4">
-                                            <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center shrink-0 overflow-hidden border border-[#E5E7EB]">
-                                                <span className="text-sm font-black text-[#6B5D4F]">{dashboard.company_code.slice(0, 2).toUpperCase()}</span>
+                                            <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center shrink-0 overflow-hidden border border-[#E5E7EB] p-1.5">
+                                                {dashboard.logo_url ? (
+                                                    <img
+                                                        src={dashboard.logo_url}
+                                                        alt={`${dashboard.company_display_name ?? dashboard.company_name ?? dashboard.company_code} logo`}
+                                                        className="w-full h-full object-contain"
+                                                    />
+                                                ) : (
+                                                    <span className="text-sm font-black text-[#6B5D4F]">{dashboard.company_code.slice(0, 2).toUpperCase()}</span>
+                                                )}
                                             </div>
 
                                             <div className="flex-1 min-w-0">

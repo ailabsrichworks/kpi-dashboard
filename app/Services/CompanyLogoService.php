@@ -15,6 +15,22 @@ namespace App\Services;
 class CompanyLogoService
 {
     /**
+     * The database's own `companies.logo_url` (an uploaded/admin-set logo)
+     * wins outright when set — it's an explicit choice, not something to
+     * second-guess against a background colour. Only falls through to the
+     * contrast-matched public/images file when the database has nothing.
+     */
+    public static function resolve(?string $companyCode, ?string $dbLogoUrl, string $backgroundHex): ?string
+    {
+        $dbLogoUrl = trim((string) $dbLogoUrl);
+        if ($dbLogoUrl !== '') {
+            return $dbLogoUrl;
+        }
+
+        return static::forBackground($companyCode, $backgroundHex);
+    }
+
+    /**
      * Absolute URL to the right logo variant for $companyCode against
      * $backgroundHex, or null if no logo file exists for that company at
      * all — callers fall back to their existing letter-initial tile in

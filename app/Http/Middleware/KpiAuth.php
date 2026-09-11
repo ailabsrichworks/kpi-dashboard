@@ -57,24 +57,40 @@ class KpiAuth
         |--------------------------------------------------------------------------
         | APPEARANCE THEME + DISPLAY TITLE (Account Settings)
         |--------------------------------------------------------------------------
-        | Fetched once per session and cached as flat session keys so every page
-        | (via partials/sidebar.blade.php) can read it without its own query.
-        | ProfileController::updateTheme()/updateSalutation() overwrite these same
-        | keys immediately on save, so a change takes effect without needing to
-        | log out/in — but salutation set/cleared any OTHER way (direct DB edit,
-        | admin action) only reaches sessions created before that change once
-        | they refresh here, since login is the only other place it's loaded.
+        | Cached as flat session keys so every page (via partials/sidebar.blade.php)
+        | can read it without its own query. ProfileController::updateTheme()/
+        | updateSalutation() overwrite these same keys immediately on save, so a
+        | change takes effect without needing to log out/in.
+        |
+        | Keyed to the CURRENTLY SELECTED employee_uuid (settings_synced_for),
+        | not a bare "have we ever synced this session" flag — this used to be
+        | settings_synced_v2 => true, which meant switching to a different
+        | company dashboard (AuthController::setDashboardSession(), a different
+        | employees row with its own theme columns) never re-synced at all:
+        | the session just kept whatever theme happened to be cached from
+        | whichever employee row was selected FIRST that session, silently
+        | wrong for every dashboard switched to afterwards. Comparing against
+        | the live employee_uuid instead means a dashboard switch is itself
+        | enough to trigger a fresh sync, with no separate reset needed.
+        |
+        | A failed fetch (Supabase hiccup) deliberately leaves this unset
+        | rather than marking it synced anyway — the old code did the latter,
+        | which meant one transient failure permanently stranded that session
+        | on defaults; leaving it unset means the very next request just
+        | retries instead.
         */
 
-        if (!session()->has('settings_synced_v2')) {
+        $currentEmployeeUuid = session('employee_uuid');
+
+        if (session('settings_synced_for') !== $currentEmployeeUuid) {
             try {
                 $employee = app(SupabaseService::class)->first('employees', [
-                    'id'     => 'eq.' . session('employee_uuid'),
+                    'id'     => 'eq.' . $currentEmployeeUuid,
                     'select' => 'salutation,theme_bg,theme_card,theme_accent,theme_accent2,theme_border,theme_text,theme_sidebar_bg,theme_sidebar_accent,theme_sidebar_text,theme_font_family,theme_font_size',
                 ]);
 
                 session([
-                    'settings_synced_v2'          => true,
+                    'settings_synced_for'  => $currentEmployeeUuid,
                     'salutation'            => $employee['salutation']            ?? null,
                     'theme_bg'              => $employee['theme_bg']              ?? null,
                     'theme_card'            => $employee['theme_card']            ?? null,
@@ -89,8 +105,46 @@ class KpiAuth
                     'theme_font_size'       => $employee['theme_font_size']       ?? null,
                 ]);
             } catch (\Throwable) {
-                session(['settings_synced_v2' => true]);
+                // Don't mark this employee as synced — retry on the next request.
             }
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | COMPANY LOGO (sidebar brand tile)
+        |--------------------------------------------------------------------------
+        | companies.logo_url wins when the database has one set for this
+        | company; CompanyLogoService falls back to a public/images file
+        | otherwise. Cached the same way as the theme sync above and for the
+        | same reason — keyed to the live company_code so switching company
+        | dashboards re-fetches instead of keeping whichever logo happened to
+        | be cached from the first company selected this session.
+        */
+
+        $currentCompanyCode = session('company_code');
+
+        if (session('company_logo_synced_for') !== $currentCompanyCode) {
+            $logoUrl = null;
+            try {
+                $company = app(SupabaseService::class)->first('companies', [
+                    'code'   => 'eq.' . $currentCompanyCode,
+                    'select' => 'logo_url',
+                ]);
+                $logoUrl = $company['logo_url'] ?? null;
+            } catch (\Throwable) {
+                // Unlike the theme sync above, a failure here is marked
+                // synced anyway (with no logo_url) rather than retried —
+                // this column doesn't exist on every deployment yet, and
+                // CompanyLogoService's public/images fallback covers that
+                // case fine on its own, so retrying every request forever
+                // against a column that will never appear would just be
+                // wasted latency, not a real chance at self-healing.
+            }
+
+            session([
+                'company_logo_synced_for' => $currentCompanyCode,
+                'company_logo_url'        => $logoUrl,
+            ]);
         }
 
         return $next($request);

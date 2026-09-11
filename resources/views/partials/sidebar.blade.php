@@ -625,7 +625,7 @@
             // (see the sidebar-bg conditional style block above) — decides
             // which logo variant will actually be visible against it.
             $brandTileBg  = $sidebarBg ?: '#C8102E';
-            $brandLogoUrl = \App\Services\CompanyLogoService::forBackground(session('company_code'), $brandTileBg);
+            $brandLogoUrl = \App\Services\CompanyLogoService::resolve(session('company_code'), session('company_logo_url'), $brandTileBg);
         @endphp
         <div class="sidebar-brand-tile w-10 h-10 rounded-xl bg-[#C8102E] border-2 border-[#D4AF37] flex items-center justify-center shrink-0 overflow-hidden p-1">
             @if($brandLogoUrl)
