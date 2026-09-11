@@ -1360,43 +1360,19 @@
     </div>
 </div>
 
-{{-- Section 2 "Comment" popup — why the appraiser gave that score, with an
-     optional AI rephrase pass so a terse/unclear note reads clearly to
-     anyone who reads it later (the employee, VP/SLT, HR). The actual value
-     lives in a hidden field per row (kpi_comment_{kpi id}) so it saves
-     and restores through the exact same collectFormData()/restoreFormData()
-     path as every other field on this page — no separate persistence. --}}
-<div id="kpiCommentModal" class="no-print" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(15,23,42,.55);align-items:center;justify-content:center;padding:24px;" onclick="if(event.target===this) closeKpiComment()">
-    <div style="background:#fff;border-radius:20px;max-width:480px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(15,23,42,.35);">
-        <div style="position:sticky;top:0;background:#fff;padding:16px 20px 0;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;z-index:1;">
-            <div style="min-width:0;">
-                <p style="font-size:9px;font-weight:900;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin:0 0 4px;">Appraiser Comment</p>
-                <p id="kcmTitle" style="font-size:14px;font-weight:900;color:#1a3d34;line-height:1.35;margin:0 0 6px;"></p>
-                <span id="kcmQuarter" class="q-tag"></span>
-            </div>
-            <button type="button" onclick="closeKpiComment()" style="background:#f1f5f9;border:1px solid #e2e8f0;width:28px;height:28px;border-radius:50%;font-size:14px;color:#64748b;cursor:pointer;flex-shrink:0;">✕</button>
-        </div>
-        <div style="padding:16px 20px 22px;">
-            <p style="font-size:10px;color:#94a3b8;margin:0 0 8px;line-height:1.5;">Why did you give this score? A clear comment helps the employee — and anyone reviewing later — understand the reasoning.</p>
-            <textarea id="kcmText" rows="5" maxlength="2000" placeholder="e.g. Actual came in below target this quarter because of the payment platform migration; scored a 3 since the team still made visible progress." style="width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;font-size:12px;font-family:inherit;color:#1e293b;resize:vertical;box-sizing:border-box;"></textarea>
-            <div id="kcmAiBox" style="display:none;margin-top:10px;background:#f0f9f6;border:1px solid #d1e7e0;border-radius:12px;padding:10px 12px;">
-                <p style="font-size:9px;font-weight:900;color:#4a7c6b;text-transform:uppercase;letter-spacing:.06em;margin:0 0 6px;">✨ ANIRA suggested rephrase</p>
-                <p id="kcmAiText" style="font-size:11px;color:#1a3d34;line-height:1.6;margin:0 0 8px;white-space:pre-wrap;"></p>
-                <div style="display:flex;gap:8px;">
-                    <button type="button" onclick="acceptKcmRephrase()" style="font-size:9px;font-weight:800;color:#fff;background:#4a7c6b;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;">Use this</button>
-                    <button type="button" onclick="dismissKcmRephrase()" style="font-size:9px;font-weight:800;color:#64748b;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;cursor:pointer;">Dismiss</button>
-                </div>
-            </div>
-            <p id="kcmError" style="display:none;font-size:10px;color:#dc2626;margin:8px 0 0;"></p>
-            <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center;">
-                <button type="button" id="kcmRephraseBtn" onclick="rephraseKpiComment()" style="display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;color:#4a7c6b;background:#f0f9f6;border:1px solid #d1e7e0;border-radius:10px;padding:8px 12px;cursor:pointer;">✨ Rephrase with AI</button>
-                <div style="flex:1;"></div>
-                <button type="button" id="kcmCancelBtn" onclick="closeKpiComment()" style="font-size:10px;font-weight:800;color:#64748b;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:10px;padding:8px 14px;cursor:pointer;">Close</button>
-                <button type="button" id="kcmSaveBtn" onclick="saveKpiComment()" style="font-size:10px;font-weight:800;color:#fff;background:#1a3d34;border:none;border-radius:10px;padding:8px 14px;cursor:pointer;">Save</button>
-            </div>
-        </div>
-    </div>
-</div>
+{{-- Section 2 "Comment" -- why the appraiser gave that score. Deliberately
+     NOT a custom modal: an earlier version used one and it silently failed
+     to open for at least one real user on a real device, with no JS error
+     ever surfacing (even with a try/catch + alert() wrapped around it) --
+     meaning the custom modal/DOM-lookup approach itself is untrustworthy on
+     whatever that environment is, not just one bug inside it. window.prompt/
+     confirm/alert are plain browser primitives with no custom CSS, no
+     DOM traversal, and no display-toggling to get wrong -- if THESE don't
+     show up, the button's click handler itself isn't firing at all, which
+     is a completely different (and much narrower) problem to chase next.
+     The actual value still lives in a hidden field per row
+     (kpi_comment_{kpi id}), so it still saves/restores through the exact
+     same collectFormData()/restoreFormData() path as every other field. --}}
 
 <script>
 var _aniraScoreCache = {};
@@ -1574,88 +1550,56 @@ function renderAniraScore(data) {
     }
 }
 
-// ── Section 2 "Comment" popup ──────────────────────────────────────────────
-var _kcmKpiId = null;
-var _kcmHiddenEl = null;
-var _kcmBtnEl = null;
+// ── Section 2 "Comment" ─────────────────────────────────────────────────────
+// Uses plain window.prompt/confirm/alert on purpose -- see the HTML comment
+// above where the old custom modal used to be for why.
+function applyKpiComment(hidden, btn, text) {
+    if (hidden) hidden.value = text;
+    var label = btn.querySelector('.kpi-comment-label');
+    if (label) label.textContent = text ? 'Edit' : 'Add';
+    btn.style.color = text ? '#4a7c6b' : '#94a3b8';
+    btn.style.background = text ? '#f0f9f6' : '#f8fafc';
+    btn.style.borderColor = text ? '#d1e7e0' : '#e2e8f0';
+}
 
 function openKpiComment(btn) {
-  try {
-    _kcmKpiId = btn.dataset.kpiId;
-    _kcmBtnEl = btn;
-    _kcmHiddenEl = document.querySelector('[name="kpi_comment_' + _kcmKpiId + '"]');
+    try {
+        var kpiId = btn.dataset.kpiId;
+        var hidden = document.querySelector('[name="kpi_comment_' + kpiId + '"]');
+        var current = (hidden && hidden.value) || '';
 
-    var modal = document.getElementById('kpiCommentModal');
-    if (!modal) { alert('Comment popup is missing from the page (kpiCommentModal not found). Please tell support.'); return; }
+        // Only the manager appraiser may write/rephrase a comment -- everyone
+        // else in the appraiser chain (VP/SLT) can open this to read why the
+        // score was given, same as they can already see the score itself.
+        var editable = (typeof _appraiserLevel !== 'undefined') && _appraiserLevel === 'manager';
 
-    document.getElementById('kcmTitle').textContent = btn.dataset.kpiTitle || '';
-    document.getElementById('kcmQuarter').textContent = btn.dataset.quarter || '';
-
-    var textEl = document.getElementById('kcmText');
-    textEl.value = (_kcmHiddenEl && _kcmHiddenEl.value) || '';
-
-    // Only the manager appraiser may write/rephrase a comment -- everyone
-    // else in the appraiser chain (VP/SLT) can open this to read why the
-    // score was given, same as they can already see the score itself.
-    var editable = (typeof _appraiserLevel !== 'undefined') && _appraiserLevel === 'manager';
-    textEl.readOnly = !editable;
-    textEl.style.background = editable ? '' : '#f8fafc';
-    document.getElementById('kcmRephraseBtn').style.display = editable ? '' : 'none';
-    document.getElementById('kcmSaveBtn').style.display = editable ? '' : 'none';
-
-    document.getElementById('kcmAiBox').style.display = 'none';
-    document.getElementById('kcmError').style.display = 'none';
-
-    modal.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
-  } catch (err) {
-    // Temporary diagnostic -- remove once the "Comment button does nothing"
-    // report is root-caused. Surfaces whatever actually failed instead of
-    // failing silently (an uncaught error in an onclick handler otherwise
-    // only shows up in a console nobody's looking at).
-    console.error('openKpiComment failed:', err);
-    alert('Comment button error: ' + (err && err.message ? err.message : err));
-  }
-}
-
-function closeKpiComment() {
-    document.getElementById('kpiCommentModal').style.display = 'none';
-    document.body.style.overflow = '';
-}
-
-function saveKpiComment() {
-    if (_kcmHiddenEl) {
-        _kcmHiddenEl.value = document.getElementById('kcmText').value.trim();
-        // Keep the row button's label honest about whether a comment exists,
-        // so nobody has to open every row to find the ones already filled in.
-        if (_kcmBtnEl) {
-            var label = _kcmBtnEl.querySelector('.kpi-comment-label');
-            if (label) label.textContent = _kcmHiddenEl.value ? 'Edit' : 'Add';
-            _kcmBtnEl.style.color = _kcmHiddenEl.value ? '#4a7c6b' : '#94a3b8';
-            _kcmBtnEl.style.background = _kcmHiddenEl.value ? '#f0f9f6' : '#f8fafc';
-            _kcmBtnEl.style.borderColor = _kcmHiddenEl.value ? '#d1e7e0' : '#e2e8f0';
+        if (!editable) {
+            alert(current ? ('Appraiser comment for "' + (btn.dataset.kpiTitle || '') + '":\n\n' + current)
+                           : 'No comment has been added for "' + (btn.dataset.kpiTitle || '') + '" yet.');
+            return;
         }
+
+        var text = prompt(
+            'Why did you give this score for "' + (btn.dataset.kpiTitle || '') + '" (' + (btn.dataset.quarter || '') + ')?\n\n'
+            + 'This helps the employee, and anyone reviewing later, understand the reasoning.',
+            current
+        );
+        if (text === null) return; // cancelled -- leave unchanged
+        text = text.trim();
+
+        if (text && confirm('Ask ANIRA to rephrase this comment for clarity before saving?')) {
+            rephraseKpiComment(text, btn, hidden);
+            return;
+        }
+
+        applyKpiComment(hidden, btn, text);
+    } catch (err) {
+        console.error('openKpiComment failed:', err);
+        alert('Comment error: ' + (err && err.message ? err.message : err));
     }
-    closeKpiComment();
 }
 
-function rephraseKpiComment() {
-    var textEl = document.getElementById('kcmText');
-    var comment = textEl.value.trim();
-    var errEl = document.getElementById('kcmError');
-    errEl.style.display = 'none';
-
-    if (!comment) {
-        errEl.textContent = 'Write a comment first, then rephrase it.';
-        errEl.style.display = 'block';
-        return;
-    }
-
-    var btn = document.getElementById('kcmRephraseBtn');
-    var originalLabel = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = '✨ Rephrasing…';
-
+function rephraseKpiComment(text, btn, hidden) {
     fetch('{{ route('ai.rephrase-comment') }}', {
         method: 'POST',
         headers: {
@@ -1664,35 +1608,23 @@ function rephraseKpiComment() {
             'Accept': 'application/json',
         },
         body: JSON.stringify({
-            comment:   comment,
-            kpi_title: document.getElementById('kcmTitle').textContent,
-            quarter:   document.getElementById('kcmQuarter').textContent,
+            comment:   text,
+            kpi_title: btn.dataset.kpiTitle || '',
+            quarter:   btn.dataset.quarter   || '',
         }),
     })
         .then(function (res) { return res.json(); })
         .then(function (data) {
             if (!data.success) throw new Error(data.message || 'Failed');
-            document.getElementById('kcmAiText').textContent = data.rephrased || '';
-            document.getElementById('kcmAiBox').style.display = 'block';
+            var finalText = prompt('ANIRA suggested rephrase -- edit if you like, then OK to save:', data.rephrased || text);
+            if (finalText === null) { applyKpiComment(hidden, btn, text); return; } // kept the original
+            applyKpiComment(hidden, btn, finalText.trim());
         })
         .catch(function (err) {
             console.error('rephraseKpiComment failed:', err);
-            errEl.textContent = "Couldn't rephrase right now. Try again.";
-            errEl.style.display = 'block';
-        })
-        .finally(function () {
-            btn.disabled = false;
-            btn.textContent = originalLabel;
+            alert("Couldn't rephrase right now -- your comment was saved as written.");
+            applyKpiComment(hidden, btn, text);
         });
-}
-
-function acceptKcmRephrase() {
-    document.getElementById('kcmText').value = document.getElementById('kcmAiText').textContent;
-    document.getElementById('kcmAiBox').style.display = 'none';
-}
-
-function dismissKcmRephrase() {
-    document.getElementById('kcmAiBox').style.display = 'none';
 }
 
 // Reflect any comments already saved (restored via restoreFormData) onto
@@ -1700,12 +1632,7 @@ function dismissKcmRephrase() {
 function refreshKpiCommentButtons() {
     document.querySelectorAll('.kpi-comment-btn').forEach(function (btn) {
         var hidden = document.querySelector('[name="kpi_comment_' + btn.dataset.kpiId + '"]');
-        var has = !!(hidden && hidden.value);
-        var label = btn.querySelector('.kpi-comment-label');
-        if (label) label.textContent = has ? 'Edit' : 'Add';
-        btn.style.color = has ? '#4a7c6b' : '#94a3b8';
-        btn.style.background = has ? '#f0f9f6' : '#f8fafc';
-        btn.style.borderColor = has ? '#d1e7e0' : '#e2e8f0';
+        applyKpiComment(hidden, btn, (hidden && hidden.value) || '');
     });
 }
 </script>
