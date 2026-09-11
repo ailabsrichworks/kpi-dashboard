@@ -983,6 +983,11 @@ class PerformanceController extends Controller
         // there's no dedicated column per level.
         $myLevelLocked = !empty($savedData["_{$appraiserLevel}_locked"]);
 
+        // SLT can't touch Part C at all until VP has signed Part B — only
+        // meaningful for a chain with a genuine VP tier; a chain that skips
+        // Part B entirely has no VP to wait for (see resolveSection7Chain()).
+        $section7SltLocked = in_array('vp', $section7Levels, true) && empty($savedData['s7_vp_sig'] ?? null);
+
         return view('performance.report', [
             'user'                 => $user,
             'currentUserName'      => $user['full_name'] ?? $user['short_name'] ?? 'User',
@@ -1014,6 +1019,7 @@ class PerformanceController extends Controller
             'appraiserSaveUrl'     => route('performance.appraise.save', [$employeeId, $q]),
             'myLevelLocked'        => $myLevelLocked,
             'section7Levels'       => $section7Levels,
+            'section7SltLocked'    => $section7SltLocked,
         ]);
     }
 
@@ -1114,6 +1120,24 @@ class PerformanceController extends Controller
         $lockKey = "_{$appraiserLevel}_locked";
         if (!empty($existingData[$lockKey])) {
             return response()->json(['error' => 'Your section has already been submitted and is locked.'], 403);
+        }
+
+        // SLT can't touch their own Part C at all — not the remarks box, not
+        // the checkboxes, not the signature — until VP has actually signed
+        // Part B, for any chain where a genuine VP tier exists (see
+        // resolveSection7Chain()). A chain that skips Part B entirely has no
+        // VP to wait for, so this simply doesn't apply there.
+        if ($appraiserLevel === 'slt') {
+            $section7Chain = $delegations->resolveSection7Chain(
+                $employees[0],
+                fn($id) => $supabase->first('employees', ['id' => 'eq.' . $id, 'select' => '*'])
+            );
+            $hasGenuineVp = in_array('vp', array_column($section7Chain, 'level'), true);
+            if ($hasGenuineVp && empty($existingData['s7_vp_sig'])) {
+                return response()->json([
+                    'error' => "You can't add your Section 7 remarks yet — VP hasn't signed their part.",
+                ], 403);
+            }
         }
 
         // Each appraiser level may only write its own portion of the form —
@@ -1219,47 +1243,40 @@ class PerformanceController extends Controller
                 $q,
                 $this->currentFinancialYear
             );
-        }
 
-        // Section 7 escalation: ticking Confirmation / Salary Review / Promotion
-        // is what actually requires the NEXT level's attention — signing without
-        // ticking anything completes this level's own part, nothing further
-        // needed, no notice sent. Applies at every level (manager, VP, SLT), so
-        // a VP's own tick is what puts SLT on notice, not the manager's.
-        //
-        // "Next level" is resolved from this employee's real Section 7 chain,
-        // which skips Part B entirely for anyone whose chain has no genuine VP
-        // tier between them and SLT — see resolveSection7Chain(). So a manager
-        // whose Part A appraiser is already a VP escalates straight to SLT.
-        if ($action === 'submit') {
-            $ticked = !empty($newData["s7_{$appraiserLevel}_confirmation"])
-                || !empty($newData["s7_{$appraiserLevel}_salary_review"])
-                || !empty($newData["s7_{$appraiserLevel}_promotion"]);
+            // Section 7 escalation: ticking Confirmation / Salary Review /
+            // Promotion is what actually requires VP's and SLT's attention —
+            // signing without ticking anything completes the manager's own
+            // part, nothing further needed, no notice sent to either of them.
+            // Both are notified together, from this one tick — SLT just can't
+            // actually act on it (see the access gate earlier in this method)
+            // until VP has signed Part B.
+            //
+            // Recipients are resolved from this employee's real Section 7
+            // chain, which skips Part B entirely for anyone whose chain has
+            // no genuine VP tier between them and SLT — see
+            // resolveSection7Chain(). So a manager whose own Part A appraiser
+            // is already a VP escalates straight to SLT alone.
+            $ticked = !empty($newData['s7_manager_confirmation'])
+                || !empty($newData['s7_manager_salary_review'])
+                || !empty($newData['s7_manager_promotion']);
 
             if ($ticked) {
                 $section7Chain = $delegations->resolveSection7Chain(
                     $employees[0],
                     fn($id) => $supabase->first('employees', ['id' => 'eq.' . $id, 'select' => '*'])
                 );
+                $recipients = array_column(array_slice($section7Chain, 1), 'id');
 
-                $next = null;
-                foreach ($section7Chain as $i => $hop) {
-                    if ($hop['level'] === $appraiserLevel) {
-                        $next = $section7Chain[$i + 1] ?? null;
-                        break;
-                    }
-                }
-
-                if ($next) {
+                if (!empty($recipients)) {
                     $appraiseeName = $employees[0]['full_name'] ?? $employees[0]['short_name'] ?? 'An employee';
-                    $partLabel     = $next['level'] === 'vp' ? 'VP' : 'SLT';
 
                     $notifications->notify(
-                        [$next['id']],
+                        $recipients,
                         'appraisal_appraised',
                         ['id' => $employeeId, 'name' => $appraiseeName],
                         "{$appraiseeName}'s {$q} appraisal needs your Section 7 remarks",
-                        "Flagged for {$partLabel} review — please add your remarks and sign Section 7.",
+                        "{$appraiserName} flagged this for further review — please add your remarks and sign Section 7.",
                         route('performance.appraise.report', [$employeeId, strtolower($q)]),
                         $q,
                         $this->currentFinancialYear

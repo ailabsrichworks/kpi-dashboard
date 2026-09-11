@@ -1258,8 +1258,15 @@
                 @continue(!in_array($blk['key'], $section7Levels ?? ['manager','vp','slt']))
                 @if($sec7Rendered>0)<div class="border-t border-dashed border-[#6B9080]/20 pt-7"></div>@endif
                 @php $sec7Rendered++; @endphp
-                <div id="sec7_{{ $blk['key'] }}">
+                @php $sec7SltGateLocked = $blk['key'] === 'slt' && ($section7SltLocked ?? false); @endphp
+                <div id="sec7_{{ $blk['key'] }}" @if($sec7SltGateLocked) data-gate-locked="1" @endif>
                     <div class="part-label">{{ $blk['label'] }} &nbsp;·&nbsp; {{ $blk['title'] }}</div>
+                    @if($sec7SltGateLocked)
+                    <div class="no-print" style="display:flex;align-items:center;gap:8px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:10px;padding:8px 14px;margin-bottom:12px;">
+                        <span style="font-size:13px;line-height:1;">⏳</span>
+                        <p style="font-size:11px;color:#64748b;">Waiting for VP to sign Part B — you'll be able to add your remarks and sign once that's done.</p>
+                    </div>
+                    @endif
                     <textarea name="s7_{{ $blk['key'] }}_remarks" rows="4" placeholder="—" class="f-area mb-5" readonly style="pointer-events:none;opacity:0.55;background:#f8fafc;cursor:not-allowed;resize:none;"></textarea>
                     <div class="flex items-end justify-between gap-6 flex-wrap">
                         <div class="flex items-center gap-6">
@@ -2306,6 +2313,11 @@ function unlockAppraiserSections() {
     sectionIds.forEach(function(id) {
         var el = document.getElementById(id);
         if (!el) return;
+        // SLT's Part C stays locked — box, checkboxes, and signature — until
+        // VP has actually signed Part B (see the server-side gate in
+        // appraiserSave()); the "waiting for VP" banner is the only thing
+        // this section shows until then.
+        if (id === 'sec7_slt' && el.dataset.gateLocked === '1') return;
         el.style.pointerEvents = 'auto';
         el.style.opacity = '1';
         el.querySelectorAll('input:not([type="file"]):not([type="hidden"]), textarea, select').forEach(function(inp) {
