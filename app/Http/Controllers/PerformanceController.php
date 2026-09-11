@@ -575,6 +575,13 @@ class PerformanceController extends Controller
             ], 422);
         }
 
+        // Stamp the actual signing date server-side, authoritative over whatever
+        // the client's local clock sent — this is the moment acknowledgment
+        // actually locks in, so it's the one point we can be sure "signed" means.
+        if ($action === 'acknowledge' && !empty($newData['sig_appraisee'])) {
+            $newData['sig_appraisee_date'] = now()->timezone('Asia/Kuala_Lumpur')->format('j F Y');
+        }
+
         $supabase->upsert('performance_reports', [
             'employee_id'    => session('employee_uuid'),
             'company_code'   => session('company_code'),
@@ -1168,6 +1175,13 @@ class PerformanceController extends Controller
         }
 
         $newData = $mergedData;
+
+        // Stamp the actual signing date server-side, authoritative over whatever
+        // the client's local clock sent — this is what finally locks the manager's
+        // signature in, so it's the one moment we can be sure "signed" really means.
+        if ($action === 'submit' && $appraiserLevel === 'manager' && !empty($newData['sig_appraiser'])) {
+            $newData['sig_appraiser_date'] = now()->timezone('Asia/Kuala_Lumpur')->format('j F Y');
+        }
 
         // Only the manager's explicit submit ("Mark as Appraised") advances the
         // overall status — everything else (a draft save, or a VP/SLT submitting

@@ -1173,7 +1173,15 @@
                             </div>
                             <p class="text-xs font-bold text-slate-700 text-center mt-2">{{ $reportsToName !== '-' ? $reportsToName : '_______________' }}</p>
                             <p class="f-label text-center mt-1">Signature of Appraiser – Manager / VP</p>
-                            <p class="text-[9px] text-slate-400 text-center mt-2">Date: <span id="sigDate_sig_appraiser">_______________</span></p>
+                            @php
+                                // Signed before this date-stamp existed at all — approximate
+                                // with when the record was last touched rather than show nothing.
+                                $sigAppraiserDate = $savedData['sig_appraiser_date']
+                                    ?? (!empty($savedData['sig_appraiser']) && $submittedAt
+                                        ? \Carbon\Carbon::parse($submittedAt)->timezone('Asia/Kuala_Lumpur')->format('j F Y')
+                                        : null);
+                            @endphp
+                            <p class="text-[9px] text-slate-400 text-center mt-2">Date: <span id="sigDate_sig_appraiser">{{ $sigAppraiserDate ?? '_______________' }}</span></p>
                         </div>
                     </div>
                 </div>
@@ -1211,7 +1219,13 @@
                             </div>
                             <p class="text-xs font-bold text-slate-700 text-center mt-2">{{ $currentUserName }}</p>
                             <p class="f-label text-center mt-1">Signature of Appraisee</p>
-                            <p class="text-[9px] text-slate-400 text-center mt-2">Date: <span id="sigDate_sig_appraisee">_______________</span></p>
+                            @php
+                                $sigAppraiseeDate = $savedData['sig_appraisee_date']
+                                    ?? (!empty($savedData['sig_appraisee']) && $submittedAt
+                                        ? \Carbon\Carbon::parse($submittedAt)->timezone('Asia/Kuala_Lumpur')->format('j F Y')
+                                        : null);
+                            @endphp
+                            <p class="text-[9px] text-slate-400 text-center mt-2">Date: <span id="sigDate_sig_appraisee">{{ $sigAppraiseeDate ?? '_______________' }}</span></p>
                         </div>
                     </div>
                     @if($ackUnlocked)
