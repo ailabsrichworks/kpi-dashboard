@@ -721,6 +721,7 @@
                         : 0;
 
                     $qDetail = [
+                        'kpi_id'   => $kpi['id'],
                         'title'    => $kpi['kpi_title'] ?? '',
                         'weight'   => $kpi['weightage'] ?? null,
                         'quarter'  => $qLabel,
@@ -758,7 +759,7 @@
                     </td>
                     <td class="text-center no-print">
                         <input type="hidden" name="kpi_comment_{{ $kpi['id'] }}" class="kpi-comment-hidden">
-                        <button type="button" class="kpi-comment-btn" data-kpi-id="{{ $kpi['id'] }}" data-kpi-title="{{ $kpi['kpi_title'] ?? '' }}" data-quarter="{{ $qLabel }}" onclick="openKpiComment(this)" style="display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:800;color:#94a3b8;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px;cursor:pointer;">💬 <span class="kpi-comment-label">Add</span></button>
+                        <button type="button" class="kpi-comment-btn" data-kpi-id="{{ $kpi['id'] }}" data-detail="{{ json_encode($qDetail, JSON_UNESCAPED_UNICODE) }}" onclick="openQuarterDetail(this)" style="display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:800;color:#94a3b8;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px;cursor:pointer;">💬 <span class="kpi-comment-label">Add</span></button>
                     </td>
                     @endif
                 </tr>
@@ -1349,6 +1350,23 @@
                 <p style="font-size:9px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin:0 0 6px;">Attachment / Proof</p>
                 <div id="qdFiles" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
             </div>
+            <div id="qdCommentSection" style="margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0;">
+                <p style="font-size:9px;font-weight:800;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin:0 0 6px;">Appraiser Comment</p>
+                <p id="qdCommentReadonly" style="display:none;font-size:11px;color:#334155;line-height:1.6;margin:0;"></p>
+                <textarea id="qdCommentText" rows="3" maxlength="2000" placeholder="Why did you give this score?" style="display:none;width:100%;border:1px solid #e2e8f0;border-radius:12px;padding:10px 12px;font-size:12px;font-family:inherit;color:#1e293b;resize:vertical;box-sizing:border-box;"></textarea>
+                <div id="qdCommentAiBox" style="display:none;margin-top:8px;background:#f0f9f6;border:1px solid #d1e7e0;border-radius:12px;padding:10px 12px;">
+                    <p style="font-size:9px;font-weight:900;color:#4a7c6b;text-transform:uppercase;letter-spacing:.06em;margin:0 0 6px;">✨ ANIRA suggested rephrase</p>
+                    <p id="qdCommentAiText" style="font-size:11px;color:#1a3d34;line-height:1.6;margin:0 0 8px;white-space:pre-wrap;"></p>
+                    <div style="display:flex;gap:8px;">
+                        <button type="button" onclick="acceptQdCommentRephrase()" style="font-size:9px;font-weight:800;color:#fff;background:#4a7c6b;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;">Use this</button>
+                        <button type="button" onclick="dismissQdCommentRephrase()" style="font-size:9px;font-weight:800;color:#64748b;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;cursor:pointer;">Dismiss</button>
+                    </div>
+                </div>
+                <div id="qdCommentActions" style="display:none;margin-top:8px;gap:8px;">
+                    <button type="button" id="qdCommentRephraseBtn" onclick="rephraseQdComment()" style="display:inline-flex;align-items:center;gap:6px;font-size:9px;font-weight:800;color:#4a7c6b;background:#f0f9f6;border:1px solid #d1e7e0;border-radius:8px;padding:6px 10px;cursor:pointer;">✨ Rephrase with AI</button>
+                    <button type="button" onclick="saveQdComment()" style="font-size:9px;font-weight:800;color:#fff;background:#1a3d34;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;">Save Comment</button>
+                </div>
+            </div>
             <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0;">
                 <button type="button" id="qdAniraToggle" onclick="toggleAniraScore()" style="display:flex;align-items:center;justify-content:space-between;width:100%;background:none;border:none;padding:0;cursor:pointer;">
                     <span style="font-size:10px;font-weight:900;color:#1a3d34;text-transform:uppercase;letter-spacing:.06em;">🤖 ANIRA Score</span>
@@ -1422,6 +1440,27 @@ function openQuarterDetail(btn) {
 
     document.getElementById('qdRemark').textContent = (detail.remark && detail.remark.trim() !== '') ? detail.remark : 'NONE';
 
+    // Appraiser Comment -- lives in the same per-KPI hidden field the
+    // Section 2 row's own Comment button reads/writes, so whichever one
+    // was used last is always what's shown here.
+    var qdHidden = detail.kpi_id ? document.querySelector('[name="kpi_comment_' + detail.kpi_id + '"]') : null;
+    var qdCommentVal = (qdHidden && qdHidden.value) || '';
+    var qdEditable = (typeof _appraiserLevel !== 'undefined') && _appraiserLevel === 'manager';
+    document.getElementById('qdCommentAiBox').style.display = 'none';
+    if (qdEditable) {
+        document.getElementById('qdCommentReadonly').style.display = 'none';
+        var qdText = document.getElementById('qdCommentText');
+        qdText.style.display = 'block';
+        qdText.value = qdCommentVal;
+        document.getElementById('qdCommentActions').style.display = 'flex';
+    } else {
+        document.getElementById('qdCommentText').style.display = 'none';
+        document.getElementById('qdCommentActions').style.display = 'none';
+        var qdRo = document.getElementById('qdCommentReadonly');
+        qdRo.style.display = 'block';
+        qdRo.textContent = qdCommentVal || 'No comment added yet.';
+    }
+
     var filesWrap = document.getElementById('qdFiles');
     filesWrap.innerHTML = '';
     if (detail.files && detail.files.length) {
@@ -1454,6 +1493,71 @@ function openQuarterDetail(btn) {
 function closeQuarterDetail() {
     document.getElementById('quarterDetailModal').style.display = 'none';
     document.body.style.overflow = '';
+}
+
+function saveQdComment() {
+    var detail = window._currentQuarterDetail;
+    if (!detail || !detail.kpi_id) return;
+    var hidden = document.querySelector('[name="kpi_comment_' + detail.kpi_id + '"]');
+    var text = document.getElementById('qdCommentText').value.trim();
+    if (hidden) hidden.value = text;
+
+    // Keep the row's own Comment button label/color in sync, so nobody has
+    // to reopen this popup to see which rows already have a comment.
+    var rowBtn = document.querySelector('.kpi-comment-btn[data-kpi-id="' + detail.kpi_id + '"]');
+    if (rowBtn && typeof applyKpiComment === 'function') applyKpiComment(hidden, rowBtn, text);
+
+    if (typeof showToast === 'function') showToast('Comment saved.', true);
+}
+
+function rephraseQdComment() {
+    var text = document.getElementById('qdCommentText').value.trim();
+    if (!text) {
+        if (typeof showToast === 'function') showToast('Write a comment first, then rephrase it.', false);
+        return;
+    }
+
+    var btn = document.getElementById('qdCommentRephraseBtn');
+    var originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '✨ Rephrasing…';
+
+    fetch('{{ route('ai.rephrase-comment') }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+            comment:   text,
+            kpi_title: document.getElementById('qdTitle').textContent,
+            quarter:   document.getElementById('qdQuarter').textContent,
+        }),
+    })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            if (!data.success) throw new Error(data.message || 'Failed');
+            document.getElementById('qdCommentAiText').textContent = data.rephrased || '';
+            document.getElementById('qdCommentAiBox').style.display = 'block';
+        })
+        .catch(function (err) {
+            console.error('rephraseQdComment failed:', err);
+            if (typeof showToast === 'function') showToast("Couldn't rephrase right now. Try again.", false);
+        })
+        .finally(function () {
+            btn.disabled = false;
+            btn.textContent = originalLabel;
+        });
+}
+
+function acceptQdCommentRephrase() {
+    document.getElementById('qdCommentText').value = document.getElementById('qdCommentAiText').textContent;
+    document.getElementById('qdCommentAiBox').style.display = 'none';
+}
+
+function dismissQdCommentRephrase() {
+    document.getElementById('qdCommentAiBox').style.display = 'none';
 }
 
 function toggleAniraScore() {
@@ -1560,71 +1664,6 @@ function applyKpiComment(hidden, btn, text) {
     btn.style.color = text ? '#4a7c6b' : '#94a3b8';
     btn.style.background = text ? '#f0f9f6' : '#f8fafc';
     btn.style.borderColor = text ? '#d1e7e0' : '#e2e8f0';
-}
-
-function openKpiComment(btn) {
-    try {
-        var kpiId = btn.dataset.kpiId;
-        var hidden = document.querySelector('[name="kpi_comment_' + kpiId + '"]');
-        var current = (hidden && hidden.value) || '';
-
-        // Only the manager appraiser may write/rephrase a comment -- everyone
-        // else in the appraiser chain (VP/SLT) can open this to read why the
-        // score was given, same as they can already see the score itself.
-        var editable = (typeof _appraiserLevel !== 'undefined') && _appraiserLevel === 'manager';
-
-        if (!editable) {
-            alert(current ? ('Appraiser comment for "' + (btn.dataset.kpiTitle || '') + '":\n\n' + current)
-                           : 'No comment has been added for "' + (btn.dataset.kpiTitle || '') + '" yet.');
-            return;
-        }
-
-        var text = prompt(
-            'Why did you give this score for "' + (btn.dataset.kpiTitle || '') + '" (' + (btn.dataset.quarter || '') + ')?\n\n'
-            + 'This helps the employee, and anyone reviewing later, understand the reasoning.',
-            current
-        );
-        if (text === null) return; // cancelled -- leave unchanged
-        text = text.trim();
-
-        if (text && confirm('Ask ANIRA to rephrase this comment for clarity before saving?')) {
-            rephraseKpiComment(text, btn, hidden);
-            return;
-        }
-
-        applyKpiComment(hidden, btn, text);
-    } catch (err) {
-        console.error('openKpiComment failed:', err);
-        alert('Comment error: ' + (err && err.message ? err.message : err));
-    }
-}
-
-function rephraseKpiComment(text, btn, hidden) {
-    fetch('{{ route('ai.rephrase-comment') }}', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': _csrfToken,
-            'Accept': 'application/json',
-        },
-        body: JSON.stringify({
-            comment:   text,
-            kpi_title: btn.dataset.kpiTitle || '',
-            quarter:   btn.dataset.quarter   || '',
-        }),
-    })
-        .then(function (res) { return res.json(); })
-        .then(function (data) {
-            if (!data.success) throw new Error(data.message || 'Failed');
-            var finalText = prompt('ANIRA suggested rephrase -- edit if you like, then OK to save:', data.rephrased || text);
-            if (finalText === null) { applyKpiComment(hidden, btn, text); return; } // kept the original
-            applyKpiComment(hidden, btn, finalText.trim());
-        })
-        .catch(function (err) {
-            console.error('rephraseKpiComment failed:', err);
-            alert("Couldn't rephrase right now -- your comment was saved as written.");
-            applyKpiComment(hidden, btn, text);
-        });
 }
 
 // Reflect any comments already saved (restored via restoreFormData) onto
