@@ -1178,7 +1178,7 @@
                                 // with when the record was last touched rather than show nothing.
                                 $sigAppraiserDate = $savedData['sig_appraiser_date']
                                     ?? (!empty($savedData['sig_appraiser']) && $submittedAt
-                                        ? \Carbon\Carbon::parse($submittedAt)->timezone('Asia/Kuala_Lumpur')->format('j F Y')
+                                        ? \Carbon\Carbon::parse($submittedAt)->timezone('Asia/Kuala_Lumpur')->format('d F Y')
                                         : null);
                             @endphp
                             <p class="text-[9px] text-slate-400 text-center mt-2">Date: <span id="sigDate_sig_appraiser">{{ $sigAppraiserDate ?? '_______________' }}</span></p>
@@ -1222,7 +1222,7 @@
                             @php
                                 $sigAppraiseeDate = $savedData['sig_appraisee_date']
                                     ?? (!empty($savedData['sig_appraisee']) && $submittedAt
-                                        ? \Carbon\Carbon::parse($submittedAt)->timezone('Asia/Kuala_Lumpur')->format('j F Y')
+                                        ? \Carbon\Carbon::parse($submittedAt)->timezone('Asia/Kuala_Lumpur')->format('d F Y')
                                         : null);
                             @endphp
                             <p class="text-[9px] text-slate-400 text-center mt-2">Date: <span id="sigDate_sig_appraisee">{{ $sigAppraiseeDate ?? '_______________' }}</span></p>
@@ -1242,13 +1242,22 @@
 
         {{-- ═══════════════════════════════════════════════════════
              SECTION 7 — RECOMMENDATIONS & DECISIONS
+             Appraiser-only — never rendered for the appraisee's own view.
         ═══════════════════════════════════════════════════════ --}}
+        @if($isAppraiserView ?? false)
         <div id="sec7" class="border border-[#6B9080]/25 rounded-xl overflow-hidden mb-2 print-sec">
             <div class="sec-bar"><div class="sec-num">7</div><span class="sec-title">Recommendations &amp; Decisions</span><span style="margin-left:auto;font-size:10px;font-weight:700;color:rgba(255,255,255,.55);letter-spacing:.08em;">🔒 APPRAISER ONLY</span></div>
             <div class="px-6 py-6 space-y-7">
+                <div class="no-print" style="display:flex;align-items:flex-start;gap:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 14px;">
+                    <span style="font-size:14px;line-height:1;">❗</span>
+                    <p style="font-size:11px;color:#92400e;line-height:1.5;">Ticking <strong>Confirmation</strong>, <strong>Salary Review</strong> and/or <strong>Promotion</strong> is what sends this to the next level for review — signing without ticking any box completes your part here and nothing further is required from VP/SLT.</p>
+                </div>
                 @php $sec7=[['key'=>'manager','label'=>'A','title'=>'Promotability and Other Remarks and Recommendations by the Appraiser (Manager)'],['key'=>'vp','label'=>'B','title'=>'Remarks and/or Recommendations by VP'],['key'=>'slt','label'=>'C','title'=>'Remarks by SLT']]; @endphp
-                @foreach($sec7 as $idx => $blk)
-                @if($idx>0)<div class="border-t border-dashed border-[#6B9080]/20 pt-7"></div>@endif
+                @php $sec7Rendered=0; @endphp
+                @foreach($sec7 as $blk)
+                @continue(!in_array($blk['key'], $section7Levels ?? ['manager','vp','slt']))
+                @if($sec7Rendered>0)<div class="border-t border-dashed border-[#6B9080]/20 pt-7"></div>@endif
+                @php $sec7Rendered++; @endphp
                 <div id="sec7_{{ $blk['key'] }}">
                     <div class="part-label">{{ $blk['label'] }} &nbsp;·&nbsp; {{ $blk['title'] }}</div>
                     <textarea name="s7_{{ $blk['key'] }}_remarks" rows="4" placeholder="—" class="f-area mb-5" readonly style="pointer-events:none;opacity:0.55;background:#f8fafc;cursor:not-allowed;resize:none;"></textarea>
@@ -1269,10 +1278,23 @@
                                     <div class="sig-hint" style="position:absolute;inset:0;pointer-events:none;display:flex;align-items:center;justify-content:center;color:#cbd5e1;font-size:11px;font-weight:600;">Signature</div>
                                 </div>
                                 <input type="hidden" name="s7_{{ $blk['key'] }}_sig" class="sig-hidden">
+                                <input type="hidden" name="s7_{{ $blk['key'] }}_date" class="sig-date-hidden">
                             </div>
+                            @php
+                                // Legacy rows may still hold a raw ISO date from the old
+                                // native date-input version of this field — reformat those
+                                // too rather than showing them inconsistently.
+                                $s7DateRaw = $savedData["s7_{$blk['key']}_date"] ?? null;
+                                $s7Date = null;
+                                if ($s7DateRaw) {
+                                    try { $s7Date = \Carbon\Carbon::parse($s7DateRaw)->format('d F Y'); } catch (\Throwable $e) { $s7Date = $s7DateRaw; }
+                                } elseif (!empty($savedData["s7_{$blk['key']}_sig"]) && $submittedAt) {
+                                    $s7Date = \Carbon\Carbon::parse($submittedAt)->timezone('Asia/Kuala_Lumpur')->format('d F Y');
+                                }
+                            @endphp
                             <div class="flex items-center gap-2 mt-2 justify-center">
                                 <span class="f-label">Date</span>
-                                <input type="date" name="s7_{{ $blk['key'] }}_date" class="border border-[#6B9080]/25 rounded-lg px-2 py-1 text-xs text-slate-600 bg-white outline-none" readonly style="pointer-events:none;opacity:0.55;background:#f8fafc;cursor:not-allowed;">
+                                <span id="sigDate_s7_{{ $blk['key'] }}_sig" style="font-size:11px;color:#64748b;">{{ $s7Date ?? '_______________' }}</span>
                             </div>
                         </div>
                     </div>
@@ -1280,6 +1302,7 @@
                 @endforeach
             </div>
         </div>
+        @endif
 
     </div>{{-- /px-10 py-8 --}}
 </div>{{-- /doc-card --}}
@@ -2392,7 +2415,7 @@ function lockAppraiseeOwnFields() {
 function stampSigDate(wrap) {
     var dateHidden = wrap.querySelector('.sig-date-hidden');
     if (!dateHidden) return;
-    var formatted = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    var formatted = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
     dateHidden.value = formatted;
     var span = document.getElementById('sigDate_' + wrap.dataset.sigId);
     if (span) span.textContent = formatted;
@@ -2403,6 +2426,20 @@ function clearSigDate(wrap) {
     if (dateHidden) dateHidden.value = '';
     var span = document.getElementById('sigDate_' + wrap.dataset.sigId);
     if (span) span.textContent = '_______________';
+}
+
+// Section 7's date field used to be a native <input type="date">, whose
+// restored value is a raw ISO string (YYYY-MM-DD) — reformat those to match
+// the "09 September 2026" style used everywhere else; anything already in
+// that form (every date stamped from now on) passes through unchanged.
+function formatSigDateForDisplay(raw) {
+    if (!raw) return raw;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        var parts = raw.split('-');
+        var d = new Date(Date.UTC(+parts[0], +parts[1] - 1, +parts[2]));
+        return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' });
+    }
+    return raw;
 }
 
 function sigInit(wrap) {
@@ -2511,7 +2548,7 @@ function restoreAllSigs() {
         var dateHidden = wrap.querySelector('.sig-date-hidden');
         if (dateHidden && dateHidden.value) {
             var span = document.getElementById('sigDate_' + wrap.dataset.sigId);
-            if (span) span.textContent = dateHidden.value;
+            if (span) span.textContent = formatSigDateForDisplay(dateHidden.value);
         }
 
         if (!hidden || !canvas || !hidden.value) return;

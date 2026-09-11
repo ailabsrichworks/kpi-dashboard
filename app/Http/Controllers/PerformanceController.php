@@ -579,7 +579,7 @@ class PerformanceController extends Controller
         // the client's local clock sent — this is the moment acknowledgment
         // actually locks in, so it's the one point we can be sure "signed" means.
         if ($action === 'acknowledge' && !empty($newData['sig_appraisee'])) {
-            $newData['sig_appraisee_date'] = now()->timezone('Asia/Kuala_Lumpur')->format('j F Y');
+            $newData['sig_appraisee_date'] = now()->timezone('Asia/Kuala_Lumpur')->format('d F Y');
         }
 
         $supabase->upsert('performance_reports', [
@@ -628,45 +628,27 @@ class PerformanceController extends Controller
     }
 
     /**
-     * Walks up an employee's approver chain (manager, then that manager's
-     * approver = VP, then that VP's approver = SLT) to find which level —
-     * if any — $viewerId sits at relative to $employee. Section 7 of the
-     * appraisal form has a separate remarks block for each of these three
-     * levels, so appraiser access isn't just "the direct manager".
-     *
-     * Each step's parent id is resolved with the exact same per-role field
-     * priority as ApprovalHierarchyService::getApprover() (manager_id/vp_id
-     * with reports_to_id as fallback) — this used to walk reports_to_id
-     * only, which disagreed with who actually got the "submitted for
-     * appraisal" notification whenever manager_id/vp_id was set but
-     * reports_to_id wasn't pointing at the same person, 403ing the very
-     * appraiser the notification was sent to.
+     * Finds which Section 7 part — if any — $viewerId owns relative to
+     * $employee, via AppraiserDelegationService::resolveSection7Chain() (the
+     * single source of truth for that chain, shared with this method's own
+     * notification-escalation logic in appraiserSave() so the two can never
+     * resolve a different occupant for the same employee). That chain is
+     * role-aware, not purely positional — Part B is skipped whenever the
+     * chain jumps straight from Part A to a genuine SLT with no separate VP
+     * in between, per its own docblock.
      *
      * $getParent resolves an id into that employee's own record — either a
      * live Supabase lookup or a pre-fetched map, depending on caller.
-     *
-     * The per-role parent lookup (and any active BTS appraiser delegation --
-     * see AppraiserDelegationService) is resolved by $delegations->nextParentId()
-     * rather than inline, so this and NotificationService::appraiserChainFor()
-     * can never disagree about who's next up the chain.
      */
     private function resolveAppraiserLevel(?array $employee, string $viewerId, callable $getParent, AppraiserDelegationService $delegations): ?string
     {
-        $levels = ['manager', 'vp', 'slt'];
-        $current = $employee;
+        if (empty($employee)) {
+            return null;
+        }
 
-        foreach ($levels as $level) {
-            $parentId = $delegations->nextParentId($current ?? []);
-
-            if (empty($parentId)) {
-                return null;
-            }
-            if ($parentId === $viewerId) {
-                return $level;
-            }
-            $current = $getParent($parentId);
-            if (empty($current)) {
-                return null;
+        foreach ($delegations->resolveSection7Chain($employee, $getParent) as $hop) {
+            if ($hop['id'] === $viewerId) {
+                return $hop['level'];
             }
         }
 
@@ -825,6 +807,16 @@ class PerformanceController extends Controller
         if (!$appraiserLevel) {
             abort(403, "You aren't in {$user['short_name']}'s approver chain (manager/VP/SLT), so you can't open their appraisal. If you're using View As, check the profile you're impersonating is still active — it may have reverted.");
         }
+
+        // Which Section 7 parts actually apply to this employee — Part B is
+        // skipped for anyone whose real chain jumps straight from their
+        // immediate appraiser to SLT with no separate VP in between (see
+        // AppraiserDelegationService::resolveSection7Chain()).
+        $section7Chain  = $delegations->resolveSection7Chain(
+            $user,
+            fn($id) => $supabase->first('employees', ['id' => 'eq.' . $id, 'select' => '*'])
+        );
+        $section7Levels = array_column($section7Chain, 'level');
 
         // Tenure
         $joinDate = $user['join_date'] ?? null;
@@ -1021,6 +1013,7 @@ class PerformanceController extends Controller
             'appraiserLevel'       => $appraiserLevel,
             'appraiserSaveUrl'     => route('performance.appraise.save', [$employeeId, $q]),
             'myLevelLocked'        => $myLevelLocked,
+            'section7Levels'       => $section7Levels,
         ]);
     }
 
@@ -1180,7 +1173,14 @@ class PerformanceController extends Controller
         // the client's local clock sent — this is what finally locks the manager's
         // signature in, so it's the one moment we can be sure "signed" really means.
         if ($action === 'submit' && $appraiserLevel === 'manager' && !empty($newData['sig_appraiser'])) {
-            $newData['sig_appraiser_date'] = now()->timezone('Asia/Kuala_Lumpur')->format('j F Y');
+            $newData['sig_appraiser_date'] = now()->timezone('Asia/Kuala_Lumpur')->format('d F Y');
+        }
+
+        // Same for whichever Section 7 part this level just signed — replaces
+        // the old manually-typed date field, which nothing ever required
+        // them to actually fill in.
+        if ($action === 'submit' && !empty($newData["s7_{$appraiserLevel}_sig"])) {
+            $newData["s7_{$appraiserLevel}_date"] = now()->timezone('Asia/Kuala_Lumpur')->format('d F Y');
         }
 
         // Only the manager's explicit submit ("Mark as Appraised") advances the
@@ -1219,24 +1219,52 @@ class PerformanceController extends Controller
                 $q,
                 $this->currentFinancialYear
             );
+        }
 
-            // VP/SLT only need to add their own Section 7 remarks — no point
-            // alerting them before the manager has actually scored and signed,
-            // so that notification is sent here rather than on initial submit.
-            $upperChain = array_slice($notifications->appraiserChainFor($employeeId), 1);
-            if (!empty($upperChain)) {
-                $appraiseeName = $employees[0]['full_name'] ?? $employees[0]['short_name'] ?? 'An employee';
+        // Section 7 escalation: ticking Confirmation / Salary Review / Promotion
+        // is what actually requires the NEXT level's attention — signing without
+        // ticking anything completes this level's own part, nothing further
+        // needed, no notice sent. Applies at every level (manager, VP, SLT), so
+        // a VP's own tick is what puts SLT on notice, not the manager's.
+        //
+        // "Next level" is resolved from this employee's real Section 7 chain,
+        // which skips Part B entirely for anyone whose chain has no genuine VP
+        // tier between them and SLT — see resolveSection7Chain(). So a manager
+        // whose Part A appraiser is already a VP escalates straight to SLT.
+        if ($action === 'submit') {
+            $ticked = !empty($newData["s7_{$appraiserLevel}_confirmation"])
+                || !empty($newData["s7_{$appraiserLevel}_salary_review"])
+                || !empty($newData["s7_{$appraiserLevel}_promotion"]);
 
-                $notifications->notify(
-                    $upperChain,
-                    'appraisal_appraised',
-                    ['id' => $employeeId, 'name' => $appraiseeName],
-                    "{$appraiseeName}'s {$q} appraisal is ready for your remarks",
-                    "{$appraiserName} has completed scoring and signed. Please add your remarks.",
-                    route('performance.appraise.report', [$employeeId, strtolower($q)]),
-                    $q,
-                    $this->currentFinancialYear
+            if ($ticked) {
+                $section7Chain = $delegations->resolveSection7Chain(
+                    $employees[0],
+                    fn($id) => $supabase->first('employees', ['id' => 'eq.' . $id, 'select' => '*'])
                 );
+
+                $next = null;
+                foreach ($section7Chain as $i => $hop) {
+                    if ($hop['level'] === $appraiserLevel) {
+                        $next = $section7Chain[$i + 1] ?? null;
+                        break;
+                    }
+                }
+
+                if ($next) {
+                    $appraiseeName = $employees[0]['full_name'] ?? $employees[0]['short_name'] ?? 'An employee';
+                    $partLabel     = $next['level'] === 'vp' ? 'VP' : 'SLT';
+
+                    $notifications->notify(
+                        [$next['id']],
+                        'appraisal_appraised',
+                        ['id' => $employeeId, 'name' => $appraiseeName],
+                        "{$appraiseeName}'s {$q} appraisal needs your Section 7 remarks",
+                        "Flagged for {$partLabel} review — please add your remarks and sign Section 7.",
+                        route('performance.appraise.report', [$employeeId, strtolower($q)]),
+                        $q,
+                        $this->currentFinancialYear
+                    );
+                }
             }
         }
 
