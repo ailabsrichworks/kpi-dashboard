@@ -567,6 +567,14 @@ class PerformanceController extends Controller
         $existingData = !empty($existing) ? ($existing[0]['form_data'] ?? []) : [];
         $newData      = array_merge($existingData, $request->input('form_data', []));
 
+        // The appraisee's written response is mandatory before they can sign —
+        // enforced server-side too, since the client-side check can be bypassed.
+        if ($action === 'acknowledge' && trim((string) ($newData['s6_response'] ?? '')) === '') {
+            return response()->json([
+                'error' => 'Please write your response before signing.',
+            ], 422);
+        }
+
         $supabase->upsert('performance_reports', [
             'employee_id'    => session('employee_uuid'),
             'company_code'   => session('company_code'),

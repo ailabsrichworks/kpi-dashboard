@@ -1169,10 +1169,11 @@
                                     <div class="sig-hint" style="position:absolute;inset:0;pointer-events:none;display:flex;align-items:center;justify-content:center;color:#cbd5e1;font-size:11px;font-weight:600;">Appraiser signature</div>
                                 </div>
                                 <input type="hidden" name="sig_appraiser" class="sig-hidden">
+                                <input type="hidden" name="sig_appraiser_date" class="sig-date-hidden">
                             </div>
                             <p class="text-xs font-bold text-slate-700 text-center mt-2">{{ $reportsToName !== '-' ? $reportsToName : '_______________' }}</p>
                             <p class="f-label text-center mt-1">Signature of Appraiser – Manager / VP</p>
-                            <p class="text-[9px] text-slate-400 text-center mt-2">Date: _______________</p>
+                            <p class="text-[9px] text-slate-400 text-center mt-2">Date: <span id="sigDate_sig_appraiser">_______________</span></p>
                         </div>
                     </div>
                 </div>
@@ -1190,7 +1191,7 @@
                         <span style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.08em;display:flex;align-items:center;gap:4px;white-space:nowrap;margin-left:12px;">🔒 AFTER APPRAISER SIGNS</span>
                         @endif
                     </div>
-                    <textarea name="s6_response" rows="4" placeholder="Write your response here…" class="f-area mb-6"@if(!$ackUnlocked) readonly style="pointer-events:none;opacity:0.55;background:#f8fafc;cursor:not-allowed;"@endif></textarea>
+                    <textarea name="s6_response" rows="4" placeholder="Write your response here… (required)" class="f-area mb-6"@if(!$ackUnlocked) readonly style="pointer-events:none;opacity:0.55;background:#f8fafc;cursor:not-allowed;"@endif></textarea>
                     <div class="flex justify-end">
                         <div style="width:280px;">
                             {{-- Appraisee signature — unlocked only once the appraiser has signed --}}
@@ -1206,10 +1207,11 @@
                                     </label>
                                 </div>
                                 <input type="hidden" name="sig_appraisee" class="sig-hidden">
+                                <input type="hidden" name="sig_appraisee_date" class="sig-date-hidden">
                             </div>
                             <p class="text-xs font-bold text-slate-700 text-center mt-2">{{ $currentUserName }}</p>
                             <p class="f-label text-center mt-1">Signature of Appraisee</p>
-                            <p class="text-[9px] text-slate-400 text-center mt-2">Date: _______________</p>
+                            <p class="text-[9px] text-slate-400 text-center mt-2">Date: <span id="sigDate_sig_appraisee">_______________</span></p>
                         </div>
                     </div>
                     @if($ackUnlocked)
@@ -2209,6 +2211,13 @@ function confirmAppraiserSubmit() {
 }
 
 function confirmAcknowledge() {
+    var responseEl = document.querySelector('textarea[name="s6_response"]');
+    var responseText = (responseEl && responseEl.value || '').trim();
+    if (!responseText) {
+        if (typeof showToast === 'function') showToast('Please write your response before signing.', false);
+        if (responseEl) responseEl.focus();
+        return;
+    }
     if (confirm('Sign and acknowledge this appraisal?\n\nYou will not be able to edit it after acknowledging.')) {
         saveEvaluation('acknowledge');
     }
@@ -2364,6 +2373,24 @@ function lockAppraiseeOwnFields() {
 }
 
 // ── signature pad ─────────────────────────────────────────────────────────────
+// Stamps the "Date: ___" line next to a signature pad with the day it was
+// actually signed — previously always blank, since nothing ever wrote to it.
+function stampSigDate(wrap) {
+    var dateHidden = wrap.querySelector('.sig-date-hidden');
+    if (!dateHidden) return;
+    var formatted = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    dateHidden.value = formatted;
+    var span = document.getElementById('sigDate_' + wrap.dataset.sigId);
+    if (span) span.textContent = formatted;
+}
+
+function clearSigDate(wrap) {
+    var dateHidden = wrap.querySelector('.sig-date-hidden');
+    if (dateHidden) dateHidden.value = '';
+    var span = document.getElementById('sigDate_' + wrap.dataset.sigId);
+    if (span) span.textContent = '_______________';
+}
+
 function sigInit(wrap) {
     var canvas  = wrap.querySelector('.sig-canvas');
     var hint    = wrap.querySelector('.sig-hint');
@@ -2408,6 +2435,7 @@ function sigInit(wrap) {
         drawing = false;
         if (hint) hint.style.display = 'none';
         if (hidden) hidden.value = canvas.toDataURL('image/png');
+        stampSigDate(wrap);
         // Appraisee signature is only drawable once the appraiser has reviewed and signed (status = appraised).
         // Signing itself doesn't submit — the appraisee still clicks "Sign & Acknowledge" explicitly.
     }
@@ -2429,6 +2457,7 @@ function sigClear(btn) {
     if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
     if (hint)   hint.style.display = '';
     if (hidden) hidden.value = '';
+    clearSigDate(wrap);
 }
 
 function sigUpload(input) {
@@ -2449,6 +2478,7 @@ function sigUpload(input) {
             ctx.drawImage(img, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
             if (hint)   hint.style.display = 'none';
             if (hidden) hidden.value = canvas.toDataURL('image/png');
+            stampSigDate(wrap);
             // Appraisee signature is only drawable once the appraiser has reviewed and signed (status = appraised).
             // Signing itself doesn't submit — the appraisee still clicks "Sign & Acknowledge" explicitly.
         };
@@ -2463,6 +2493,13 @@ function restoreAllSigs() {
         var hidden = wrap.querySelector('.sig-hidden');
         var canvas = wrap.querySelector('.sig-canvas');
         var hint   = wrap.querySelector('.sig-hint');
+
+        var dateHidden = wrap.querySelector('.sig-date-hidden');
+        if (dateHidden && dateHidden.value) {
+            var span = document.getElementById('sigDate_' + wrap.dataset.sigId);
+            if (span) span.textContent = dateHidden.value;
+        }
+
         if (!hidden || !canvas || !hidden.value) return;
         var img = new Image();
         img.onload = function() {
