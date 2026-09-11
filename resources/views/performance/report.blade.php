@@ -1580,9 +1580,13 @@ var _kcmHiddenEl = null;
 var _kcmBtnEl = null;
 
 function openKpiComment(btn) {
+  try {
     _kcmKpiId = btn.dataset.kpiId;
     _kcmBtnEl = btn;
     _kcmHiddenEl = document.querySelector('[name="kpi_comment_' + _kcmKpiId + '"]');
+
+    var modal = document.getElementById('kpiCommentModal');
+    if (!modal) { alert('Comment popup is missing from the page (kpiCommentModal not found). Please tell support.'); return; }
 
     document.getElementById('kcmTitle').textContent = btn.dataset.kpiTitle || '';
     document.getElementById('kcmQuarter').textContent = btn.dataset.quarter || '';
@@ -1602,8 +1606,16 @@ function openKpiComment(btn) {
     document.getElementById('kcmAiBox').style.display = 'none';
     document.getElementById('kcmError').style.display = 'none';
 
-    document.getElementById('kpiCommentModal').style.display = 'flex';
+    modal.style.display = 'flex';
     document.body.style.overflow = 'hidden';
+  } catch (err) {
+    // Temporary diagnostic -- remove once the "Comment button does nothing"
+    // report is root-caused. Surfaces whatever actually failed instead of
+    // failing silently (an uncaught error in an onclick handler otherwise
+    // only shows up in a console nobody's looking at).
+    console.error('openKpiComment failed:', err);
+    alert('Comment button error: ' + (err && err.message ? err.message : err));
+  }
 }
 
 function closeKpiComment() {
