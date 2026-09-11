@@ -839,7 +839,7 @@
                         </div>
                     </td>
                     <td style="padding:10px 12px;vertical-align:top;background:rgba(107,144,128,.03);">
-                        <input type="text" name="att_comment_{{ $area['no'] }}" placeholder="Filled by appraiser…" class="t-input att-comment-input" style="margin-top:6px;pointer-events:none;opacity:0.5;" readonly>
+                        <textarea name="att_comment_{{ $area['no'] }}" placeholder="Filled by appraiser…" rows="3" class="f-area att-comment-input" style="margin-top:6px;min-height:60px;font-size:11px;padding:6px 10px;pointer-events:none;opacity:0.5;" readonly></textarea>
                         <button type="button" class="att-rephrase-btn no-print" data-area-title="{{ $area['title'] }}" onclick="rephraseAttComment(this)" style="display:inline-flex;align-items:center;gap:3px;margin-top:6px;font-size:8px;font-weight:800;color:#4a7c6b;background:#f0f9f6;border:1px solid #d1e7e0;border-radius:6px;padding:3px 7px;cursor:pointer;pointer-events:none;opacity:0.5;">✨ Rephrase</button>
                     </td>
                 </tr>
