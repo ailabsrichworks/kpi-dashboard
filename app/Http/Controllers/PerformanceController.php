@@ -5,12 +5,13 @@ namespace App\Http\Controllers;
 use App\Services\SupabaseService;
 use App\Services\QuarterOverrideService;
 use App\Services\AppraiserDelegationService;
+use App\Services\ApprovalHierarchyService;
 
 class PerformanceController extends Controller
 {
     private string $currentFinancialYear = 'FY2026';
 
-    public function kpiAppraisal(SupabaseService $supabase, QuarterOverrideService $overrides)
+    public function kpiAppraisal(SupabaseService $supabase, QuarterOverrideService $overrides, ApprovalHierarchyService $hierarchy)
     {
         if (!session()->has('employee_uuid') || !session()->has('company_code')) {
             return redirect()->route('login');
@@ -39,15 +40,13 @@ class PerformanceController extends Controller
             $tenure = $parts ? implode(' ', $parts) : 'Less than 1 month';
         }
 
-        // Reporting-to (approver)
-        $reportsTo = null;
-        if (!empty($user['reports_to_id'])) {
-            $managers  = $supabase->get('employees', [
-                'id'     => 'eq.' . $user['reports_to_id'],
-                'select' => 'id,short_name,full_name,role,position',
-            ]);
-            $reportsTo = $managers[0] ?? null;
-        }
+        // Reporting-to (approver) -- resolved the same way real approval
+        // routing is (ApprovalHierarchyService::getApprover(), role-aware:
+        // Executive -> manager_id/vp_id, Manager -> vp_id/reports_to_id,
+        // VP -> reports_to_id), not a raw reports_to_id read. reports_to_id
+        // alone disagreed with who actually approves this employee's work
+        // for any Executive/Manager whose manager_id/vp_id took priority.
+        $reportsTo = $hierarchy->getApprover($user);
 
         // Department
         $department = null;
@@ -147,7 +146,7 @@ class PerformanceController extends Controller
         ]);
     }
 
-    public function attitude(SupabaseService $supabase, QuarterOverrideService $overrides)
+    public function attitude(SupabaseService $supabase, QuarterOverrideService $overrides, ApprovalHierarchyService $hierarchy)
     {
         if (!session()->has('employee_uuid') || !session()->has('company_code')) {
             return redirect()->route('login');
@@ -165,14 +164,9 @@ class PerformanceController extends Controller
             return redirect()->route('login');
         }
 
-        $reportsTo = null;
-        if (!empty($user['reports_to_id'])) {
-            $managers  = $supabase->get('employees', [
-                'id'     => 'eq.' . $user['reports_to_id'],
-                'select' => 'id,short_name,full_name,role,position',
-            ]);
-            $reportsTo = $managers[0] ?? null;
-        }
+        // See kpiAppraisal() above: role-aware resolution via
+        // ApprovalHierarchyService, not a raw reports_to_id read.
+        $reportsTo = $hierarchy->getApprover($user);
 
         $department = null;
         if (!empty($user['department_code'])) {
@@ -310,7 +304,7 @@ class PerformanceController extends Controller
         ]);
     }
 
-    public function reportQuarter(string $quarter, SupabaseService $supabase, QuarterOverrideService $overrides)
+    public function reportQuarter(string $quarter, SupabaseService $supabase, QuarterOverrideService $overrides, ApprovalHierarchyService $hierarchy)
     {
         if (!session()->has('employee_uuid') || !session()->has('company_code')) {
             return redirect()->route('login');
@@ -338,12 +332,9 @@ class PerformanceController extends Controller
             $tenure = $parts ? implode(' ', $parts) : 'Less than 1 month';
         }
 
-        // Reports-to
-        $reportsTo = null;
-        if (!empty($user['reports_to_id'])) {
-            $mgr = $supabase->get('employees', ['id' => 'eq.' . $user['reports_to_id'], 'select' => 'id,short_name,full_name,role,position']);
-            $reportsTo = $mgr[0] ?? null;
-        }
+        // Reports-to -- see kpiAppraisal() above: role-aware resolution via
+        // ApprovalHierarchyService, not a raw reports_to_id read.
+        $reportsTo = $hierarchy->getApprover($user);
 
         // Department
         $department = null;
@@ -782,7 +773,7 @@ class PerformanceController extends Controller
         ]);
     }
 
-    public function appraiserReport(string $employeeId, string $quarter, SupabaseService $supabase, AppraiserDelegationService $delegations)
+    public function appraiserReport(string $employeeId, string $quarter, SupabaseService $supabase, AppraiserDelegationService $delegations, ApprovalHierarchyService $hierarchy)
     {
         if (!session()->has('employee_uuid')) {
             return redirect()->route('login');
@@ -831,12 +822,15 @@ class PerformanceController extends Controller
             $tenure = $parts ? implode(' ', $parts) : 'Less than 1 month';
         }
 
-        // Reports-to (the current appraiser)
-        $appraiserEmployee = $supabase->get('employees', [
-            'id'     => 'eq.' . session('employee_uuid'),
-            'select' => 'id,short_name,full_name,role,position',
-        ]);
-        $reportsTo = $appraiserEmployee[0] ?? null;
+        // Reports-to -- this employee's actual configured approver, the
+        // same role-aware resolution as kpiAppraisal() above. Previously
+        // this showed whoever was CURRENTLY LOGGED IN viewing the report
+        // instead, so a delegate standing in for an absent manager (e.g.
+        // during a "notify the delegate" hand-off) would appear here as
+        // if they were the employee's real manager -- confusing at best,
+        // and wrong the moment anyone other than the true approver opens
+        // this page (View As, BTS support access, etc).
+        $reportsTo = $hierarchy->getApprover($user);
 
         // Department
         $department = null;

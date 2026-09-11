@@ -281,7 +281,7 @@
                     try {
                         return \Carbon\Carbon::parse($raw, 'UTC')
                             ->timezone('Asia/Kuala_Lumpur')
-                            ->format('j F Y | G:i:s');
+                            ->format('j F Y | H:i:s');
                     } catch (\Throwable $e) {
                         return $raw;
                     }
