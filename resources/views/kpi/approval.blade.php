@@ -271,6 +271,22 @@
                     $approval['type']
                     ?? 'quarter_update';
 
+                // Timestamps are written as UTC wall-clock values (app timezone
+                // is UTC; see config/app.php) with no reliable offset preserved
+                // through the DB round-trip, so we assume UTC on the way in and
+                // shift once to Malaysia time for display -- never format a raw
+                // timestamp directly.
+                $fmtMyDateTime = function ($raw) {
+                    if (!$raw) return '-';
+                    try {
+                        return \Carbon\Carbon::parse($raw, 'UTC')
+                            ->timezone('Asia/Kuala_Lumpur')
+                            ->format('j F Y | G:i:s');
+                    } catch (\Throwable $e) {
+                        return $raw;
+                    }
+                };
+
                 $badgeColor =
                     match($type){
                         'completion'      => 'bg-emerald-50 text-emerald-700',
@@ -406,7 +422,7 @@
 
                             <div>
 
-                                {{ $approval['created_at'] ?? '-' }}
+                                {{ $fmtMyDateTime($approval['created_at'] ?? null) }}
 
                             </div>
 
@@ -762,25 +778,34 @@
 
                         @elseif($type === 'weightage_change')
 
+                        @php
+                            // Group-aligned, same rule as the Quarter Update /
+                            // Target Change cards above: 2dp only if either the
+                            // current or requested weightage actually has a
+                            // fractional part, otherwise both round to whole
+                            // numbers -- no stray ".00".
+                            $wtRawOld = (float) ($approval['old_weightage'] ?? 0);
+                            $wtRawNew = (float) ($approval['new_weightage'] ?? 0);
+                            $wtDecimals = (fmod($wtRawOld, 1) !== 0.0 || fmod($wtRawNew, 1) !== 0.0) ? 2 : 0;
+                            $wtDiff = $wtRawNew - $wtRawOld;
+                        @endphp
+
                         <div class="grid grid-cols-2 gap-4 mt-6">
 
                             <div class="rounded-2xl bg-slate-50 border border-slate-100 p-4">
                                 <p class="text-[10px] uppercase text-slate-400 font-black">Current Weightage</p>
                                 <h3 class="text-2xl font-black mt-2">
-                                    {{ number_format((float)($approval['old_weightage'] ?? 0), 2) }}%
+                                    {{ number_format($wtRawOld, $wtDecimals) }}%
                                 </h3>
                             </div>
 
                             <div class="rounded-2xl bg-orange-50 border border-orange-100 p-4">
                                 <p class="text-[10px] uppercase text-orange-500 font-black">Requested Weightage</p>
                                 <h3 class="text-2xl font-black mt-2 text-orange-700">
-                                    {{ number_format((float)($approval['new_weightage'] ?? 0), 2) }}%
+                                    {{ number_format($wtRawNew, $wtDecimals) }}%
                                 </h3>
-                                @php
-                                    $wtDiff = (float)($approval['new_weightage'] ?? 0) - (float)($approval['old_weightage'] ?? 0);
-                                @endphp
                                 <p class="text-[11px] {{ $wtDiff >= 0 ? 'text-emerald-600' : 'text-red-600' }} font-black mt-1">
-                                    {{ $wtDiff >= 0 ? '+' : '' }}{{ number_format($wtDiff, 2) }}%
+                                    {{ $wtDiff >= 0 ? '+' : '' }}{{ number_format($wtDiff, $wtDecimals) }}%
                                 </p>
                             </div>
 
@@ -912,11 +937,13 @@
                                     <div class="font-bold">
 
                                         {{
-                                            $approval['approved_at']
-                                            ??
-                                            $approval['rejected_at']
-                                            ??
-                                            '-'
+                                            $fmtMyDateTime(
+                                                $approval['approved_at']
+                                                ??
+                                                $approval['rejected_at']
+                                                ??
+                                                null
+                                            )
                                         }}
 
                                     </div>
