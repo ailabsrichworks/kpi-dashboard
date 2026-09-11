@@ -840,6 +840,7 @@
                     </td>
                     <td style="padding:10px 12px;vertical-align:top;background:rgba(107,144,128,.03);">
                         <input type="text" name="att_comment_{{ $area['no'] }}" placeholder="Filled by appraiser…" class="t-input att-comment-input" style="margin-top:6px;pointer-events:none;opacity:0.5;" readonly>
+                        <button type="button" class="att-rephrase-btn no-print" data-area-title="{{ $area['title'] }}" onclick="rephraseAttComment(this)" style="display:inline-flex;align-items:center;gap:3px;margin-top:6px;font-size:8px;font-weight:800;color:#4a7c6b;background:#f0f9f6;border:1px solid #d1e7e0;border-radius:6px;padding:3px 7px;cursor:pointer;pointer-events:none;opacity:0.5;">✨ Rephrase</button>
                     </td>
                 </tr>
                 @endforeach
@@ -1556,6 +1557,51 @@ function dismissQdCommentRephrase() {
     document.getElementById('qdCommentAiBox').style.display = 'none';
 }
 
+// ── Section 3 (attitude/competency) "Appraiser's Comment" rephrase ─────────
+// One click, replaces the input directly -- no confirm step, no separate
+// popup. A terse note like "ok" or a single word gets expanded into one
+// clear, professional sentence in place.
+function rephraseAttComment(btn) {
+    var input = btn.previousElementSibling;
+    var text = (input && input.value || '').trim();
+
+    if (!text) {
+        if (typeof showToast === 'function') showToast('Write a comment first, then rephrase it.', false);
+        return;
+    }
+
+    var originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '✨ …';
+
+    fetch('{{ route('ai.rephrase-comment') }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+            'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+            comment:   text,
+            kpi_title: btn.dataset.areaTitle || '',
+        }),
+    })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            if (!data.success) throw new Error(data.message || 'Failed');
+            input.value = data.rephrased || text;
+            if (typeof showToast === 'function') showToast('Rephrased.', true);
+        })
+        .catch(function (err) {
+            console.error('rephraseAttComment failed:', err);
+            if (typeof showToast === 'function') showToast("Couldn't rephrase right now. Try again.", false);
+        })
+        .finally(function () {
+            btn.disabled = false;
+            btn.textContent = originalLabel;
+        });
+}
+
 function toggleAniraScore() {
     var body = document.getElementById('qdAniraBody');
     var chevron = document.getElementById('qdAniraChevron');
@@ -2221,6 +2267,10 @@ function unlockAppraiserSections() {
         inp.removeAttribute('readonly');
         inp.style.pointerEvents = 'auto';
         inp.style.opacity = '';
+    });
+    document.querySelectorAll('.att-rephrase-btn').forEach(function(btn) {
+        btn.style.pointerEvents = 'auto';
+        btn.style.opacity = '';
     });
     // Unlock attendance count inputs — manager only
     document.querySelectorAll('.att-count-input').forEach(function(inp) {
