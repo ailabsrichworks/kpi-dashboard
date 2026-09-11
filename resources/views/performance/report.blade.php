@@ -639,14 +639,13 @@
                         <th class="c" style="width:72px;">C · Score<br><span style="font-weight:400;text-transform:none;font-size:8px;">(A÷B)×5</span></th>
                         <th class="c" style="width:72px;">Appraiser<br><span style="font-weight:400;text-transform:none;font-size:8px;">Score</span></th>
                         @if($isAppraiserView ?? false)
-                        <th class="c no-print" style="width:56px;">View</th>
-                        <th class="c no-print" style="width:64px;">Comment</th>
+                        <th class="c no-print" style="width:64px;">Details</th>
                         @endif
                     </tr>
                 </thead>
                 <tbody>
                 @php
-                    $sec2Colspan = ($isAppraiserView ?? false) ? 8 : 6;
+                    $sec2Colspan = ($isAppraiserView ?? false) ? 7 : 6;
                     $sec2StatusEchoes = ['not started', 'on track', 'at risk', 'in trouble', 'completed'];
                     $sec2IsRealRemark = fn ($text) => $text !== '' && !in_array(strtolower($text), $sec2StatusEchoes, true);
                     // Actual/Target were rendered as bare numbers with no unit cue --
@@ -755,11 +754,8 @@
                     <td class="text-center"><input type="number" inputmode="decimal" name="kpi_app_{{ $kpi['id'] }}" data-wt="{{ $kpi['weightage'] ?? 0 }}" step="0.1" min="0" max="5" placeholder="—" class="n-input kpi-app-input" readonly style="pointer-events:none;opacity:0.55;background:#f8fafc;cursor:not-allowed;"></td>
                     @if($isAppraiserView ?? false)
                     <td class="text-center no-print">
-                        <button type="button" class="kpi-view-btn" data-detail="{{ json_encode($qDetail, JSON_UNESCAPED_UNICODE) }}" onclick="openQuarterDetail(this)" style="display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:800;color:#4a7c6b;background:#f0f9f6;border:1px solid #d1e7e0;border-radius:8px;padding:5px 9px;cursor:pointer;">👁 View</button>
-                    </td>
-                    <td class="text-center no-print">
                         <input type="hidden" name="kpi_comment_{{ $kpi['id'] }}" class="kpi-comment-hidden">
-                        <button type="button" class="kpi-comment-btn" data-kpi-id="{{ $kpi['id'] }}" data-detail="{{ json_encode($qDetail, JSON_UNESCAPED_UNICODE) }}" onclick="openQuarterDetail(this)" style="display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:800;color:#94a3b8;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px;cursor:pointer;">💬 <span class="kpi-comment-label">Add</span></button>
+                        <button type="button" class="kpi-view-btn kpi-comment-btn" data-kpi-id="{{ $kpi['id'] }}" data-detail="{{ json_encode($qDetail, JSON_UNESCAPED_UNICODE) }}" onclick="openQuarterDetail(this)" style="display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:800;color:#94a3b8;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:5px 9px;cursor:pointer;">👁 <span class="kpi-comment-label">View</span></button>
                     </td>
                     @endif
                 </tr>
@@ -772,12 +768,12 @@
                         <td colspan="4" class="text-right font-black text-xs text-[#1a3d34] uppercase tracking-wide px-4 py-3">Total Score Section 2</td>
                         <td class="text-center py-3"><span id="sec2Total" class="font-black text-base sc-none">—</span></td>
                         <td class="text-center"><span id="sec2AppPct" class="text-xs font-bold text-slate-400">—</span></td>
-                        @if($isAppraiserView ?? false)<td class="no-print"></td><td class="no-print"></td>@endif
+                        @if($isAppraiserView ?? false)<td class="no-print"></td>@endif
                     </tr>
                     <tr style="background:rgba(26,61,52,.03);">
                         <td colspan="4" class="text-right text-[9px] font-bold text-slate-400 uppercase tracking-wide px-4 py-2">% Total (Score ÷ 30 × 70)</td>
                         <td colspan="2" class="text-center"><span id="sec2Pct" class="text-sm font-black text-slate-400">—</span></td>
-                        @if($isAppraiserView ?? false)<td class="no-print"></td><td class="no-print"></td>@endif
+                        @if($isAppraiserView ?? false)<td class="no-print"></td>@endif
                     </tr>
                 </tfoot>
             </table>
@@ -1660,7 +1656,7 @@ function renderAniraScore(data) {
 function applyKpiComment(hidden, btn, text) {
     if (hidden) hidden.value = text;
     var label = btn.querySelector('.kpi-comment-label');
-    if (label) label.textContent = text ? 'Edit' : 'Add';
+    if (label) label.textContent = text ? 'Edit' : 'View';
     btn.style.color = text ? '#4a7c6b' : '#94a3b8';
     btn.style.background = text ? '#f0f9f6' : '#f8fafc';
     btn.style.borderColor = text ? '#d1e7e0' : '#e2e8f0';
@@ -2407,11 +2403,16 @@ if (_isAppraiserView) {
     // pointer-events:auto correctly overrides this ancestor's pointer-events:none.
     var formBody = document.getElementById('form-body') || document.querySelector('main');
     if (formBody) { formBody.style.pointerEvents = 'none'; }
-    // Section 2's "View" buttons are read-only (no edit permission implied),
-    // so every appraiser level can use them regardless of _myLevelLocked —
-    // unlock unconditionally rather than inside unlockAppraiserSections(),
-    // which early-returns once this level's section is locked.
-    document.querySelectorAll('.kpi-view-btn').forEach(function(btn) { btn.style.pointerEvents = 'auto'; });
+    // Section 2's "View"/"Comment" buttons are read-only-safe (Comment's own
+    // write access is separately gated by _appraiserLevel inside
+    // openQuarterDetail(), not by this lock), so every appraiser level can
+    // use them regardless of _myLevelLocked — unlock unconditionally rather
+    // than inside unlockAppraiserSections(), which early-returns once this
+    // level's section is locked. Comment was missing from this list entirely
+    // until now, which is why tapping it never did anything at all: the
+    // button sat inside form-body's pointer-events:none with nothing to
+    // ever re-enable it, regardless of what JS ran on click.
+    document.querySelectorAll('.kpi-view-btn, .kpi-comment-btn').forEach(function(btn) { btn.style.pointerEvents = 'auto'; });
     unlockAppraiserSections();
     lockAppraiseeOwnFields();
 } else if (_softLocked) {
