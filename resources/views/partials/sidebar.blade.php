@@ -619,10 +619,22 @@
         hover:bg-white/10 rounded-xl p-1.5 transition relative"
         aria-label="Open Sidebar"
     >
+        @php
+            // The tile's own background — either this user's custom sidebar
+            // theme, or the hardcoded default it falls back to when unset
+            // (see the sidebar-bg conditional style block above) — decides
+            // which logo variant will actually be visible against it.
+            $brandTileBg  = $sidebarBg ?: '#C8102E';
+            $brandLogoUrl = \App\Services\CompanyLogoService::forBackground(session('company_code'), $brandTileBg);
+        @endphp
         <div class="sidebar-brand-tile w-10 h-10 rounded-xl bg-[#C8102E] border-2 border-[#D4AF37] flex items-center justify-center shrink-0 overflow-hidden p-1">
+            @if($brandLogoUrl)
+            <img src="{{ $brandLogoUrl }}" alt="{{ session('company_display_name') ?: 'Company logo' }}" class="sidebar-logo w-full h-full object-contain">
+            @else
             <span class="sidebar-logo w-full h-full text-white font-bold text-base flex items-center justify-center">
                 {{ strtoupper(substr(session('company_code') ?: 'R', 0, 1)) }}
             </span>
+            @endif
             <span class="sidebar-icon-only hidden text-white font-bold text-lg">
                 ☰
             </span>

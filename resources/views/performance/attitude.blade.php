@@ -183,8 +183,15 @@
                 <p class="text-xl font-black text-[#1a3d34]">{{ session('company_display_name') }}</p>
                 <p class="text-[9px] text-slate-400 uppercase tracking-[.18em]">Accelerating Your Business Success</p>
             </div>
+            @php
+                // This tile's own accent — the user's configured "1st accent"
+                // (theme_accent) when they've set one, black by default
+                // otherwise (deliberately not the shared gold default every
+                // other .theme-header-banner element falls back to).
+                $qBadgeAccent = session('theme_accent') ?: '#000000';
+            @endphp
             <div class="flex flex-col items-end gap-1">
-                <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#1A0A0A] to-[#7A0019] flex items-center justify-center shadow-lg">
+                <div class="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg" style="background: linear-gradient(135deg, color-mix(in srgb, {{ $qBadgeAccent }} 85%, white), {{ $qBadgeAccent }} 45%, color-mix(in srgb, {{ $qBadgeAccent }} 60%, black));">
                     <span class="text-2xl font-black text-white">{{ $qLabel }}</span>
                 </div>
                 <span class="text-[9px] font-bold text-[#6B9080] uppercase tracking-widest">{{ $currentFinancialYear }}</span>

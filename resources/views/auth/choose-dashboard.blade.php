@@ -60,9 +60,14 @@
                     <button type="submit" class="w-full text-left bg-white rounded-2xl border border-[#E5E7EB] border-t-[3px] border-t-[#C9B896] shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all group">
                         <div class="p-4 flex items-center gap-4">
 
-                            {{-- Company initials --}}
-                            <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center shrink-0 overflow-hidden border border-[#E5E7EB]">
+                            {{-- Company logo — falls back to initials when this company has no logo file --}}
+                            @php $dashboardLogoUrl = \App\Services\CompanyLogoService::forBackground($dashboard['company_code'] ?? null, '#F8FAFC'); @endphp
+                            <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center shrink-0 overflow-hidden border border-[#E5E7EB] p-1.5">
+                                @if($dashboardLogoUrl)
+                                <img src="{{ $dashboardLogoUrl }}" alt="{{ $dashboard['company_display_name'] ?? $dashboard['company_name'] ?? $dashboard['company_code'] }} logo" class="w-full h-full object-contain">
+                                @else
                                 <span class="text-sm font-black text-[#6B5D4F]">{{ strtoupper(substr($dashboard['company_code'],0,2)) }}</span>
+                                @endif
                             </div>
 
                             {{-- Info --}}

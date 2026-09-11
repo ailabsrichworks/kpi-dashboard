@@ -476,8 +476,15 @@
         {{-- Doc header (hidden in print — replaced by print-thead) --}}
         <div id="doc-hdr" class="flex items-center justify-between mb-7 pb-6 border-b border-slate-100">
             <p class="text-xl font-black text-[#1a3d34]">{{ session('company_display_name') }}</p>
+            @php
+                // This tile's own accent — the user's configured "1st accent"
+                // (theme_accent) when they've set one, black by default
+                // otherwise (deliberately not the shared gold default every
+                // other .theme-header-banner element falls back to).
+                $qBadgeAccent = session('theme_accent') ?: '#000000';
+            @endphp
             <div class="flex flex-col items-center gap-0.5">
-                <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-[#1A0A0A] to-[#7A0019] flex items-center justify-center shadow-lg">
+                <div class="w-12 h-12 rounded-xl flex items-center justify-center shadow-lg" style="background: linear-gradient(135deg, color-mix(in srgb, {{ $qBadgeAccent }} 85%, white), {{ $qBadgeAccent }} 45%, color-mix(in srgb, {{ $qBadgeAccent }} 60%, black));">
                     <span class="text-xl font-black text-white">{{ $qLabel }}</span>
                 </div>
                 <span class="text-[9px] font-bold text-[#6B9080] uppercase tracking-widest">{{ $currentFinancialYear }}</span>
