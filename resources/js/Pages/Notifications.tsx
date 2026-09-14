@@ -36,7 +36,13 @@ function timeAgo(iso: string): string {
     return `${days}d ago`;
 }
 
-type FilterKey = 'all' | NotificationCategory;
+// The two notification types that make up the 'appraisal' category are
+// opposite ends of the same handoff — 'appraisal_submitted' means someone is
+// waiting on YOU to score/appraise them, 'appraisal_appraised' means it's
+// scored and waiting on YOUR signature. Lumping them into one "Appraisals"
+// bucket made that distinction invisible; split into their own filters so
+// it's obvious at a glance which of your people need which action.
+type FilterKey = 'all' | NotificationCategory | 'appraisal_needed' | 'appraisal_ready';
 
 export default function Notifications({ notifications }: NotificationsPageProps) {
     const [filter, setFilter] = useState<FilterKey>('all');
@@ -45,10 +51,18 @@ export default function Notifications({ notifications }: NotificationsPageProps)
 
     const unreadCount = rows.filter((n) => !n.is_read).length;
     const approvalCount = rows.filter((n) => n.meta.category === 'approval').length;
-    const appraisalCount = rows.filter((n) => n.meta.category === 'appraisal').length;
+    const appraisalNeededCount = rows.filter((n) => n.type === 'appraisal_submitted').length;
+    const appraisalReadyCount = rows.filter((n) => n.type === 'appraisal_appraised').length;
     const updateCount = rows.filter((n) => n.meta.category === 'update').length;
 
-    const visible = filter === 'all' ? rows : rows.filter((n) => n.meta.category === filter);
+    const visible =
+        filter === 'all'
+            ? rows
+            : filter === 'appraisal_needed'
+                ? rows.filter((n) => n.type === 'appraisal_submitted')
+                : filter === 'appraisal_ready'
+                    ? rows.filter((n) => n.type === 'appraisal_appraised')
+                    : rows.filter((n) => n.meta.category === filter);
     const today = visible.filter((n) => isToday(n.created_at));
     const earlier = visible.filter((n) => !isToday(n.created_at));
 
@@ -122,11 +136,19 @@ export default function Notifications({ notifications }: NotificationsPageProps)
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setFilter('appraisal')}
+                                    onClick={() => setFilter('appraisal_needed')}
                                     style={{ background: `${CATEGORY_META.appraisal.bg}18`, color: CATEGORY_META.appraisal.bg }}
-                                    className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition ${filter === 'appraisal' ? 'outline outline-2 outline-offset-1 outline-slate-800' : ''}`}
+                                    className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition ${filter === 'appraisal_needed' ? 'outline outline-2 outline-offset-1 outline-slate-800' : ''}`}
                                 >
-                                    📝 Appraisals <span className="opacity-60">({appraisalCount})</span>
+                                    📝 Needs Appraisal <span className="opacity-60">({appraisalNeededCount})</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setFilter('appraisal_ready')}
+                                    style={{ background: `${CATEGORY_META.appraisal.bg}18`, color: CATEGORY_META.appraisal.bg }}
+                                    className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition ${filter === 'appraisal_ready' ? 'outline outline-2 outline-offset-1 outline-slate-800' : ''}`}
+                                >
+                                    ✅ Ready to Sign <span className="opacity-60">({appraisalReadyCount})</span>
                                 </button>
                                 <button
                                     type="button"
