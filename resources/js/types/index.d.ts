@@ -13,7 +13,12 @@ export interface LayoutProps {
     adminImpersonating: boolean;
     quarterControlAccess: boolean;
     unreadNotificationCount: number;
+    themeBg: string;
+    themeCard: string;
+    themeBorder: string;
+    themeAccent: string;
     themeAccent2: string;
+    themeText: string;
     themeSidebarBg: string;
     themeSidebarAccent: string;
     themeSidebarText: string;

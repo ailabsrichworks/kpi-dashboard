@@ -128,7 +128,18 @@
         .eyebrow-accent-text { color: #D4AF37; }
     </style>
 
-    @if(session('theme_bg') || session('theme_card') || session('theme_accent') || session('theme_accent2') || session('theme_border') || session('theme_text'))
+    {{-- Unconditional (not gated on session('theme_*') existing): this
+         block's own values are only the fallback used for the very first,
+         pre-hydration paint. Layouts/AppLayout.tsx sets these same CSS
+         vars fresh, from Inertia's own `layout` props, on every render --
+         including a client-side SPA navigation that never re-renders this
+         <head> at all. The rules below have to exist in the document
+         unconditionally for that to have anything to attach to; gating
+         them on the session state of whichever request happened to
+         produce the very first full-document load (typically /login or
+         /choose-dashboard, before an employee/theme is even selected) is
+         what caused the sidebar and dashboard theme to silently never
+         apply for an entire session after login. --}}
     <style>
         :root {
             --user-theme-bg:     {{ session('theme_bg')     ?: '#F5F5F3' }};
@@ -268,7 +279,6 @@
         [class*="focus:ring-[#D4AF37]"]:focus,
         [class*="focus:ring-[#6B3F2A]"]:focus { --tw-ring-color: color-mix(in srgb, var(--user-theme-accent) 40%, transparent) !important; }
     </style>
-    @endif
 
     @if(session('theme_font_family') || session('theme_font_size'))
     @php

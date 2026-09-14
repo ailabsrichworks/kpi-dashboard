@@ -73,7 +73,21 @@ class HandleInertiaRequests extends Middleware
                 // the React sidebar, which otherwise only knows btsOnly.
                 'quarterControlAccess' => Controller::sessionHasQuarterControlAccess(),
                 'unreadNotificationCount' => $this->unreadNotificationCount(),
+                // Main ("dashboard") appearance theme, applied by
+                // Layouts/AppLayout.tsx as CSS custom properties on every
+                // render -- the actual color rules that consume them
+                // (app.blade.php's --user-theme-* block) have to be
+                // unconditionally present in <head> for that to work, since
+                // an Inertia SPA navigation never re-renders <head> at all;
+                // see that block's own comment for why it used to be gated
+                // on session state instead, and why that silently broke
+                // theming for an entire session after login.
+                'themeBg' => session('theme_bg') ?: '#F5F5F3',
+                'themeCard' => session('theme_card') ?: '#FFFFFF',
+                'themeBorder' => session('theme_border') ?: '#6B9080',
+                'themeAccent' => session('theme_accent') ?: '#D4AF37',
                 'themeAccent2' => session('theme_accent2') ?: '#6B9080',
+                'themeText' => session('theme_text') ?: '#0F172A',
                 // Sidebar-specific appearance theme (Settings.tsx's "sidebar"
                 // group, independent from the "main" dashboard group above).
                 // Mirrors app.blade.php's own --sidebar-* CSS vars, but as
