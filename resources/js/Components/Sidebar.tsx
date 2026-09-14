@@ -13,6 +13,7 @@ export default function Sidebar() {
     const departmentCode = (layout.departmentCode ?? '').trim().toUpperCase();
     const isBts = departmentCode === 'BTS';
     const isSltDept = ['SLT OFFICE', 'BTS'].includes(departmentCode);
+    const isQuarterControlAuthorized = isBts || layout.quarterControlAccess === true;
     const hasTitanAccess =
         (layout.role !== 'VP' && layout.companyCode === 'RCG' && layout.departmentCode === 'TITAN') || isBts;
 
@@ -80,7 +81,7 @@ export default function Sidebar() {
                 <nav className="flex-1 overflow-y-auto text-[12px] space-y-5 pr-1 min-h-0 custom-scroll">
                     {navSections.map((section) => {
                         if (section.hrOnly && !layout.hrAccess) return null;
-                        if (section.btsOnly && !isBts) return null;
+                        if (section.btsOnly && !isBts && !(section.quarterControlOnly && isQuarterControlAuthorized)) return null;
 
                         return (
                             <div key={section.title}>
@@ -95,6 +96,7 @@ export default function Sidebar() {
                                     {section.items.map((item) => {
                                         if (item.sltOnly && !isSltDept) return null;
                                         if (item.titanOnly && !hasTitanAccess) return null;
+                                        if (item.btsOnly && !isBts) return null;
 
                                         const isActive = isNavItemActive(item, url);
                                         const badgeCount = item.badge === 'unreadNotifications' ? layout.unreadNotificationCount : 0;

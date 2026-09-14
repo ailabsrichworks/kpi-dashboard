@@ -6,6 +6,7 @@ export interface NavItem {
     badge?: 'unreadNotifications';
     sltOnly?: boolean;
     titanOnly?: boolean;
+    btsOnly?: boolean;
     /**
      * True when this route's controller still returns a plain Blade `view()`
      * response rather than `Inertia::render()`. Inertia's own <Link> globally
@@ -27,6 +28,13 @@ export interface NavSection {
     items: NavItem[];
     hrOnly?: boolean;
     btsOnly?: boolean;
+    /**
+     * Mirrors partials/sidebar.blade.php's `quarter_control_only`: lets this
+     * bts_only section still open for the named-individual "Quarter Control"
+     * grant (Controller::QUARTER_CONTROL_EXTRA_ACCESS_IDS), while items
+     * inside that are themselves flagged btsOnly (e.g. View As) stay hidden.
+     */
+    quarterControlOnly?: boolean;
 }
 
 // Ported 1:1 from partials/sidebar.blade.php's $navSections array. Routes are
@@ -79,8 +87,9 @@ export const navSections: NavSection[] = [
     {
         title: 'Admin Setup',
         btsOnly: true,
+        quarterControlOnly: true,
         items: [
-            { label: 'View As (Employee KPI)', href: '/admin/view-as', match: 'admin/view-as*', icon: 'users' },
+            { label: 'View As (Employee KPI)', href: '/admin/view-as', match: 'admin/view-as*', icon: 'users', btsOnly: true },
             { label: 'Quarter Control', href: '/admin/quarter-control', match: 'admin/quarter-control*', icon: 'calendar', legacy: true },
         ],
     },

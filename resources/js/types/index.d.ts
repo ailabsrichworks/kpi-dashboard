@@ -11,6 +11,7 @@ export interface LayoutProps {
     salutation: string | null;
     position: string | null;
     adminImpersonating: boolean;
+    quarterControlAccess: boolean;
     unreadNotificationCount: number;
     themeAccent2: string;
 }

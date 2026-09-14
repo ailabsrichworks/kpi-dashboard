@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Http\Controllers\Controller;
 use App\Services\SupabaseService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -66,6 +67,11 @@ class HandleInertiaRequests extends Middleware
                 'salutation' => session('salutation'),
                 'position' => session('position'),
                 'adminImpersonating' => session('admin_impersonating'),
+                // BTS itself is covered by departmentCode === 'BTS' above; this
+                // additionally covers the named-individual "Quarter Control"
+                // grant (see Controller::QUARTER_CONTROL_EXTRA_ACCESS_IDS) for
+                // the React sidebar, which otherwise only knows btsOnly.
+                'quarterControlAccess' => Controller::sessionHasQuarterControlAccess(),
                 'unreadNotificationCount' => $this->unreadNotificationCount(),
                 'themeAccent2' => session('theme_accent2') ?: '#6B9080',
             ],
