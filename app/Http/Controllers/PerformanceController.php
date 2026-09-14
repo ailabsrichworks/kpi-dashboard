@@ -988,6 +988,29 @@ class PerformanceController extends Controller
         // Part B entirely has no VP to wait for (see resolveSection7Chain()).
         $section7SltLocked = in_array('vp', $section7Levels, true) && empty($savedData['s7_vp_sig'] ?? null);
 
+        // Sign-off chain status — so anyone opening this report (the
+        // appraiser, VP, or SLT) can see at a glance who's in the chain,
+        // who's already signed, and whose turn it is next, instead of
+        // having to infer it from which of Part A/B/C are unlocked. "Ready"
+        // means the previous hop has signed and this one hasn't yet — Part
+        // A (manager) has no previous hop, so it's ready from the start.
+        $section7ChainStatus = [];
+        $prevSigned = true;
+        foreach ($section7Chain as $hop) {
+            $person = $supabase->first('employees', ['id' => 'eq.' . $hop['id'], 'select' => 'short_name,full_name']);
+            $signed = !empty($savedData["s7_{$hop['level']}_sig"] ?? null);
+
+            $section7ChainStatus[] = [
+                'level'    => $hop['level'],
+                'name'     => $person['full_name'] ?? $person['short_name'] ?? '—',
+                'signed'   => $signed,
+                'date'     => $savedData["s7_{$hop['level']}_date"] ?? null,
+                'ready'    => !$signed && $prevSigned,
+                'isViewer' => $hop['id'] === $viewerId,
+            ];
+            $prevSigned = $signed;
+        }
+
         return view('performance.report', [
             'user'                 => $user,
             'currentUserName'      => $user['full_name'] ?? $user['short_name'] ?? 'User',
@@ -1020,6 +1043,7 @@ class PerformanceController extends Controller
             'myLevelLocked'        => $myLevelLocked,
             'section7Levels'       => $section7Levels,
             'section7SltLocked'    => $section7SltLocked,
+            'section7ChainStatus'  => $section7ChainStatus,
         ]);
     }
 

@@ -1259,6 +1259,44 @@
                     <span style="font-size:14px;line-height:1;">❗</span>
                     <p style="font-size:11px;color:#92400e;line-height:1.5;">Ticking <strong>Confirmation</strong>, <strong>Salary Review</strong> and/or <strong>Promotion</strong> is what sends this to the next level for review — signing without ticking any box completes your part here and nothing further is required from VP/SLT.</p>
                 </div>
+
+                {{-- Sign-off chain status: so whoever opens this report (the
+                     manager, VP, or SLT) can see at a glance who this
+                     appraiser's chain actually is, who's already signed, and
+                     whose turn it is next — without having to infer it from
+                     which of Part A/B/C happen to be unlocked. --}}
+                <div class="no-print" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px 16px;">
+                    <p style="font-size:10px;font-weight:800;color:#334155;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Sign-off Status — who this needs next</p>
+                    <div style="display:flex;flex-direction:column;gap:6px;">
+                        @foreach($section7ChainStatus ?? [] as $hop)
+                        @php
+                            $hopLabel = ['manager' => 'Manager (Part A)', 'vp' => 'VP (Part B)', 'slt' => 'SLT (Part C)'][$hop['level']] ?? ucfirst($hop['level']);
+                            $hopDate = null;
+                            if ($hop['signed'] && $hop['date']) {
+                                try { $hopDate = \Carbon\Carbon::parse($hop['date'])->format('d F Y'); } catch (\Throwable $e) { $hopDate = $hop['date']; }
+                            }
+                        @endphp
+                        <div style="display:flex;align-items:center;gap:8px;font-size:11px;flex-wrap:wrap;">
+                            <span style="font-size:13px;line-height:1;">{{ $hop['signed'] ? '✅' : ($hop['ready'] ? '🟡' : '⏳') }}</span>
+                            <span style="font-weight:700;color:#1e293b;min-width:110px;">{{ $hopLabel }}</span>
+                            <span style="color:#475569;">{{ $hop['name'] }}</span>
+                            @if($hop['isViewer'])
+                            <span style="font-size:9px;font-weight:800;color:#0369a1;background:#e0f2fe;padding:1px 6px;border-radius:999px;">YOU</span>
+                            @endif
+                            <span style="margin-left:auto;color:#64748b;">
+                                @if($hop['signed'])
+                                    Signed {{ $hopDate }}
+                                @elseif($hop['ready'])
+                                    <strong style="color:#b45309;">Ready to sign</strong>
+                                @else
+                                    Waiting
+                                @endif
+                            </span>
+                        </div>
+                        @endforeach
+                    </div>
+                </div>
+
                 @php $sec7=[['key'=>'manager','label'=>'A','title'=>'Promotability and Other Remarks and Recommendations by the Appraiser (Manager)'],['key'=>'vp','label'=>'B','title'=>'Remarks and/or Recommendations by VP'],['key'=>'slt','label'=>'C','title'=>'Remarks by SLT']]; @endphp
                 @php $sec7Rendered=0; @endphp
                 @foreach($sec7 as $blk)
