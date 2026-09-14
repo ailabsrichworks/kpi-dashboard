@@ -14,6 +14,9 @@ export interface LayoutProps {
     quarterControlAccess: boolean;
     unreadNotificationCount: number;
     themeAccent2: string;
+    themeSidebarBg: string;
+    themeSidebarAccent: string;
+    themeSidebarText: string;
 }
 
 export interface FlashProps {

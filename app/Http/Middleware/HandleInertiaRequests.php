@@ -74,6 +74,17 @@ class HandleInertiaRequests extends Middleware
                 'quarterControlAccess' => Controller::sessionHasQuarterControlAccess(),
                 'unreadNotificationCount' => $this->unreadNotificationCount(),
                 'themeAccent2' => session('theme_accent2') ?: '#6B9080',
+                // Sidebar-specific appearance theme (Settings.tsx's "sidebar"
+                // group, independent from the "main" dashboard group above).
+                // Mirrors app.blade.php's own --sidebar-* CSS vars, but as
+                // real props: those vars only get (re-)embedded in <head> on
+                // a full page load, so an SPA navigation after saving a new
+                // theme would keep showing the stale one until a hard
+                // refresh. Sidebar.tsx applies these directly as inline
+                // styles instead, so it's always current.
+                'themeSidebarBg' => session('theme_sidebar_bg') ?: '#111111',
+                'themeSidebarAccent' => session('theme_sidebar_accent') ?: (session('theme_accent') ?: '#D4AF37'),
+                'themeSidebarText' => session('theme_sidebar_text') ?: '#FFFFFF',
             ],
         ];
     }
