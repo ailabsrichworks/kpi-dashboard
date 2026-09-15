@@ -1271,8 +1271,13 @@ class PerformanceController extends Controller
             // Section 7 escalation: ticking Confirmation / Salary Review /
             // Promotion is what actually requires VP's and SLT's attention —
             // signing without ticking anything completes the manager's own
-            // part, nothing further needed, no notice sent to either of them.
-            // Both are notified together, from this one tick — SLT just can't
+            // part, with nothing further required from either of them. Both
+            // branches below notify the same resolved chain either way, just
+            // with a different type/message: 'appraisal_appraised' (needs
+            // your remarks) when ticked, 'appraisal_completed' (nothing
+            // needed from you) when not — so nobody's left guessing whether
+            // a silent appraisal is still awaiting their action. VP and SLT
+            // are notified together in the ticked case — SLT just can't
             // actually act on it (see the access gate earlier in this method)
             // until VP has signed Part B.
             //
@@ -1285,22 +1290,52 @@ class PerformanceController extends Controller
                 || !empty($newData['s7_manager_salary_review'])
                 || !empty($newData['s7_manager_promotion']);
 
+            $section7Chain = $delegations->resolveSection7Chain(
+                $employees[0],
+                fn($id) => $supabase->first('employees', ['id' => 'eq.' . $id, 'select' => '*'])
+            );
+            $chainRecipients = array_column(array_slice($section7Chain, 1), 'id');
+            $appraiseeName   = $employees[0]['full_name'] ?? $employees[0]['short_name'] ?? 'An employee';
+
             if ($ticked) {
-                $section7Chain = $delegations->resolveSection7Chain(
-                    $employees[0],
-                    fn($id) => $supabase->first('employees', ['id' => 'eq.' . $id, 'select' => '*'])
-                );
-                $recipients = array_column(array_slice($section7Chain, 1), 'id');
-
-                if (!empty($recipients)) {
-                    $appraiseeName = $employees[0]['full_name'] ?? $employees[0]['short_name'] ?? 'An employee';
-
+                if (!empty($chainRecipients)) {
                     $notifications->notify(
-                        $recipients,
+                        $chainRecipients,
                         'appraisal_appraised',
                         ['id' => $employeeId, 'name' => $appraiseeName],
                         "{$appraiseeName}'s {$q} appraisal needs your Section 7 remarks",
                         "{$appraiserName} flagged this for further review — please add your remarks and sign Section 7.",
+                        route('performance.appraise.report', [$employeeId, strtolower($q)]),
+                        $q,
+                        $this->currentFinancialYear
+                    );
+                }
+            } else {
+                // Nothing ticked — signing alone completes Section 7, no VP/SLT
+                // review needed. Tell everyone who WOULD have been pulled into
+                // that escalation (same chain as above) plus the appraisee
+                // themselves, so nobody's left wondering whether this one
+                // still needs their attention. Two calls, not one, because the
+                // appraisee and the chain need different links — their own
+                // report vs. the appraiser view of it.
+                $notifications->notify(
+                    [$employeeId],
+                    'appraisal_completed',
+                    ['id' => $employeeId, 'name' => $appraiseeName],
+                    "Your {$q} appraisal is complete",
+                    "{$appraiserName} signed Section 7 with nothing flagged — no further review needed from VP/SLT.",
+                    route('performance.report.quarter', strtolower($q)),
+                    $q,
+                    $this->currentFinancialYear
+                );
+
+                if (!empty($chainRecipients)) {
+                    $notifications->notify(
+                        $chainRecipients,
+                        'appraisal_completed',
+                        ['id' => $employeeId, 'name' => $appraiseeName],
+                        "{$appraiseeName}'s {$q} appraisal is complete",
+                        "{$appraiserName} signed Section 7 with nothing flagged — no action needed from you.",
                         route('performance.appraise.report', [$employeeId, strtolower($q)]),
                         $q,
                         $this->currentFinancialYear

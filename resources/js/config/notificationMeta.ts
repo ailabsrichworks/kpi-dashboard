@@ -10,6 +10,7 @@ export const TYPE_META: Record<string, { icon: string; label: string; category: 
     job_description_submitted: { icon: '📋', label: 'Job Description', category: 'update' },
     appraisal_submitted: { icon: '📝', label: 'Appraisal Submitted', category: 'appraisal' },
     appraisal_appraised: { icon: '✅', label: 'Ready to Sign', category: 'appraisal' },
+    appraisal_completed: { icon: '🎉', label: 'Completed', category: 'appraisal' },
     kpi_completion_approval: { icon: '✔️', label: 'Completion Approval', category: 'approval' },
     kpi_target_change_approval: { icon: '🎯', label: 'Target Change', category: 'approval' },
     kpi_delete_approval: { icon: '🗑️', label: 'Delete Request', category: 'approval' },
