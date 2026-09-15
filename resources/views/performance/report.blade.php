@@ -1682,6 +1682,7 @@ function rephraseAttComment(btn) {
         .then(function (data) {
             if (!data.success) throw new Error(data.message || 'Failed');
             input.value = data.rephrased || text;
+            autoResizeArea(input);
             if (typeof showToast === 'function') showToast('Rephrased.', true);
         })
         .catch(function (err) {
@@ -2133,6 +2134,27 @@ function collectFormData() {
     return data;
 }
 
+// ── auto-grow a textarea (any .f-area — Section 7 remarks, Section 6
+// response, attendance/culture remarks, etc.) to its full content height, so
+// nothing appraisee/appraiser/VP/SLT wrote is ever hidden behind a scrollbar
+// on screen. Mirrors the print-only .f-area-print swap above (which solved
+// the same "fixed-height textarea clips long text" problem, but only for
+// printing) — this is the on-screen equivalent, applied everywhere at once
+// instead of per section.
+function autoResizeArea(el) {
+    if (!el || el.tagName !== 'TEXTAREA') return;
+    el.style.height = 'auto';
+    el.style.height = (el.scrollHeight + 2) + 'px';
+}
+function autoResizeAllAreas() {
+    document.querySelectorAll('.f-area').forEach(autoResizeArea);
+}
+document.addEventListener('input', function(e) {
+    if (e.target && e.target.classList && e.target.classList.contains('f-area')) {
+        autoResizeArea(e.target);
+    }
+});
+
 // ── restore all named inputs from saved object ────────────────────────────────
 function restoreFormData(saved) {
     if (!saved || typeof saved !== 'object') return;
@@ -2148,6 +2170,7 @@ function restoreFormData(saved) {
                 el.dispatchEvent(new Event('change'));
             } else {
                 el.value = saved[n] ?? '';
+                autoResizeArea(el);
                 // restore Part D date display
                 if (n === 'partd_date' && saved[n]) {
                     window.setPartDDate(saved[n]);
@@ -2629,6 +2652,7 @@ document.querySelectorAll('.sig-pad-wrap').forEach(function(wrap) {
 
 // ── on page load ──────────────────────────────────────────────────────────────
 if (_savedData) { restoreFormData(_savedData); restoreAllSigs(); updateS3(); }
+autoResizeAllAreas();
 if (typeof refreshKpiCommentButtons === 'function') refreshKpiCommentButtons();
 updateS6();
 if (_isAppraiserView) {
