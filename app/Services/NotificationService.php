@@ -2,13 +2,16 @@
 
 namespace App\Services;
 
+use App\Mail\AppNotificationMail;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 /**
  * Creates in-app notifications (notifications table) and, when the recipient
- * has a linked Telegram account, pushes the same message there. Used when a
- * subordinate submits their Job Description or a quarterly appraisal
- * self-assessment, to tell their manager/VP/SLT chain it's ready for review.
+ * has a linked Telegram account or a known email, pushes the same message
+ * there too. Used when a subordinate submits their Job Description or a
+ * quarterly appraisal self-assessment, to tell their manager/VP/SLT chain
+ * it's ready for review.
  */
 class NotificationService
 {
@@ -94,6 +97,38 @@ class NotificationService
             }
 
             $this->sendTelegram($recipientId, $title, $message, $link);
+            $this->sendEmail($recipientId, $title, $message, $link);
+        }
+    }
+
+    /**
+     * Best-effort email twin of the in-app row — looks the recipient's email
+     * straight up on `employees` (the same field ProfileController lets them
+     * edit themselves), so there's no separate opt-in/linking step the way
+     * Telegram needs. Silently skipped when the employee has no email on
+     * file, and never lets a mail failure affect the other recipients or the
+     * in-app notification itself.
+     */
+    private function sendEmail(string $recipientId, string $title, ?string $message, ?string $link): void
+    {
+        try {
+            $employee = $this->supabase->first('employees', [
+                'id'     => 'eq.' . $recipientId,
+                'select' => 'email,short_name,full_name',
+            ]);
+
+            if (empty($employee['email'])) {
+                return;
+            }
+
+            Mail::to($employee['email'])->send(new AppNotificationMail(
+                $employee['short_name'] ?? $employee['full_name'] ?? 'there',
+                $title,
+                $message,
+                $link,
+            ));
+        } catch (\Throwable $e) {
+            Log::error('Failed to send notification email', ['recipient' => $recipientId, 'error' => $e->getMessage()]);
         }
     }
 
