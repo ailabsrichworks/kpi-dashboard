@@ -1277,7 +1277,7 @@
                             }
                         @endphp
                         <div style="display:flex;align-items:center;gap:8px;font-size:11px;flex-wrap:wrap;">
-                            <span style="font-size:13px;line-height:1;">{{ $hop['signed'] ? '✅' : ($hop['ready'] ? '🟡' : '⏳') }}</span>
+                            <span style="font-size:13px;line-height:1;">{{ $hop['signed'] ? '✅' : ((($hop['notRequired'] ?? false)) ? '🎉' : ($hop['ready'] ? '🟡' : '⏳')) }}</span>
                             <span style="font-weight:700;color:#1e293b;min-width:110px;">{{ $hopLabel }}</span>
                             <span style="color:#475569;">{{ $hop['name'] }}</span>
                             @if($hop['isViewer'])
@@ -1286,6 +1286,8 @@
                             <span style="margin-left:auto;color:#64748b;">
                                 @if($hop['signed'])
                                     Signed {{ $hopDate }}
+                                @elseif($hop['notRequired'] ?? false)
+                                    <strong style="color:#15803d;">Not required — already complete</strong>
                                 @elseif($hop['ready'])
                                     <strong style="color:#b45309;">Ready to sign</strong>
                                 @else

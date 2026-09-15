@@ -983,10 +983,26 @@ class PerformanceController extends Controller
         // there's no dedicated column per level.
         $myLevelLocked = !empty($savedData["_{$appraiserLevel}_locked"]);
 
+        // Manager signing Section 7 without ticking any of Confirmation /
+        // Salary Review / Promotion means the whole thing is already
+        // complete — Part B/C are optional, not pending (see
+        // appraiserSave()'s own 'appraisal_completed' notification for the
+        // same rule). Only meaningful once the manager has actually signed;
+        // before that, "not ticked yet" just means "not decided yet", not
+        // "decided nothing's needed".
+        $section7ManagerSigned = !empty($savedData['s7_manager_sig'] ?? null);
+        $section7ManagerTicked = !empty($savedData['s7_manager_confirmation'] ?? null)
+            || !empty($savedData['s7_manager_salary_review'] ?? null)
+            || !empty($savedData['s7_manager_promotion'] ?? null);
+        $section7NotRequired = $section7ManagerSigned && !$section7ManagerTicked;
+
         // SLT can't touch Part C at all until VP has signed Part B — only
-        // meaningful for a chain with a genuine VP tier; a chain that skips
-        // Part B entirely has no VP to wait for (see resolveSection7Chain()).
-        $section7SltLocked = in_array('vp', $section7Levels, true) && empty($savedData['s7_vp_sig'] ?? null);
+        // meaningful for a chain with a genuine VP tier that's actually
+        // required; once the manager has settled this with nothing ticked,
+        // there's nothing mandatory left for SLT to wait on VP for.
+        $section7SltLocked = in_array('vp', $section7Levels, true)
+            && empty($savedData['s7_vp_sig'] ?? null)
+            && !$section7NotRequired;
 
         // Sign-off chain status — so anyone opening this report (the
         // appraiser, VP, or SLT) can see at a glance who's in the chain,
@@ -994,19 +1010,23 @@ class PerformanceController extends Controller
         // having to infer it from which of Part A/B/C are unlocked. "Ready"
         // means the previous hop has signed and this one hasn't yet — Part
         // A (manager) has no previous hop, so it's ready from the start.
+        // Every hop AFTER Part A is marked "not required" instead of
+        // "ready" once $section7NotRequired is true, so VP/SLT don't read
+        // an already-settled appraisal as still awaiting their sign-off.
         $section7ChainStatus = [];
         $prevSigned = true;
-        foreach ($section7Chain as $hop) {
+        foreach ($section7Chain as $index => $hop) {
             $person = $supabase->first('employees', ['id' => 'eq.' . $hop['id'], 'select' => 'short_name,full_name']);
             $signed = !empty($savedData["s7_{$hop['level']}_sig"] ?? null);
 
             $section7ChainStatus[] = [
-                'level'    => $hop['level'],
-                'name'     => $person['full_name'] ?? $person['short_name'] ?? '—',
-                'signed'   => $signed,
-                'date'     => $savedData["s7_{$hop['level']}_date"] ?? null,
-                'ready'    => !$signed && $prevSigned,
-                'isViewer' => $hop['id'] === $viewerId,
+                'level'       => $hop['level'],
+                'name'        => $person['full_name'] ?? $person['short_name'] ?? '—',
+                'signed'      => $signed,
+                'date'        => $savedData["s7_{$hop['level']}_date"] ?? null,
+                'ready'       => !$signed && $prevSigned,
+                'notRequired' => $index > 0 && !$signed && $section7NotRequired,
+                'isViewer'    => $hop['id'] === $viewerId,
             ];
             $prevSigned = $signed;
         }
@@ -1150,14 +1170,23 @@ class PerformanceController extends Controller
         // the checkboxes, not the signature — until VP has actually signed
         // Part B, for any chain where a genuine VP tier exists (see
         // resolveSection7Chain()). A chain that skips Part B entirely has no
-        // VP to wait for, so this simply doesn't apply there.
+        // VP to wait for, so this simply doesn't apply there. It also
+        // doesn't apply once the manager has already signed Section 7 with
+        // nothing ticked — that settles the whole thing as complete, so
+        // there's nothing mandatory left to wait on VP for (matches
+        // appraiserReport()'s own $section7SltLocked/$section7NotRequired).
         if ($appraiserLevel === 'slt') {
             $section7Chain = $delegations->resolveSection7Chain(
                 $employees[0],
                 fn($id) => $supabase->first('employees', ['id' => 'eq.' . $id, 'select' => '*'])
             );
             $hasGenuineVp = in_array('vp', array_column($section7Chain, 'level'), true);
-            if ($hasGenuineVp && empty($existingData['s7_vp_sig'])) {
+            $managerSettledWithNothingTicked = !empty($existingData['s7_manager_sig'])
+                && empty($existingData['s7_manager_confirmation'])
+                && empty($existingData['s7_manager_salary_review'])
+                && empty($existingData['s7_manager_promotion']);
+
+            if ($hasGenuineVp && empty($existingData['s7_vp_sig']) && !$managerSettledWithNothingTicked) {
                 return response()->json([
                     'error' => "You can't add your Section 7 remarks yet — VP hasn't signed their part.",
                 ], 403);
