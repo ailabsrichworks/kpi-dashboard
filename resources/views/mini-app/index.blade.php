@@ -445,7 +445,7 @@ function fmtDateShort(iso) {
 // New Task/Edit/Details sub-screens) still uses, so this redesign doesn't
 // silently break text legibility on pages built around a light background.
 function darkCard(inner, extra = '') {
-    return `<div class="bg-white/[0.04] border border-white/10 rounded-2xl p-4 ${extra}">${inner}</div>`;
+    return `<div class="bg-white/5 border border-white/10 rounded-2xl p-4 ${extra}">${inner}</div>`;
 }
 
 let __todoView = 'board'; // 'board' | 'calendar'
@@ -478,7 +478,7 @@ function renderTodoShell() {
     const tasks = window.__myTasks || [];
 
     app.innerHTML = `
-        <div class="bg-[#06142f] rounded-3xl p-4 md:p-6">
+        <div class="bg-[#0a0a0a] rounded-3xl p-4 md:p-6">
             ${todoHeader()}
             ${todoStatCards(tasks)}
             <div id="taskScoreCard" class="mt-4"></div>
@@ -503,7 +503,7 @@ function todoHeader() {
                     <button onclick="switchTodoView('board')" class="px-3 py-1.5 rounded-lg text-[11px] font-black whitespace-nowrap ${__todoView === 'board' ? 'bg-white/10 text-white' : 'text-slate-400'}">▦ Board</button>
                     <button onclick="switchTodoView('calendar')" class="px-3 py-1.5 rounded-lg text-[11px] font-black whitespace-nowrap ${__todoView === 'calendar' ? 'bg-white/10 text-white' : 'text-slate-400'}">📅 Calendar</button>
                 </div>
-                <button onclick="renderNewTaskForm()" class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white text-[12px] font-black whitespace-nowrap">+ New task</button>
+                <button onclick="renderNewTaskForm()" class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/[0.15] border border-white/10 text-white text-[12px] font-black whitespace-nowrap">+ New task</button>
             </div>
         </div>
     `;
@@ -740,7 +740,7 @@ function taskCard(t) {
     const safeId = t.id.replace(/[^a-zA-Z0-9_-]/g, '');
 
     return `
-        <div draggable="true" ondragstart="onDragStartTaskCard(event,'${t.id}')" class="bg-white/[0.04] hover:bg-white/[0.06] rounded-xl border border-white/10 border-l-[3px] ${priorityBorder} overflow-hidden cursor-grab active:cursor-grabbing transition-colors">
+        <div draggable="true" ondragstart="onDragStartTaskCard(event,'${t.id}')" class="bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 border-l-[3px] ${priorityBorder} overflow-hidden cursor-grab active:cursor-grabbing transition-colors">
             <button type="button" onclick="toggleTaskCard('${safeId}')" class="w-full text-left p-3">
                 <p class="text-[13px] font-bold text-white leading-snug">${t.title}</p>
                 <div class="flex items-center flex-wrap gap-2 mt-2.5">
