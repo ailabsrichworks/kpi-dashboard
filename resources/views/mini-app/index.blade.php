@@ -19,7 +19,7 @@
         .nav-btn { transition: all .15s; color: #64748b; }
         .nav-btn.active { background: #F5EAE0; color: #6B3F2A; }
         .nav-btn:not(.active):hover { background: #F8FAFC; color: #334155; }
-        .kanban-dragover { background: #F5EAE0; outline: 2px dashed #6B3F2A; outline-offset: -2px; }
+        .kanban-dragover { background: rgba(255,255,255,.08); outline: 2px dashed rgba(255,255,255,.35); outline-offset: -2px; }
     </style>
 </head>
 <body class="bg-[#F5F5F3] min-h-screen">
@@ -431,6 +431,25 @@ async function submitDelta(kpiId, quarterId) {
 /* delete — each action notifies you (in-app + Telegram if linked).   */
 /* ---------------------------------------------------------------- */
 
+function todayISO() {
+    return new Date().toISOString().slice(0, 10);
+}
+
+function fmtDateShort(iso) {
+    if (!iso) return '';
+    return new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
+// A dark panel for the whole To-Do board -- deliberately separate from the
+// light "card()" helper the rest of the app (My KPIs/Score/Team, and the
+// New Task/Edit/Details sub-screens) still uses, so this redesign doesn't
+// silently break text legibility on pages built around a light background.
+function darkCard(inner, extra = '') {
+    return `<div class="bg-white/[0.04] border border-white/10 rounded-2xl p-4 ${extra}">${inner}</div>`;
+}
+
+let __todoView = 'board'; // 'board' | 'calendar'
+
 async function renderTodo() {
     const app = document.getElementById('app');
     app.innerHTML = `<p class="text-center text-slate-400 text-[12px] mt-10">Loading your to-dos…</p>`;
@@ -444,34 +463,89 @@ async function renderTodo() {
     }
 
     window.__myTasks = data.tasks || [];
+    renderTodoShell();
+    loadTaskScoreCard();
+}
 
-    const header = `
-        <div class="flex items-center gap-2">
-            <button onclick="renderNewTaskForm()" class="flex-1 py-3 rounded-2xl bg-[#16A34A] hover:bg-[#15803D] text-white text-[12px] font-black shadow-[0_6px_16px_rgba(22,163,74,.35)]">➕ New Task</button>
-            <button onclick="renderCalendar()" class="px-4 py-3 rounded-2xl bg-white border-2 border-[#D9C4A0] text-[#6B3F2A] text-[12px] font-black" title="Calendar">📅</button>
+function switchTodoView(view) {
+    __todoView = view;
+    renderTodoShell();
+    loadTaskScoreCard();
+}
+
+function renderTodoShell() {
+    const app = document.getElementById('app');
+    const tasks = window.__myTasks || [];
+
+    app.innerHTML = `
+        <div class="bg-[#06142f] rounded-3xl p-4 md:p-6">
+            ${todoHeader()}
+            ${todoStatCards(tasks)}
+            <div id="taskScoreCard" class="mt-4"></div>
+            <div class="mt-4">
+                ${__todoView === 'calendar'
+                    ? calendarBoard()
+                    : (tasks.length ? kanbanBoard(tasks) : `<p class="text-[12px] text-slate-500 text-center py-10">No tasks yet — tap "New task" to start your board.</p>`)}
+            </div>
         </div>
-        <div id="taskScoreCard" class="mt-3"></div>
+    `;
+}
+
+function todoHeader() {
+    return `
+        <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+            <div class="min-w-0">
+                <p class="text-[22px] font-black text-white leading-tight">Things To Do</p>
+                <p class="text-[12px] text-slate-400 mt-1 max-w-md leading-relaxed">Day-to-day work and meetings — drag a card between stages, or switch to Calendar to see everything by date and time.</p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+                <div class="flex items-center bg-white/5 border border-white/10 rounded-xl p-1">
+                    <button onclick="switchTodoView('board')" class="px-3 py-1.5 rounded-lg text-[11px] font-black whitespace-nowrap ${__todoView === 'board' ? 'bg-white/10 text-white' : 'text-slate-400'}">▦ Board</button>
+                    <button onclick="switchTodoView('calendar')" class="px-3 py-1.5 rounded-lg text-[11px] font-black whitespace-nowrap ${__todoView === 'calendar' ? 'bg-white/10 text-white' : 'text-slate-400'}">📅 Calendar</button>
+                </div>
+                <button onclick="renderNewTaskForm()" class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white text-[12px] font-black whitespace-nowrap">+ New task</button>
+            </div>
+        </div>
+    `;
+}
+
+function todoStatCards(tasks) {
+    const today = todayISO();
+    const in7 = new Date();
+    in7.setDate(in7.getDate() + 7);
+    const in7Str = in7.toISOString().slice(0, 10);
+
+    const openItems = tasks.filter(t => !['done', 'cancelled'].includes(t.status)).length;
+    const dueToday = tasks.filter(t => t.due_date === today && !['done', 'cancelled'].includes(t.status)).length;
+    const overdue = tasks.filter(t => t.due_date && t.due_date < today && !['done', 'cancelled'].includes(t.status)).length;
+    const meetingsThisWeek = tasks.filter(t => t.meeting_time && t.due_date && t.due_date >= today && t.due_date <= in7Str).length;
+
+    const stat = (label, value, tone) => `
+        <div class="bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5">
+            <p class="text-[9px] font-black text-slate-400 uppercase tracking-wide">${label}</p>
+            <p class="text-[24px] font-black ${tone || 'text-white'} leading-none mt-1.5">${value}</p>
+        </div>
     `;
 
-    const board = !window.__myTasks.length
-        ? `<div class="mt-3">${card(`<p class="text-[13px] text-slate-600 text-center py-6">No to-dos yet — tap "New Task" to start your list.</p>`)}</div>`
-        : kanbanBoard(window.__myTasks);
-
-    app.innerHTML = header + board;
-    loadTaskScoreCard();
+    return `
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+            ${stat('Open Items', openItems)}
+            ${stat('Due Today', dueToday)}
+            ${stat('Overdue', overdue, overdue > 0 ? 'text-rose-400' : 'text-white')}
+            ${stat('Meetings This Week', meetingsThisWeek)}
+        </div>
+    `;
 }
 
 /* Kanban board, grouped by status -- each column is just STATUS_PILL's own
    set, so a column never drifts out of sync with what a task's status
-   dropdown actually offers. No drag-and-drop between columns (status still
-   changes via the Update Task form) -- this is a "see everything grouped,
-   drill into one" board, not a full trello-style rewrite. */
+   dropdown actually offers. */
 const KANBAN_COLUMNS = [
-    { key: 'not_started', label: 'Not Started' },
-    { key: 'in_progress', label: 'In Progress' },
-    { key: 'blocked', label: 'Blocked' },
-    { key: 'done', label: 'Done' },
-    { key: 'cancelled', label: 'Cancelled' },
+    { key: 'not_started', label: 'To Do', dot: 'bg-slate-400' },
+    { key: 'in_progress', label: 'In Progress', dot: 'bg-sky-400' },
+    { key: 'blocked', label: 'Blocked', dot: 'bg-amber-400' },
+    { key: 'done', label: 'Done', dot: 'bg-emerald-400' },
+    { key: 'cancelled', label: 'Cancelled', dot: 'bg-rose-400' },
 ];
 
 function kanbanBoard(tasks) {
@@ -481,24 +555,24 @@ function kanbanBoard(tasks) {
 
     const columns = KANBAN_COLUMNS.map(col => {
         const colTasks = byStatus[col.key];
-        const pill = STATUS_PILL[col.key];
         return `
             <div class="min-w-0">
-                <div class="flex items-center justify-between px-1 mb-2">
-                    <span class="text-[10px] font-black px-2 py-0.5 rounded-full ${pill.color}">${col.label}</span>
-                    <span class="text-[10px] font-bold text-slate-400">${colTasks.length}</span>
+                <div class="flex items-center gap-2 px-1 mb-2.5">
+                    <span class="w-2 h-2 rounded-full ${col.dot}"></span>
+                    <span class="text-[11px] font-black text-white uppercase tracking-wide">${col.label}</span>
+                    <span class="ml-auto text-[10px] font-bold text-slate-400 bg-white/5 rounded-full w-5 h-5 flex items-center justify-center shrink-0">${colTasks.length}</span>
                 </div>
                 <div class="kanban-col space-y-2 min-h-[64px] rounded-xl p-1 -m-1 transition-colors"
                     ondragover="event.preventDefault(); this.classList.add('kanban-dragover')"
                     ondragleave="this.classList.remove('kanban-dragover')"
                     ondrop="onDropTaskCard(event, '${col.key}')">
-                    ${colTasks.length ? colTasks.map(t => taskCard(t)).join('') : `<p class="text-[10px] text-slate-400 text-center py-4">No tasks</p>`}
+                    ${colTasks.length ? colTasks.map(t => taskCard(t)).join('') : `<p class="text-[10px] text-slate-600 text-center py-6">No tasks</p>`}
                 </div>
             </div>
         `;
     }).join('');
 
-    return `<div class="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">${columns}</div>`;
+    return `<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">${columns}</div>`;
 }
 
 function onDragStartTaskCard(event, taskId) {
@@ -532,10 +606,10 @@ async function moveTaskCard(taskId, newStatus) {
 /* ---------------------------------------------------------------- */
 
 function scoreStatusBand(status) {
-    if (status === 'on_track') return { label: 'On Track', color: 'bg-emerald-100 text-emerald-700' };
-    if (status === 'at_risk') return { label: 'At Risk', color: 'bg-amber-100 text-amber-700' };
-    if (status === 'critical') return { label: 'Critical', color: 'bg-red-100 text-red-700' };
-    return { label: 'Not enough data yet', color: 'bg-slate-100 text-slate-500' };
+    if (status === 'on_track') return { label: 'On Track', color: 'bg-emerald-500/15 text-emerald-300' };
+    if (status === 'at_risk') return { label: 'At Risk', color: 'bg-amber-500/15 text-amber-300' };
+    if (status === 'critical') return { label: 'Critical', color: 'bg-rose-500/15 text-rose-300' };
+    return { label: 'Not enough data yet', color: 'bg-white/10 text-slate-400' };
 }
 
 async function loadTaskScoreCard() {
@@ -551,17 +625,17 @@ async function loadTaskScoreCard() {
 
     const band = scoreStatusBand(score.status);
 
-    el.innerHTML = card(`
+    el.innerHTML = darkCard(`
         <div class="flex items-center justify-between">
             <div>
                 <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">This Week's Task Score</p>
-                <p class="text-[24px] font-black text-slate-900 leading-none mt-1">${score.score !== null ? Math.round(score.score) : '—'}<span class="text-[12px] font-bold text-slate-400">/100</span></p>
+                <p class="text-[24px] font-black text-white leading-none mt-1">${score.score !== null ? Math.round(score.score) : '—'}<span class="text-[12px] font-bold text-slate-500">/100</span></p>
                 <span class="inline-block mt-1.5 px-2 py-0.5 rounded-full ${band.color} text-[9px] font-black">${band.label}</span>
             </div>
-            <button onclick="toggleTaskSummary()" class="text-[10px] font-black text-[#6B3F2A] bg-[#F5EAE0] px-3 py-1.5 rounded-full shrink-0">✨ AI Summary</button>
+            <button onclick="toggleTaskSummary()" class="text-[10px] font-black text-white bg-white/10 hover:bg-white/15 px-3 py-1.5 rounded-full shrink-0">✨ AI Summary</button>
         </div>
-        <div id="taskSummaryBox" class="hidden mt-3 pt-3 border-t border-slate-200"></div>
-    `, 'bg-gradient-to-br from-[#FFFCF4] to-[#FBF0E0]');
+        <div id="taskSummaryBox" class="hidden mt-3 pt-3 border-t border-white/10"></div>
+    `);
 }
 
 let __summaryLoaded = false;
@@ -579,21 +653,21 @@ async function toggleTaskSummary() {
         } else {
             box.innerHTML = `
                 <p class="text-[11px] text-slate-500">No summary generated yet for this week.</p>
-                <button onclick="generateTaskSummary()" class="mt-2 px-3 py-1.5 rounded-lg bg-[#6B3F2A] hover:bg-[#5a341f] text-white text-[10px] font-black">Generate now</button>
+                <button onclick="generateTaskSummary()" class="mt-2 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-[10px] font-black">Generate now</button>
             `;
         }
         __summaryLoaded = true;
     } catch (e) {
-        box.innerHTML = `<p class="text-[11px] text-red-500">Could not load a summary right now.</p>`;
+        box.innerHTML = `<p class="text-[11px] text-rose-400">Could not load a summary right now.</p>`;
     }
 }
 
 function summaryBlock(summary) {
-    const recs = (summary.facts?.recommendations || []).map(r => `<li class="text-[10px] text-slate-600 mt-1">• ${r}</li>`).join('');
+    const recs = (summary.facts?.recommendations || []).map(r => `<li class="text-[10px] text-slate-400 mt-1">• ${r}</li>`).join('');
     return `
-        <p class="text-[11px] text-slate-700 leading-relaxed">${summary.narrative}</p>
+        <p class="text-[11px] text-slate-300 leading-relaxed">${summary.narrative}</p>
         ${recs ? `<ul class="mt-2">${recs}</ul>` : ''}
-        <button onclick="generateTaskSummary()" class="mt-2 text-[10px] font-bold text-[#6B3F2A]">↻ Regenerate</button>
+        <button onclick="generateTaskSummary()" class="mt-2 text-[10px] font-bold text-white">↻ Regenerate</button>
     `;
 }
 
@@ -604,7 +678,7 @@ async function generateTaskSummary() {
         const data = await api('/summaries/regenerate', { method: 'POST', body: JSON.stringify({ scope: 'employee', period: 'weekly' }) });
         box.innerHTML = summaryBlock(data.summary);
     } catch (e) {
-        box.innerHTML = `<p class="text-[11px] text-red-500">${e.data?.message || "Couldn't generate a summary right now."}</p>`;
+        box.innerHTML = `<p class="text-[11px] text-rose-400">${e.data?.message || "Couldn't generate a summary right now."}</p>`;
     }
 }
 
@@ -630,62 +704,64 @@ function fmtTime12(hhmm) {
     return `${h12}:${String(m).padStart(2, '0')} ${period}`;
 }
 
-// A meeting is a task with a specific time-of-day -- shown in place of the
-// plain due-date badge when set, since a scheduled time is the more useful
-// fact once it exists.
-function taskTimeBadge(t) {
-    if (t.meeting_time) {
-        return `<span class="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700">🕐 ${fmtTime12(t.meeting_time)}</span>`;
-    }
-    return dueDateBadge(t.due_date);
-}
-
-// "Who assign" -- a chip naming the assignee whenever a task isn't simply
-// assigned to yourself, so a delegated task reads clearly on the board.
-function taskAssigneeBadge(t) {
-    if (!t.assignee_name || t.assignee_employee_id === CURRENT_EMPLOYEE_ID) return '';
-    return `<span class="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-[#CCE3DE] text-[#1a3d34]">👤 ${t.assignee_name}</span>`;
-}
-
 /* Collapsed by default -- just enough to scan a whole column at a glance
    (title, priority, due date, progress bar). Tapping the card opens it in
    place to show the numbers/KPI links/actions, instead of every card
    eating that much vertical space all the time. */
+const AVATAR_COLORS = ['bg-rose-600', 'bg-amber-600', 'bg-emerald-600', 'bg-sky-600', 'bg-indigo-600', 'bg-fuchsia-600'];
+function avatarColorFor(seed) {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+    return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+}
+
+function initialsOf(name) {
+    if (!name) return '?';
+    const parts = name.trim().split(/\s+/);
+    return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase();
+}
+
+const PRIORITY_BORDER = {
+    low: 'border-l-slate-500',
+    medium: 'border-l-yellow-500',
+    high: 'border-l-amber-500',
+    critical: 'border-l-rose-500',
+};
+
 function taskCard(t) {
     const pct = t.target > 0 ? Math.max(0, Math.min(100, (t.actual / t.target) * 100)) : 0;
     const badge = achvBadge(pct);
-    const priorityPill = PRIORITY_LABELS[t.priority] || PRIORITY_LABELS.medium;
+    const priorityBorder = PRIORITY_BORDER[t.priority] || PRIORITY_BORDER.medium;
+    const assigneeName = t.assignee_name || (t.assignee_employee_id === CURRENT_EMPLOYEE_ID ? 'You' : null);
+    const isOverdue = t.due_date && t.due_date < todayISO() && !['done', 'cancelled'].includes(t.status);
     const kpiChips = (t.linked_kpis || []).length
-        ? `<div class="flex flex-wrap gap-1.5 mt-2">${t.linked_kpis.map(k => `<span class="px-2 py-0.5 rounded-full bg-[#CCE3DE] text-[#1a3d34] text-[8px] font-black">${k.kpi_title}</span>`).join('')}</div>`
+        ? `<div class="flex flex-wrap gap-1.5 mt-2">${t.linked_kpis.map(k => `<span class="px-2 py-0.5 rounded-full bg-white/10 text-slate-300 text-[8px] font-black">${k.kpi_title}</span>`).join('')}</div>`
         : '';
     const safeId = t.id.replace(/[^a-zA-Z0-9_-]/g, '');
 
     return `
-        <div draggable="true" ondragstart="onDragStartTaskCard(event,'${t.id}')" class="bg-[#FFFCF4] rounded-2xl soft-card border-2 border-[#D9C4A0] overflow-hidden cursor-grab active:cursor-grabbing">
+        <div draggable="true" ondragstart="onDragStartTaskCard(event,'${t.id}')" class="bg-white/[0.04] hover:bg-white/[0.06] rounded-xl border border-white/10 border-l-[3px] ${priorityBorder} overflow-hidden cursor-grab active:cursor-grabbing transition-colors">
             <button type="button" onclick="toggleTaskCard('${safeId}')" class="w-full text-left p-3">
-                <div class="flex items-start justify-between gap-2">
-                    <p class="text-[12px] font-black text-slate-900 leading-snug min-w-0">${t.title}</p>
-                    <span id="task-chevron-${safeId}" class="text-slate-400 text-[10px] shrink-0 mt-0.5">▸</span>
-                </div>
-                <div class="flex flex-wrap gap-1.5 mt-1.5">
-                    <span class="text-[8px] font-black px-1.5 py-0.5 rounded-full ${priorityPill.color}">${priorityPill.label}</span>
-                    ${taskTimeBadge(t)}
-                    ${taskAssigneeBadge(t)}
-                </div>
-                <div class="w-full h-1.5 bg-[#EFE3C7] rounded-full mt-2 overflow-hidden">
-                    <div class="h-full rounded-full bg-gradient-to-r ${badge.bar}" style="width:${pct}%"></div>
-                </div>
-            </button>
-            <div id="task-body-${safeId}" class="hidden px-3 pb-3">
-                <div class="flex items-center justify-between pt-1 border-t border-[#EFE3C7]">
-                    <p class="text-[10px] text-slate-500 pt-1.5">Target: <span class="font-bold text-slate-700">${formatUnit(t.target, t.unit)}</span></p>
-                    <p class="text-[10px] text-slate-500 pt-1.5">Actual: <span class="font-bold text-slate-700">${formatUnit(t.actual, t.unit)}</span></p>
-                    <p class="text-[10px] font-black text-slate-700 pt-1.5">${pct.toFixed(0)}%</p>
+                <p class="text-[13px] font-bold text-white leading-snug">${t.title}</p>
+                <div class="flex items-center flex-wrap gap-2 mt-2.5">
+                    ${assigneeName ? `<span class="w-5 h-5 rounded-full ${avatarColorFor(t.assignee_employee_id || assigneeName)} text-white text-[8px] font-black flex items-center justify-center shrink-0">${initialsOf(assigneeName)}</span>` : ''}
+                    ${t.meeting_time ? `<span class="text-[10px] font-bold text-slate-300 flex items-center gap-1">🕐 ${fmtTime12(t.meeting_time)}</span>` : ''}
+                    ${t.due_date ? `<span class="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${isOverdue ? 'bg-rose-500/15 text-rose-300' : 'bg-white/5 text-slate-400'}">${fmtDateShort(t.due_date)}</span>` : ''}
                 </div>
                 ${kpiChips}
+            </button>
+            <div id="task-body-${safeId}" class="hidden px-3 pb-3 pt-1 border-t border-white/10">
+                <div class="flex items-center justify-between pt-2">
+                    <p class="text-[10px] text-slate-400">Target: <span class="font-bold text-slate-200">${formatUnit(t.target, t.unit)}</span></p>
+                    <p class="text-[10px] text-slate-400">Actual: <span class="font-bold text-slate-200">${formatUnit(t.actual, t.unit)}</span></p>
+                    <p class="text-[10px] font-black text-slate-200">${pct.toFixed(0)}%</p>
+                </div>
+                <div class="w-full h-1.5 bg-white/10 rounded-full mt-2 overflow-hidden">
+                    <div class="h-full rounded-full bg-gradient-to-r ${badge.bar}" style="width:${pct}%"></div>
+                </div>
                 <div class="flex items-center gap-2 mt-3">
-                    <button onclick="renderTaskDetail('${t.id}')" class="flex-1 py-2 rounded-xl bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-black">Details</button>
-                    <button onclick="confirmDeleteTask('${t.id}')" class="px-3 py-2 rounded-xl bg-white border-2 border-red-300 text-red-600 text-[11px] font-black">🗑️</button>
+                    <button onclick="renderTaskDetail('${t.id}')" class="flex-1 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-[11px] font-black">Details</button>
+                    <button onclick="confirmDeleteTask('${t.id}')" class="px-3 py-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-[11px] font-black">🗑️</button>
                 </div>
             </div>
         </div>
@@ -1331,15 +1407,16 @@ function renderReviewDetail(index) {
 }
 
 /* ---------------------------------------------------------------- */
-/* CALENDAR — month view of To-Do due dates, built from the same       */
-/* task list already loaded on the To-Do tab (no extra API call).     */
+/* CALENDAR — month view of To-Do due dates, rendered inside the same  */
+/* dark board shell as a Board/Calendar toggle (renderTodoShell()),    */
+/* built from the same task list already loaded on the To-Do tab (no   */
+/* extra API call).                                                     */
 /* ---------------------------------------------------------------- */
 
 let __calendarCursor = new Date();
 __calendarCursor.setDate(1);
 
-function renderCalendar() {
-    const app = document.getElementById('app');
+function calendarBoard() {
     const tasks = window.__myTasks || [];
 
     const year = __calendarCursor.getFullYear();
@@ -1360,27 +1437,26 @@ function renderCalendar() {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         const dayTasks = tasksByDate[dateStr] || [];
         const hasMeeting = dayTasks.some(x => x.meeting_time);
-        const isToday = dateStr === new Date().toISOString().slice(0, 10);
+        const isToday = dateStr === todayISO();
         cells += `
-            <button onclick="renderCalendarDay('${dateStr}')" class="aspect-square rounded-lg flex flex-col items-center justify-center relative ${isToday ? 'bg-[#F5EAE0] font-black' : 'hover:bg-slate-50'}">
-                <span class="text-[11px] ${isToday ? 'text-[#6B3F2A]' : 'text-slate-600'}">${d}</span>
-                ${dayTasks.length ? `<span class="w-1.5 h-1.5 rounded-full ${hasMeeting ? 'bg-indigo-500' : 'bg-[#6B9080]'} absolute bottom-1"></span>` : ''}
+            <button onclick="renderCalendarDay('${dateStr}')" class="aspect-square rounded-lg flex flex-col items-center justify-center relative ${isToday ? 'bg-white/10 font-black' : 'hover:bg-white/5'}">
+                <span class="text-[11px] ${isToday ? 'text-white' : 'text-slate-400'}">${d}</span>
+                ${dayTasks.length ? `<span class="w-1.5 h-1.5 rounded-full ${hasMeeting ? 'bg-sky-400' : 'bg-emerald-400'} absolute bottom-1"></span>` : ''}
             </button>
         `;
     }
 
     const dow = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-    app.innerHTML = `
-        <button onclick="renderTodo()" class="text-[11px] font-bold text-[#6B3F2A] mb-1">← Back to To-Do</button>
-        ${card(`
+    return `
+        ${darkCard(`
             <div class="flex items-center justify-between mb-3">
-                <button onclick="shiftCalendar(-1)" class="px-2 py-1 text-[13px] font-black text-slate-500">‹</button>
-                <p class="text-[13px] font-black text-slate-900">${monthLabel}</p>
-                <button onclick="shiftCalendar(1)" class="px-2 py-1 text-[13px] font-black text-slate-500">›</button>
+                <button onclick="shiftCalendar(-1)" class="px-2 py-1 text-[13px] font-black text-slate-400 hover:text-white">‹</button>
+                <p class="text-[13px] font-black text-white">${monthLabel}</p>
+                <button onclick="shiftCalendar(1)" class="px-2 py-1 text-[13px] font-black text-slate-400 hover:text-white">›</button>
             </div>
             <div class="grid grid-cols-7 gap-1 text-center mb-1">
-                ${dow.map(d => `<p class="text-[9px] font-black text-slate-400">${d}</p>`).join('')}
+                ${dow.map(d => `<p class="text-[9px] font-black text-slate-500">${d}</p>`).join('')}
             </div>
             <div class="grid grid-cols-7 gap-1">${cells}</div>
         `)}
@@ -1390,7 +1466,7 @@ function renderCalendar() {
 
 function shiftCalendar(delta) {
     __calendarCursor.setMonth(__calendarCursor.getMonth() + delta);
-    renderCalendar();
+    renderTodoShell();
 }
 
 function renderCalendarDay(dateStr) {
@@ -1398,11 +1474,12 @@ function renderCalendarDay(dateStr) {
         .filter(t => t.due_date === dateStr)
         .sort((a, b) => (a.meeting_time || '99:99').localeCompare(b.meeting_time || '99:99'));
     const box = document.getElementById('calendarDayTasks');
+    if (!box) return;
     if (!dayTasks.length) {
-        box.innerHTML = card(`<p class="text-[11px] text-slate-400 text-center py-3">No tasks due ${dateStr}.</p>`);
+        box.innerHTML = darkCard(`<p class="text-[11px] text-slate-500 text-center py-3">No tasks due ${fmtDateShort(dateStr)}.</p>`);
         return;
     }
-    box.innerHTML = `<p class="text-[10px] uppercase tracking-wide text-slate-400 font-black mb-1.5 px-1">Due ${dateStr}</p>` + dayTasks.map(t => taskCard(t)).join('<div class="h-2"></div>');
+    box.innerHTML = `<p class="text-[10px] uppercase tracking-wide text-slate-500 font-black mb-1.5 px-1">Due ${fmtDateShort(dateStr)}</p>` + dayTasks.map(t => taskCard(t)).join('<div class="h-2"></div>');
 }
 
 /* ---------------------------------------------------------------- */
