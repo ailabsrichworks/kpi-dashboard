@@ -382,6 +382,11 @@ class ApprovalController extends Controller
                 ],404);
             }
 
+            // The approver is acting on this request right now, regardless
+            // of which screen brought them here — clear its notification so
+            // the Approvals badge doesn't keep counting it after it's done.
+            $this->notifications->markApprovalResolved(session('employee_uuid'), $id);
+
             if(
                 ($approval['status'] ?? '')
                 !== 'pending'
@@ -616,6 +621,8 @@ class ApprovalController extends Controller
 
         if($approval){
 
+            $this->notifications->markApprovalResolved(session('employee_uuid'), $id);
+
             if(
                 ($approval['status'] ?? '')
                 !== 'pending'
@@ -678,6 +685,8 @@ class ApprovalController extends Controller
 
         if($targetRequest){
 
+            $this->notifications->markApprovalResolved(session('employee_uuid'), $id);
+
             if(
                 ($targetRequest['status'] ?? '')
                 !== 'pending'
@@ -725,6 +734,8 @@ class ApprovalController extends Controller
         );
 
         if($deleteRequest){
+
+            $this->notifications->markApprovalResolved(session('employee_uuid'), $id);
 
             if(
                 ($deleteRequest['status'] ?? '')

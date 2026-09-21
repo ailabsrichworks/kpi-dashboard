@@ -1280,6 +1280,17 @@ class PerformanceController extends Controller
             'updated_at'     => now()->toISOString(),
         ], 'employee_id,financial_year,quarter');
 
+        // Submitting this level's part is unambiguous proof the viewer has
+        // dealt with whatever notification brought them here — they may well
+        // have arrived via the Sign-off Status box or a bookmark instead of
+        // actually clicking it, and until now only clicking the notification
+        // row itself ever marked it read. Matches both incoming types since
+        // which one applies depends on level (manager gets 'appraisal_submitted',
+        // VP/SLT get 'appraisal_appraised') — harmless to check both.
+        if ($action === 'submit') {
+            $notifications->markAppraisalResolved($viewerId, $employeeId, $q, ['appraisal_submitted', 'appraisal_appraised']);
+        }
+
         // Manager's submit is what unlocks the appraisee's own acknowledgment
         // signature — tell them their turn has come, in-app and via Telegram.
         if ($action === 'submit' && $appraiserLevel === 'manager' && $status === 'appraised') {

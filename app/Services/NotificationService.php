@@ -108,6 +108,63 @@ class NotificationService
     }
 
     /**
+     * Marks a specific approval request's notification(s) as read for the
+     * approver who just acted on it — approving/rejecting from the Approval
+     * Center is a different path than clicking the notification row itself,
+     * and until now only clicking the row (or "Mark all as read") ever set
+     * `is_read`. That left the Approvals badge stuck showing requests the
+     * approver had already resolved, which looked exactly like the earlier
+     * "Mark all as read doesn't work" bug even though the count itself was
+     * otherwise accurate.
+     *
+     * There's no `approval_id` column on `notifications` to join on — every
+     * approval notification's `link` embeds the request id as
+     * `?highlight=<id>` (see KpiController::notifyApprover()), so that's
+     * what this matches against instead of adding a new column.
+     */
+    public function markApprovalResolved(string $recipientId, string $approvalId): void
+    {
+        try {
+            $this->supabase->update('notifications', [
+                'recipient_employee_id' => 'eq.' . $recipientId,
+                'link'                  => 'ilike.*highlight=' . $approvalId . '*',
+            ], ['is_read' => true]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to mark approval notification as read', ['recipient' => $recipientId, 'approval' => $approvalId, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Marks an appraiser's own incoming notification(s) about one employee's
+     * quarter as read the moment they actually submit their part — same
+     * reasoning as markApprovalResolved() above: a manager/VP/SLT can reach
+     * the report from the Sign-off Status box, a bookmark, or Approvals-style
+     * navigation just as easily as by clicking the notification itself, and
+     * submitting their section is unambiguous proof they've dealt with it.
+     * Matched on recipient + subject + quarter rather than a row id, since
+     * more than one notification type can be the one that's now resolved
+     * (e.g. a VP might hold both an old 'appraisal_appraised' and, if
+     * re-notified, wouldn't need two separate calls to clear both).
+     */
+    public function markAppraisalResolved(string $recipientId, string $subjectEmployeeId, string $quarter, array $types): void
+    {
+        if (empty($types)) {
+            return;
+        }
+
+        try {
+            $this->supabase->update('notifications', [
+                'recipient_employee_id' => 'eq.' . $recipientId,
+                'subject_employee_id'   => 'eq.' . $subjectEmployeeId,
+                'quarter'               => 'eq.' . $quarter,
+                'type'                  => 'in.(' . implode(',', $types) . ')',
+            ], ['is_read' => true]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to mark appraisal notification as read', ['recipient' => $recipientId, 'subject' => $subjectEmployeeId, 'quarter' => $quarter, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
      * Best-effort email twin of the in-app row — looks the recipient's email
      * straight up on `employees` (the same field ProfileController lets them
      * edit themselves), so there's no separate opt-in/linking step the way
