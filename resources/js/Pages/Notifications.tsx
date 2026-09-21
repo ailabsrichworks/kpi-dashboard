@@ -57,12 +57,17 @@ export default function Notifications({ notifications }: NotificationsPageProps)
 
     const rows = notifications.map((n) => ({ ...n, meta: typeMetaFor(n.type) }));
 
-    const unreadCount = rows.filter((n) => !n.is_read).length;
-    const approvalCount = rows.filter((n) => n.meta.category === 'approval').length;
-    const appraisalNeededCount = rows.filter((n) => n.type === 'appraisal_submitted').length;
-    const appraisalReadyCount = rows.filter((n) => n.type === 'appraisal_appraised').length;
-    const appraisalCompletedCount = rows.filter((n) => n.type === 'appraisal_completed').length;
-    const updateCount = rows.filter((n) => n.meta.category === 'update').length;
+    // Every tab badge counts UNREAD items only, same as the top "X new" pill
+    // — a badge that kept showing yesterday's already-seen total no matter
+    // how many times "Mark all as read" was pressed looked broken, even
+    // though it was technically counting correctly (just the wrong thing).
+    const unread = rows.filter((n) => !n.is_read);
+    const unreadCount = unread.length;
+    const approvalCount = unread.filter((n) => n.meta.category === 'approval').length;
+    const appraisalNeededCount = unread.filter((n) => n.type === 'appraisal_submitted').length;
+    const appraisalReadyCount = unread.filter((n) => n.type === 'appraisal_appraised').length;
+    const appraisalCompletedCount = unread.filter((n) => n.type === 'appraisal_completed').length;
+    const updateCount = unread.filter((n) => n.meta.category === 'update').length;
 
     const appraisalFilterType = APPRAISAL_FILTER_TYPES[filter];
     const visible =
@@ -132,7 +137,7 @@ export default function Notifications({ notifications }: NotificationsPageProps)
                                     onClick={() => setFilter('all')}
                                     className={`px-3 py-1.5 rounded-xl text-[11px] font-black bg-white border border-[#E5E7EB] text-slate-700 transition ${filter === 'all' ? 'outline outline-2 outline-offset-1 outline-slate-800' : ''}`}
                                 >
-                                    All <span className="opacity-50">({rows.length})</span>
+                                    All <span className="opacity-50">({unreadCount})</span>
                                 </button>
                                 <button
                                     type="button"
