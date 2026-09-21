@@ -436,7 +436,6 @@ async function submitDelta(kpiId, quarterId) {
 /* ---------------------------------------------------------------- */
 
 let __homeData = null; // { tasks, weeklyScore, kpis }
-let __homeFilter = 'all';
 let __qduStatus = 'in_progress';
 
 function todayISO() {
@@ -460,11 +459,13 @@ async function renderHome() {
     }
 
     __homeData = {
-        tasks: (tasksRes.tasks || []).filter(t => t.status !== 'cancelled'),
+        tasks: tasksRes.tasks || [],
         weeklyScore,
         kpis: kpiSummary.kpis || [],
     };
-    __homeFilter = 'all';
+    // Home's Kanban board reuses the To-Do tab's own drag/drop, details, and
+    // delete handlers, which all look tasks up via window.__myTasks.
+    window.__myTasks = __homeData.tasks;
 
     app.innerHTML = `
         ${homeHeader()}
@@ -512,7 +513,7 @@ function homeStatCards() {
     const tasks = __homeData.tasks;
     const today = todayISO();
     const activeTasks = tasks.filter(t => ['not_started', 'in_progress', 'blocked'].includes(t.status));
-    const dueToday = tasks.filter(t => t.due_date === today);
+    const dueToday = tasks.filter(t => t.due_date === today && t.status !== 'cancelled');
     const dueTodayOpen = dueToday.filter(t => t.status !== 'done');
     const dailyProgressPct = dueToday.length
         ? Math.round(dueToday.reduce((sum, t) => sum + (t.progress_percentage || 0), 0) / dueToday.length)
@@ -533,113 +534,17 @@ function homeStatCards() {
     `;
 }
 
-/* Today's Tasks — filterable list, reusing STATUS_PILL/PRIORITY_LABELS/  */
-/* dueDateBadge/achvBadge already defined for the To-Do tab so a task's   */
-/* colors read identically wherever it's shown.                          */
-
-function homeTaskFilterBtn(key, label) {
-    const active = __homeFilter === key;
-    return `<button type="button" onclick="setHomeFilter('${key}')" data-filter="${key}" class="home-filter-btn px-3 py-1.5 rounded-full text-[10px] font-black ${active ? 'bg-[#6B3F2A] text-white' : 'bg-[#F5EAE0] text-[#6B3F2A]'}">${label}</button>`;
-}
-
-// Shared by the desktop header row and every desktop task row so the
-// columns can never drift out of alignment with each other.
-const HOME_TASK_GRID_STYLE = 'grid-template-columns: 1.7fr 1fr 1fr 0.7fr 1.1fr 0.8fr 0.8fr 0.6fr';
+/* Today's Tasks — the same Kanban board as the To-Do tab (KANBAN_COLUMNS/
+   kanbanBoard(), defined below), so Home reads as the same product instead
+   of a separate filtered list. Drag/drop, Details, and Delete all look the
+   task up via window.__myTasks, which renderHome() keeps in sync. */
 
 function homeTasksSection() {
-    const filtered = homeFilteredTasks();
+    const tasks = __homeData.tasks;
     return card(`
         ${sectionHeader("Today's Tasks")}
-        <div class="flex items-center gap-1.5 flex-wrap mb-3">
-            ${homeTaskFilterBtn('all', 'All')}
-            ${homeTaskFilterBtn('in_progress', 'In Progress')}
-            ${homeTaskFilterBtn('due_today', 'Due Today')}
-            ${homeTaskFilterBtn('completed', 'Completed')}
-        </div>
-        ${filtered.length ? `
-        <div class="hidden md:grid items-center gap-3 px-4 pb-2 text-[9px] font-black uppercase tracking-wide text-slate-400" style="${HOME_TASK_GRID_STYLE}">
-            <p>Task</p><p>Project</p><p>KPI Alignment</p><p>Priority</p><p>Progress</p><p>Due</p><p>Status</p><p class="text-right">Action</p>
-        </div>` : ''}
-        <div id="homeTaskList" class="space-y-2">${homeTaskListHtml()}</div>
+        ${tasks.length ? kanbanBoard(tasks) : `<p class="text-[12px] text-slate-400 text-center py-6">No tasks yet.</p>`}
     `);
-}
-
-function homeFilteredTasks() {
-    const tasks = __homeData.tasks;
-    const today = todayISO();
-    if (__homeFilter === 'in_progress') return tasks.filter(t => t.status === 'in_progress');
-    if (__homeFilter === 'due_today') return tasks.filter(t => t.due_date === today);
-    if (__homeFilter === 'completed') return tasks.filter(t => t.status === 'done');
-    return tasks;
-}
-
-function homeTaskListHtml() {
-    const filtered = homeFilteredTasks();
-    if (!filtered.length) return `<p class="text-[12px] text-slate-400 text-center py-6">No tasks in this view.</p>`;
-    return filtered.map(homeTaskRow).join('');
-}
-
-function setHomeFilter(f) {
-    __homeFilter = f;
-    document.querySelectorAll('.home-filter-btn').forEach(b => {
-        const active = b.dataset.filter === f;
-        b.classList.toggle('bg-[#6B3F2A]', active);
-        b.classList.toggle('text-white', active);
-        b.classList.toggle('bg-[#F5EAE0]', !active);
-        b.classList.toggle('text-[#6B3F2A]', !active);
-    });
-    document.getElementById('homeTaskList').innerHTML = homeTaskListHtml();
-}
-
-function homeTaskRow(t) {
-    const pct = Math.max(0, Math.min(100, t.progress_percentage || 0));
-    const statusPill = STATUS_PILL[t.status] || STATUS_PILL.not_started;
-    const priorityPill = PRIORITY_LABELS[t.priority] || PRIORITY_LABELS.medium;
-    const kpiLabel = (t.linked_kpis || []).map(k => k.kpi_title).join(', ') || '—';
-    const action = t.status === 'done'
-        ? `<button onclick="window.__taskDetailBackTo='home'; renderTaskDetail('${t.id}')" class="text-[11px] font-black text-[#6B3F2A] shrink-0">View</button>`
-        : `<button onclick="selectQuickUpdateTask('${t.id}')" class="text-[11px] font-black text-[#16A34A] shrink-0">Update</button>`;
-    const progressBar = `
-        <div class="flex items-center gap-2">
-            <div class="flex-1 h-1.5 bg-[#EFE3C7] rounded-full overflow-hidden min-w-[32px]">
-                <div class="h-full rounded-full bg-gradient-to-r ${achvBadge(pct).bar}" style="width:${pct}%"></div>
-            </div>
-            <p class="text-[10px] font-black text-slate-600 w-9 text-right shrink-0">${pct.toFixed(0)}%</p>
-        </div>
-    `;
-
-    // Mobile stays a stacked card (badges wrap naturally at narrow widths).
-    // Desktop (md+) becomes an aligned row matching the header's column
-    // widths — the wrapped-badge layout looked sparse once Home started
-    // using the page's full width.
-    return `
-        <div class="md:hidden rounded-xl border-2 border-[#E3D2B0] bg-[#FFFCF4] px-3 py-2.5">
-            <div class="flex items-center justify-between gap-2">
-                <p class="text-[12px] font-black text-slate-900 leading-snug min-w-0 truncate">${t.title}</p>
-                <span class="text-[8px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${statusPill.color}">${statusPill.label}</span>
-            </div>
-            <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
-                <span class="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">${t.project_name || 'My To-Do List'}</span>
-                <span class="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-[#CCE3DE] text-[#1a3d34]">${kpiLabel}</span>
-                <span class="text-[8px] font-black px-1.5 py-0.5 rounded-full ${priorityPill.color}">${priorityPill.label}</span>
-                ${taskTimeBadge(t)}
-                ${taskAssigneeBadge(t)}
-            </div>
-            <div class="mt-2">${progressBar}</div>
-            <div class="flex justify-end mt-1.5">${action}</div>
-        </div>
-
-        <div class="hidden md:grid items-center gap-3 rounded-xl border-2 border-[#E3D2B0] bg-[#FFFCF4] px-4 py-3" style="${HOME_TASK_GRID_STYLE}">
-            <p class="text-[12px] font-black text-slate-900 truncate min-w-0">${t.title}</p>
-            <p class="text-[10px] font-bold text-slate-500 truncate">${t.project_name || 'My To-Do List'}</p>
-            <span class="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-[#CCE3DE] text-[#1a3d34] truncate w-fit max-w-full">${kpiLabel}</span>
-            <span class="text-[9px] font-black px-1.5 py-0.5 rounded-full ${priorityPill.color} w-fit">${priorityPill.label}</span>
-            ${progressBar}
-            <p class="text-[10px] text-slate-500 truncate">${t.meeting_time ? '🕐 ' + fmtTime12(t.meeting_time) : (t.due_date || '—')}</p>
-            <span class="text-[9px] font-black px-1.5 py-0.5 rounded-full ${statusPill.color} w-fit">${statusPill.label}</span>
-            <div class="text-right">${action}</div>
-        </div>
-    `;
 }
 
 /* Quick Daily Update — the evening check-in flow (status/progress/note) */
@@ -733,14 +638,6 @@ function onQduTaskChange() {
     document.getElementById('qduProgressValue').textContent = t.progress_percentage || 0;
     document.getElementById('qduNoteInput').value = '';
     document.getElementById('qduNoteCount').textContent = '0';
-}
-
-function selectQuickUpdateTask(taskId) {
-    const sel = document.getElementById('qduTaskSelect');
-    if (!sel) return;
-    sel.value = taskId;
-    onQduTaskChange();
-    document.getElementById('qduCard')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 async function submitQuickDailyUpdate() {
@@ -849,7 +746,7 @@ function homeKpiAlignmentCard() {
 function homeRemindersCard() {
     const now = new Date();
     const upcoming = __homeData.tasks
-        .filter(t => t.reminder_at && new Date(t.reminder_at) >= now && t.status !== 'done')
+        .filter(t => t.reminder_at && new Date(t.reminder_at) >= now && !['done', 'cancelled'].includes(t.status))
         .sort((a, b) => new Date(a.reminder_at) - new Date(b.reminder_at))
         .slice(0, 5);
 
@@ -966,7 +863,7 @@ async function moveTaskCard(taskId, newStatus) {
     try {
         await api(`/tasks/${taskId}/daily-update`, { method: 'POST', body: JSON.stringify({ status: newStatus }) });
         showToast(`Moved to ${(STATUS_PILL[newStatus] || {}).label || newStatus}.`);
-        renderTodo();
+        if (currentTab === 'home') renderHome(); else renderTodo();
     } catch (e) {
         showToast(e.data?.message || "Couldn't move the task — please try again.");
     }
@@ -1131,7 +1028,7 @@ function taskCard(t) {
                 </div>
                 ${kpiChips}
                 <div class="flex items-center gap-2 mt-3">
-                    <button onclick="window.__taskDetailBackTo='todo'; renderTaskDetail('${t.id}')" class="flex-1 py-2 rounded-xl bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-black">Details</button>
+                    <button onclick="window.__taskDetailBackTo='${currentTab === 'home' ? 'home' : 'todo'}'; renderTaskDetail('${t.id}')" class="flex-1 py-2 rounded-xl bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-black">Details</button>
                     <button onclick="confirmDeleteTask('${t.id}')" class="px-3 py-2 rounded-xl bg-white border-2 border-red-300 text-red-600 text-[11px] font-black">🗑️</button>
                 </div>
             </div>
@@ -1688,7 +1585,7 @@ function confirmDeleteTask(taskId) {
     if (!confirm(`Delete "${t.title}"? This can't be undone.`)) return;
 
     api(`/tasks/${taskId}`, { method: 'DELETE' })
-        .then(() => { showToast('Task deleted.'); renderTodo(); })
+        .then(() => { showToast('Task deleted.'); if (currentTab === 'home') renderHome(); else renderTodo(); })
         .catch(e => showToast(e.data?.message || "Couldn't delete — please try again."));
 }
 
