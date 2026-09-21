@@ -19,6 +19,7 @@
         .nav-btn { transition: all .15s; color: #64748b; }
         .nav-btn.active { background: #F5EAE0; color: #6B3F2A; }
         .nav-btn:not(.active):hover { background: #F8FAFC; color: #334155; }
+        .kanban-dragover { background: #F5EAE0; outline: 2px dashed #6B3F2A; outline-offset: -2px; }
     </style>
 </head>
 <body class="bg-[#F5F5F3] min-h-screen">
@@ -127,6 +128,7 @@
 
 <script>
 const _csrfToken = '{{ csrf_token() }}';
+const CURRENT_EMPLOYEE_ID = '{{ session('employee.id') }}';
 
 async function api(path, opts = {}) {
     const res = await fetch('/mini-app/api' + path, {
@@ -620,7 +622,8 @@ function homeTaskRow(t) {
                 <span class="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">${t.project_name || 'My To-Do List'}</span>
                 <span class="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-[#CCE3DE] text-[#1a3d34]">${kpiLabel}</span>
                 <span class="text-[8px] font-black px-1.5 py-0.5 rounded-full ${priorityPill.color}">${priorityPill.label}</span>
-                ${dueDateBadge(t.due_date)}
+                ${taskTimeBadge(t)}
+                ${taskAssigneeBadge(t)}
             </div>
             <div class="mt-2">${progressBar}</div>
             <div class="flex justify-end mt-1.5">${action}</div>
@@ -632,7 +635,7 @@ function homeTaskRow(t) {
             <span class="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-[#CCE3DE] text-[#1a3d34] truncate w-fit max-w-full">${kpiLabel}</span>
             <span class="text-[9px] font-black px-1.5 py-0.5 rounded-full ${priorityPill.color} w-fit">${priorityPill.label}</span>
             ${progressBar}
-            <p class="text-[10px] text-slate-500 truncate">${t.due_date || '—'}</p>
+            <p class="text-[10px] text-slate-500 truncate">${t.meeting_time ? '🕐 ' + fmtTime12(t.meeting_time) : (t.due_date || '—')}</p>
             <span class="text-[9px] font-black px-1.5 py-0.5 rounded-full ${statusPill.color} w-fit">${statusPill.label}</span>
             <div class="text-right">${action}</div>
         </div>
@@ -932,7 +935,10 @@ function kanbanBoard(tasks) {
                     <span class="text-[10px] font-black px-2 py-0.5 rounded-full ${pill.color}">${col.label}</span>
                     <span class="text-[10px] font-bold text-slate-400">${colTasks.length}</span>
                 </div>
-                <div class="space-y-2">
+                <div class="kanban-col space-y-2 min-h-[64px] rounded-xl p-1 -m-1 transition-colors"
+                    ondragover="event.preventDefault(); this.classList.add('kanban-dragover')"
+                    ondragleave="this.classList.remove('kanban-dragover')"
+                    ondrop="onDropTaskCard(event, '${col.key}')">
                     ${colTasks.length ? colTasks.map(t => taskCard(t)).join('') : `<p class="text-[10px] text-slate-400 text-center py-4">No tasks</p>`}
                 </div>
             </div>
@@ -940,6 +946,30 @@ function kanbanBoard(tasks) {
     }).join('');
 
     return `<div class="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">${columns}</div>`;
+}
+
+function onDragStartTaskCard(event, taskId) {
+    event.dataTransfer.setData('text/plain', taskId);
+    event.dataTransfer.effectAllowed = 'move';
+}
+
+function onDropTaskCard(event, newStatus) {
+    event.preventDefault();
+    event.currentTarget.classList.remove('kanban-dragover');
+    const taskId = event.dataTransfer.getData('text/plain');
+    const t = (window.__myTasks || []).find(x => x.id === taskId);
+    if (!t || t.status === newStatus) return;
+    moveTaskCard(taskId, newStatus);
+}
+
+async function moveTaskCard(taskId, newStatus) {
+    try {
+        await api(`/tasks/${taskId}/daily-update`, { method: 'POST', body: JSON.stringify({ status: newStatus }) });
+        showToast(`Moved to ${(STATUS_PILL[newStatus] || {}).label || newStatus}.`);
+        renderTodo();
+    } catch (e) {
+        showToast(e.data?.message || "Couldn't move the task — please try again.");
+    }
 }
 
 /* ---------------------------------------------------------------- */
@@ -1039,6 +1069,31 @@ function dueDateBadge(dueDate) {
     return `<span class="text-[8px] font-black px-1.5 py-0.5 rounded-full ${isOverdue ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}">${isOverdue ? '⚠ ' : ''}Due ${dueDate}</span>`;
 }
 
+function fmtTime12(hhmm) {
+    if (!hhmm) return '';
+    const [h, m] = hhmm.split(':').map(Number);
+    const period = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return `${h12}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+// A meeting is a task with a specific time-of-day -- shown in place of the
+// plain due-date badge when set, since a scheduled time is the more useful
+// fact once it exists.
+function taskTimeBadge(t) {
+    if (t.meeting_time) {
+        return `<span class="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700">🕐 ${fmtTime12(t.meeting_time)}</span>`;
+    }
+    return dueDateBadge(t.due_date);
+}
+
+// "Who assign" -- a chip naming the assignee whenever a task isn't simply
+// assigned to yourself, so a delegated task reads clearly on the board.
+function taskAssigneeBadge(t) {
+    if (!t.assignee_name || t.assignee_employee_id === CURRENT_EMPLOYEE_ID) return '';
+    return `<span class="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-[#CCE3DE] text-[#1a3d34]">👤 ${t.assignee_name}</span>`;
+}
+
 /* Collapsed by default -- just enough to scan a whole column at a glance
    (title, priority, due date, progress bar). Tapping the card opens it in
    place to show the numbers/KPI links/actions, instead of every card
@@ -1053,7 +1108,7 @@ function taskCard(t) {
     const safeId = t.id.replace(/[^a-zA-Z0-9_-]/g, '');
 
     return `
-        <div class="bg-[#FFFCF4] rounded-2xl soft-card border-2 border-[#D9C4A0] overflow-hidden">
+        <div draggable="true" ondragstart="onDragStartTaskCard(event,'${t.id}')" class="bg-[#FFFCF4] rounded-2xl soft-card border-2 border-[#D9C4A0] overflow-hidden cursor-grab active:cursor-grabbing">
             <button type="button" onclick="toggleTaskCard('${safeId}')" class="w-full text-left p-3">
                 <div class="flex items-start justify-between gap-2">
                     <p class="text-[12px] font-black text-slate-900 leading-snug min-w-0">${t.title}</p>
@@ -1061,7 +1116,8 @@ function taskCard(t) {
                 </div>
                 <div class="flex flex-wrap gap-1.5 mt-1.5">
                     <span class="text-[8px] font-black px-1.5 py-0.5 rounded-full ${priorityPill.color}">${priorityPill.label}</span>
-                    ${dueDateBadge(t.due_date)}
+                    ${taskTimeBadge(t)}
+                    ${taskAssigneeBadge(t)}
                 </div>
                 <div class="w-full h-1.5 bg-[#EFE3C7] rounded-full mt-2 overflow-hidden">
                     <div class="h-full rounded-full bg-gradient-to-r ${badge.bar}" style="width:${pct}%"></div>
@@ -1122,6 +1178,20 @@ function taskFormFields(t) {
                     class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
             </div>
         </div>
+
+        <div class="mt-3">
+            <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="taskIsMeetingInput" ${t?.meeting_time ? 'checked' : ''} onchange="onTaskMeetingToggled()" class="w-4 h-4 accent-[#6B3F2A]">
+                <span class="text-[11px] font-bold text-slate-600">This is a scheduled meeting — set a time</span>
+            </label>
+            <input type="time" id="taskMeetingTimeInput" value="${t?.meeting_time || ''}"
+                class="${t?.meeting_time ? '' : 'hidden'} w-full mt-2 text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
+        </div>
+
+        <p class="text-[10px] font-bold text-slate-600 mt-3 mb-1">Assign to</p>
+        <select id="taskAssigneeInput" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
+            <option value="">Loading…</option>
+        </select>
 
         <p class="text-[10px] font-bold text-slate-600 mt-3 mb-1">Unit</p>
         <select id="taskUnitInput" onchange="onTaskUnitChanged()" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
@@ -1189,12 +1259,20 @@ async function onTaskUnitChanged() {
     }
 }
 
+function onTaskMeetingToggled() {
+    const checked = document.getElementById('taskIsMeetingInput').checked;
+    document.getElementById('taskMeetingTimeInput').classList.toggle('hidden', !checked);
+}
+
 function taskFormValues() {
+    const isMeeting = document.getElementById('taskIsMeetingInput')?.checked;
     return {
         title: document.getElementById('taskTitleInput').value.trim(),
         description: document.getElementById('taskDescriptionInput').value.trim() || null,
         priority: document.getElementById('taskPriorityInput').value,
         due_date: document.getElementById('taskDueDateInput').value || null,
+        meeting_time: isMeeting ? (document.getElementById('taskMeetingTimeInput').value || null) : null,
+        assignee_employee_id: document.getElementById('taskAssigneeInput')?.value || null,
         unit: document.getElementById('taskUnitInput').value,
         target: document.getElementById('taskTargetInput').value,
     };
@@ -1215,6 +1293,7 @@ function renderNewTaskForm(isUnplanned = false) {
         <p id="taskFormFeedback" class="hidden text-[10px] font-bold text-red-600 mt-2 text-center"></p>
     `);
     onTaskUnitChanged();
+    loadAssignableEmployees({ assignee_employee_id: CURRENT_EMPLOYEE_ID });
 }
 
 async function saveNewTask() {
@@ -1254,6 +1333,7 @@ function renderEditTask(taskId) {
         </div>
         <p id="taskFormFeedback" class="hidden text-[10px] font-bold text-red-600 mt-2 text-center"></p>
     `);
+    loadAssignableEmployees(t);
 }
 
 async function saveEditTask(taskId) {
@@ -1730,11 +1810,12 @@ function renderCalendar() {
     for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         const dayTasks = tasksByDate[dateStr] || [];
+        const hasMeeting = dayTasks.some(x => x.meeting_time);
         const isToday = dateStr === new Date().toISOString().slice(0, 10);
         cells += `
             <button onclick="renderCalendarDay('${dateStr}')" class="aspect-square rounded-lg flex flex-col items-center justify-center relative ${isToday ? 'bg-[#F5EAE0] font-black' : 'hover:bg-slate-50'}">
                 <span class="text-[11px] ${isToday ? 'text-[#6B3F2A]' : 'text-slate-600'}">${d}</span>
-                ${dayTasks.length ? `<span class="w-1.5 h-1.5 rounded-full bg-[#6B9080] absolute bottom-1"></span>` : ''}
+                ${dayTasks.length ? `<span class="w-1.5 h-1.5 rounded-full ${hasMeeting ? 'bg-indigo-500' : 'bg-[#6B9080]'} absolute bottom-1"></span>` : ''}
             </button>
         `;
     }
@@ -1764,7 +1845,9 @@ function shiftCalendar(delta) {
 }
 
 function renderCalendarDay(dateStr) {
-    const dayTasks = (window.__myTasks || []).filter(t => t.due_date === dateStr);
+    const dayTasks = (window.__myTasks || [])
+        .filter(t => t.due_date === dateStr)
+        .sort((a, b) => (a.meeting_time || '99:99').localeCompare(b.meeting_time || '99:99'));
     const box = document.getElementById('calendarDayTasks');
     if (!dayTasks.length) {
         box.innerHTML = card(`<p class="text-[11px] text-slate-400 text-center py-3">No tasks due ${dateStr}.</p>`);

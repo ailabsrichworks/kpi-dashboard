@@ -107,7 +107,21 @@ class MiniAppTaskController extends Controller
         ]) ?? []);
         $projectMap = collect($projects)->keyBy('id');
 
-        $result = array_map(function ($task) use ($linksByTask, $kpiMap, $projectMap) {
+        // Kanban cards show who a task is assigned to (per docs/performix-
+        // design.md's "who assign" requirement) — resolve names once here
+        // rather than per-card, same two-query-joined-in-PHP pattern used
+        // elsewhere in this codebase instead of a Supabase embed.
+        $assigneeIds = array_unique(array_filter(array_map(
+            fn ($t) => $t['assignee_employee_id'] ?? $t['employee_id'] ?? null,
+            $tasks
+        )));
+        $employees = empty($assigneeIds) ? [] : ($supabase->get('employees', [
+            'id' => 'in.(' . implode(',', $assigneeIds) . ')',
+            'select' => 'id,short_name',
+        ]) ?? []);
+        $employeeMap = collect($employees)->keyBy('id');
+
+        $result = array_map(function ($task) use ($linksByTask, $kpiMap, $projectMap, $employeeMap) {
             $linkedKpis = $linksByTask->get($task['id'], collect())->map(function ($link) use ($kpiMap) {
                 $kpi = $kpiMap->get($link['kpi_id']);
                 return $kpi ? ['kpi_id' => $kpi['id'], 'kpi_title' => $kpi['kpi_title'], 'category' => $kpi['category'] ?? null] : null;
@@ -128,11 +142,13 @@ class MiniAppTaskController extends Controller
                 'estimated_effort_hours' => isset($task['estimated_effort_hours']) ? (float) $task['estimated_effort_hours'] : null,
                 'start_date' => $task['start_date'] ?? null,
                 'due_date' => $task['due_date'] ?? null,
+                'meeting_time' => $task['meeting_time'] ?? null,
                 'reminder_at' => $task['reminder_at'] ?? null,
                 'visibility' => $task['visibility'] ?? 'private',
                 'recurrence_rule' => $task['recurrence_rule'] ?? 'none',
                 'is_unplanned' => (bool) ($task['is_unplanned'] ?? false),
                 'assignee_employee_id' => $task['assignee_employee_id'] ?? $task['employee_id'],
+                'assignee_name' => $employeeMap->get($task['assignee_employee_id'] ?? $task['employee_id'])['short_name'] ?? null,
                 'linked_kpis' => $linkedKpis,
             ];
         }, $tasks);
@@ -162,6 +178,7 @@ class MiniAppTaskController extends Controller
             'estimated_effort_hours' => 'nullable|numeric|min:0',
             'start_date' => 'nullable|date',
             'due_date' => 'nullable|date',
+            'meeting_time' => 'nullable|date_format:H:i',
             'reminder_at' => 'nullable|date',
             'visibility' => 'nullable|in:private,team,department',
             'recurrence_rule' => 'nullable|in:none,daily,weekdays,weekly,monthly',
@@ -213,6 +230,11 @@ class MiniAppTaskController extends Controller
             'estimated_effort_hours' => $validated['estimated_effort_hours'] ?? null,
             'start_date' => $validated['start_date'] ?? null,
             'due_date' => $validated['due_date'] ?? null,
+            // A meeting is a task with a specific time-of-day, not just a due
+            // date — kept as a plain nullable column rather than a separate
+            // "is_meeting" flag, matching the Platform Tasks feature's own
+            // meeting_time column.
+            'meeting_time' => $validated['meeting_time'] ?? null,
             'reminder_at' => $validated['reminder_at'] ?? null,
             'visibility' => $validated['visibility'] ?? 'private',
             'recurrence_rule' => $validated['recurrence_rule'] ?? 'none',
@@ -503,7 +525,7 @@ class MiniAppTaskController extends Controller
     | Edits the task's own details (title/target/unit) — the Telegram
     | controller never had this, it only ever adjusted progress.
     */
-    public function update(Request $request, SupabaseService $supabase, NotificationService $notifications, string $id)
+    public function update(Request $request, SupabaseService $supabase, NotificationService $notifications, TaskAccessPolicy $policy, string $id)
     {
         $validated = $request->validate([
             'title' => 'required|string|max:200',
@@ -515,9 +537,11 @@ class MiniAppTaskController extends Controller
             'estimated_effort_hours' => 'nullable|numeric|min:0',
             'start_date' => 'nullable|date',
             'due_date' => 'nullable|date',
+            'meeting_time' => 'nullable|date_format:H:i',
             'reminder_at' => 'nullable|date',
             'visibility' => 'nullable|in:private,team,department',
             'recurrence_rule' => 'nullable|in:none,daily,weekdays,weekly,monthly',
+            'assignee_employee_id' => 'nullable|string',
         ]);
 
         $employeeId = session('employee.id');
@@ -532,6 +556,14 @@ class MiniAppTaskController extends Controller
             return response()->json(['success' => false, 'message' => 'Task not found.'], 404);
         }
 
+        $currentAssignee = $task['assignee_employee_id'] ?? $task['employee_id'];
+        $newAssignee = $validated['assignee_employee_id'] ?? null;
+        if ($newAssignee && $newAssignee !== $currentAssignee) {
+            if (!$policy->canAssign(session('employee') ?? [], $newAssignee)) {
+                return response()->json(['success' => false, 'message' => 'You cannot assign this task to that employee.'], 403);
+            }
+        }
+
         $supabase->safePatch('telegram_project_tasks', ['id' => 'eq.' . $id], [
             'title' => trim($validated['title']),
             'description' => $validated['description'] ?? $task['description'] ?? null,
@@ -542,9 +574,11 @@ class MiniAppTaskController extends Controller
             'estimated_effort_hours' => $validated['estimated_effort_hours'] ?? $task['estimated_effort_hours'] ?? null,
             'start_date' => $validated['start_date'] ?? $task['start_date'] ?? null,
             'due_date' => $validated['due_date'] ?? $task['due_date'] ?? null,
+            'meeting_time' => $validated['meeting_time'] ?? null,
             'reminder_at' => $validated['reminder_at'] ?? $task['reminder_at'] ?? null,
             'visibility' => $validated['visibility'] ?? $task['visibility'] ?? 'private',
             'recurrence_rule' => $validated['recurrence_rule'] ?? $task['recurrence_rule'] ?? 'none',
+            'assignee_employee_id' => $newAssignee ?: $currentAssignee,
             'status' => (float) $task['actual'] >= (float) $validated['target'] && (float) $validated['target'] > 0 ? 'done' : $task['status'],
             'updated_at' => $this->nowMy(),
         ]);
