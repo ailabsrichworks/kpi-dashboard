@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Services\KpiQuarterUpdateService;
 use App\Services\SupabaseService;
-use App\Services\TaskAccessPolicy;
 use Illuminate\Http\Request;
 
 /**
@@ -27,7 +26,7 @@ class MiniAppController extends Controller
         return now('Asia/Kuala_Lumpur')->toDateString();
     }
 
-    public function index(SupabaseService $supabase, TaskAccessPolicy $policy)
+    public function index(SupabaseService $supabase)
     {
         $user = $supabase->first('users', [
             'id' => 'eq.' . session('user_uuid'),
@@ -36,7 +35,6 @@ class MiniAppController extends Controller
 
         return view('mini-app.index', [
             'telegramLinked' => !empty($user['telegram_linked_at']),
-            'hasTeam' => $policy->hasTeam(session('employee') ?? []),
         ]);
     }
 

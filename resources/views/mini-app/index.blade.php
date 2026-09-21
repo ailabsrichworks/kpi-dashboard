@@ -108,9 +108,6 @@
         </button>
         <button id="tab-todo" onclick="switchTab('todo')" class="nav-btn active w-full flex items-center px-3 py-2.5 rounded-xl text-[12px] font-black text-left whitespace-nowrap">To-Do</button>
         <button id="tab-score" onclick="switchTab('score')" class="nav-btn w-full flex items-center px-3 py-2.5 rounded-xl text-[12px] font-black text-left whitespace-nowrap">Score</button>
-        @if($hasTeam)
-        <button id="tab-team" onclick="switchTab('team')" class="nav-btn w-full flex items-center px-3 py-2.5 rounded-xl text-[12px] font-black text-left whitespace-nowrap">Team</button>
-        @endif
     </nav>
 
     <div id="contentCol" class="flex-1 min-w-0 space-y-3">
@@ -241,7 +238,7 @@ function updateKpiAlertBadge(count) {
 let currentTab = 'todo';
 function switchTab(tab) {
     currentTab = tab;
-    ['kpis', 'todo', 'score', 'team'].forEach(t => {
+    ['kpis', 'todo', 'score'].forEach(t => {
         const el = document.getElementById('tab-' + t);
         if (el) el.classList.toggle('active', t === tab);
     });
@@ -252,7 +249,6 @@ function switchTab(tab) {
     if (tab === 'kpis') renderMyKpis();
     if (tab === 'todo') renderTodo();
     if (tab === 'score') renderScore('monthly');
-    if (tab === 'team') renderTeam();
 }
 
 /* ---------------------------------------------------------------- */
@@ -1486,55 +1482,6 @@ function renderCalendarDay(dateStr) {
         return;
     }
     box.innerHTML = `<p class="text-[10px] uppercase tracking-wide text-slate-500 font-black mb-1.5 px-1">Due ${fmtDateShort(dateStr)}</p>` + dayTasks.map(t => taskCard(t)).join('<div class="h-2"></div>');
-}
-
-/* ---------------------------------------------------------------- */
-/* MY TEAM — Manager/VP/SLT only. Reads already-computed weekly       */
-/* task_score_snapshots for everyone TaskAccessPolicy allows this      */
-/* viewer to see (docs/performix-design.md §6-R5 — no live per-member  */
-/* recompute on page load), worst-first so who needs attention is      */
-/* obvious immediately.                                                */
-/* ---------------------------------------------------------------- */
-
-async function renderTeam() {
-    const app = document.getElementById('app');
-    app.innerHTML = `<p class="text-center text-slate-400 text-[12px] mt-10">Loading your team…</p>`;
-
-    let data;
-    try {
-        data = await api('/team/attention');
-    } catch (e) {
-        app.innerHTML = card(`<p class="text-[13px] text-slate-600 text-center py-6">Could not load your team.</p>`);
-        return;
-    }
-
-    const members = data.members || [];
-
-    if (!members.length) {
-        app.innerHTML = card(`<p class="text-[13px] text-slate-600 text-center py-6">No team members found.</p>`);
-        return;
-    }
-
-    const rows = members.map(m => {
-        const band = scoreStatusBand(m.status);
-        return card(`
-            <div class="flex items-center justify-between gap-2">
-                <div class="min-w-0">
-                    <p class="text-[13px] font-black text-slate-900 truncate">${m.name}</p>
-                    ${m.department_code ? `<p class="text-[10px] text-slate-400">${m.department_code}</p>` : ''}
-                </div>
-                <div class="text-right shrink-0">
-                    <p class="text-[16px] font-black text-slate-900 leading-none">${m.score !== null ? Math.round(m.score) : '—'}</p>
-                    <span class="inline-block mt-1 px-2 py-0.5 rounded-full ${band.color} text-[8px] font-black">${band.label}</span>
-                </div>
-            </div>
-        `);
-    }).join('<div class="h-2"></div>');
-
-    app.innerHTML = `
-        <p class="text-[10px] uppercase tracking-wide text-slate-400 font-black mb-2 px-1">This week · sorted by who needs attention</p>
-        ${rows}
-    `;
 }
 
 if (document.getElementById('tab-todo')) {
