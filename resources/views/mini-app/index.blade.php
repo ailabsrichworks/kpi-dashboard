@@ -102,12 +102,11 @@
 
 <div class="flex flex-col md:flex-row gap-4 items-start">
     <nav class="w-full md:w-44 md:shrink-0 bg-white rounded-2xl border border-slate-200 shadow-sm p-2 flex md:flex-col gap-1.5 overflow-x-auto md:overflow-visible">
-        <button id="tab-home" onclick="switchTab('home')" class="nav-btn active w-full flex items-center px-3 py-2.5 rounded-xl text-[12px] font-black text-left whitespace-nowrap">Home</button>
         <button id="tab-kpis" onclick="switchTab('kpis')" class="nav-btn w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-[12px] font-black text-left whitespace-nowrap">
             <span>My KPIs</span>
             <span id="kpi-alert-badge" class="hidden min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[9px] font-black flex items-center justify-center px-1 shrink-0 shadow-lg shadow-red-500/30"></span>
         </button>
-        <button id="tab-todo" onclick="switchTab('todo')" class="nav-btn w-full flex items-center px-3 py-2.5 rounded-xl text-[12px] font-black text-left whitespace-nowrap">To-Do</button>
+        <button id="tab-todo" onclick="switchTab('todo')" class="nav-btn active w-full flex items-center px-3 py-2.5 rounded-xl text-[12px] font-black text-left whitespace-nowrap">To-Do</button>
         <button id="tab-score" onclick="switchTab('score')" class="nav-btn w-full flex items-center px-3 py-2.5 rounded-xl text-[12px] font-black text-left whitespace-nowrap">Score</button>
         @if($hasTeam)
         <button id="tab-team" onclick="switchTab('team')" class="nav-btn w-full flex items-center px-3 py-2.5 rounded-xl text-[12px] font-black text-left whitespace-nowrap">Team</button>
@@ -233,18 +232,17 @@ function updateKpiAlertBadge(count) {
     }
 }
 
-let currentTab = 'home';
+let currentTab = 'todo';
 function switchTab(tab) {
     currentTab = tab;
-    ['home', 'kpis', 'todo', 'score', 'team'].forEach(t => {
+    ['kpis', 'todo', 'score', 'team'].forEach(t => {
         const el = document.getElementById('tab-' + t);
         if (el) el.classList.toggle('active', t === tab);
     });
-    // Home's stat-card/sidebar grid is designed to use the full width next
-    // to the nav; the other tabs are simple card lists that read better at
-    // a capped width instead of stretching edge-to-edge on wide monitors.
-    document.getElementById('contentCol')?.classList.toggle('max-w-2xl', tab !== 'home');
-    if (tab === 'home') renderHome();
+    // The To-Do tab's Kanban board wants the full width next to the nav;
+    // the other tabs are simple card lists that read better at a capped
+    // width instead of stretching edge-to-edge on wide monitors.
+    document.getElementById('contentCol')?.classList.toggle('max-w-2xl', tab !== 'todo');
     if (tab === 'kpis') renderMyKpis();
     if (tab === 'todo') renderTodo();
     if (tab === 'score') renderScore('monthly');
@@ -426,348 +424,6 @@ async function submitDelta(kpiId, quarterId) {
 }
 
 /* ---------------------------------------------------------------- */
-/* HOME — a unified daily dashboard combining today's tasks, this      */
-/* week's task score, and KPI alignment in one screen. Pure          */
-/* presentation layer: every number comes from the same /tasks,      */
-/* /tasks/score, /kpis/summary and /summaries endpoints the To-Do/    */
-/* Score/My KPIs tabs already call — no new data source, and tasks    */
-/* created from the Telegram bot show up here too since both         */
-/* channels write to the same telegram_project_tasks table.           */
-/* ---------------------------------------------------------------- */
-
-let __homeData = null; // { tasks, weeklyScore, kpis }
-let __qduStatus = 'in_progress';
-
-function todayISO() {
-    return new Date().toISOString().slice(0, 10);
-}
-
-async function renderHome() {
-    const app = document.getElementById('app');
-    app.innerHTML = `<p class="text-center text-slate-400 text-[12px] mt-10">Loading your day…</p>`;
-
-    let tasksRes, weeklyScore, kpiSummary;
-    try {
-        [tasksRes, weeklyScore, kpiSummary] = await Promise.all([
-            api('/tasks'),
-            api('/tasks/score?period=weekly'),
-            api('/kpis/summary'),
-        ]);
-    } catch (e) {
-        app.innerHTML = card(`<p class="text-[13px] text-slate-600 text-center py-6">Could not load your dashboard.</p>`);
-        return;
-    }
-
-    __homeData = {
-        tasks: tasksRes.tasks || [],
-        weeklyScore,
-        kpis: kpiSummary.kpis || [],
-    };
-    // Home's Kanban board reuses the To-Do tab's own drag/drop, details, and
-    // delete handlers, which all look tasks up via window.__myTasks.
-    window.__myTasks = __homeData.tasks;
-
-    app.innerHTML = `
-        ${homeHeader()}
-        ${homeStatCards()}
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-3">
-            <div class="lg:col-span-2 space-y-3">
-                ${homeTasksSection()}
-                ${homeQuickUpdateCard()}
-            </div>
-            <div class="space-y-3">
-                <div id="homeAiInsight">${homeAiInsightLoadingCard()}</div>
-                ${homeKpiAlignmentCard()}
-                ${homeRemindersCard()}
-            </div>
-        </div>
-    `;
-
-    loadHomeAiInsight();
-}
-
-function homeHeader() {
-    return `
-        <div class="px-1">
-            <p class="text-[16px] font-black text-slate-900">{{ $greeting }}, {{ $employeeName }}</p>
-            <p class="text-[11px] text-slate-400 font-semibold mt-0.5">{{ $todayLabel }}</p>
-        </div>
-    `;
-}
-
-// Plain, uniform title used by every Home section — no emoji, no per-section
-// color, so headings read consistently wherever they appear on the page.
-function sectionHeader(label, marginClass = 'mb-2') {
-    return `<p class="text-[13px] font-black text-slate-900 ${marginClass}">${label}</p>`;
-}
-
-function homeStatCard(label, value, extra = '') {
-    return card(`
-        <p class="text-[9px] font-black text-slate-400 uppercase tracking-wide truncate">${label}</p>
-        <p class="text-[26px] font-black text-slate-900 leading-none mt-1.5">${value}</p>
-        ${extra}
-    `);
-}
-
-function homeStatCards() {
-    const tasks = __homeData.tasks;
-    const today = todayISO();
-    const activeTasks = tasks.filter(t => ['not_started', 'in_progress', 'blocked'].includes(t.status));
-    const dueToday = tasks.filter(t => t.due_date === today && t.status !== 'cancelled');
-    const dueTodayOpen = dueToday.filter(t => t.status !== 'done');
-    const dailyProgressPct = dueToday.length
-        ? Math.round(dueToday.reduce((sum, t) => sum + (t.progress_percentage || 0), 0) / dueToday.length)
-        : 0;
-    const weeklyScoreVal = __homeData.weeklyScore.score;
-
-    return `
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
-            ${homeStatCard('Daily Progress', dueToday.length ? dailyProgressPct + '%' : '—', `
-                <div class="w-full h-1.5 bg-[#EFE3C7] rounded-full mt-3 overflow-hidden">
-                    <div class="h-full rounded-full bg-gradient-to-r ${achvBadge(dailyProgressPct).bar}" style="width:${dailyProgressPct}%"></div>
-                </div>
-            `)}
-            ${homeStatCard('Active Tasks', activeTasks.length)}
-            ${homeStatCard('Due Today', dueTodayOpen.length)}
-            ${homeStatCard('Task Score', weeklyScoreVal !== null ? Math.round(weeklyScoreVal) : '—')}
-        </div>
-    `;
-}
-
-/* Today's Tasks — the same Kanban board as the To-Do tab (KANBAN_COLUMNS/
-   kanbanBoard(), defined below), so Home reads as the same product instead
-   of a separate filtered list. Drag/drop, Details, and Delete all look the
-   task up via window.__myTasks, which renderHome() keeps in sync. */
-
-function homeTasksSection() {
-    const tasks = __homeData.tasks;
-    return card(`
-        ${sectionHeader("Today's Tasks")}
-        ${tasks.length ? kanbanBoard(tasks) : `<p class="text-[12px] text-slate-400 text-center py-6">No tasks yet.</p>`}
-    `);
-}
-
-/* Quick Daily Update — the evening check-in flow (status/progress/note) */
-/* pulled up to Home so it doesn't need a trip into each task's Details  */
-/* page. Deliberately offers only the 3 common states; blocked/          */
-/* cancelled + reschedule stay in the full Task Details daily-update     */
-/* form for the less common cases.                                       */
-
-function normalizeQduStatus(status) {
-    return ['not_started', 'in_progress', 'done'].includes(status) ? status : 'in_progress';
-}
-
-function homeQuickUpdateCard() {
-    const activeTasks = __homeData.tasks.filter(t => t.status !== 'done' && t.status !== 'cancelled');
-
-    if (!activeTasks.length) {
-        return `<div id="qduCard">${card(`
-            ${sectionHeader('Quick Daily Update')}
-            <p class="text-[12px] text-slate-500 text-center py-4">No active tasks to update.</p>
-            <button onclick="renderNewTaskForm(true)" class="w-full py-2.5 rounded-xl bg-[#16A34A] hover:bg-[#15803D] text-white text-[12px] font-black">+ Add an unplanned task</button>
-        `)}</div>`;
-    }
-
-    const first = activeTasks[0];
-    __qduStatus = normalizeQduStatus(first.status);
-
-    const statusBtn = (s) => `
-        <button type="button" onclick="setQduStatus('${s}')" data-qdu-status="${s}"
-            class="qdu-status-btn py-2.5 rounded-xl border-2 text-[11px] font-black ${__qduStatus === s ? 'border-[#6B3F2A] bg-[#F5EAE0] text-[#6B3F2A]' : 'border-[#D9C4A0] text-slate-500'}">
-            ${STATUS_PILL[s].label}
-        </button>
-    `;
-
-    return `<div id="qduCard">${card(`
-        ${sectionHeader('Quick Daily Update', 'mb-3')}
-
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <div>
-                <p class="text-[10px] font-bold text-slate-600 mb-1">Selected task</p>
-                <select id="qduTaskSelect" onchange="onQduTaskChange()" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
-                    ${activeTasks.map(t => `<option value="${t.id}">${t.title}</option>`).join('')}
-                </select>
-
-                <p class="text-[10px] font-bold text-slate-600 mt-3 mb-1">Status</p>
-                <div class="grid grid-cols-3 gap-2">
-                    ${statusBtn('not_started')}${statusBtn('in_progress')}${statusBtn('done')}
-                </div>
-
-                <div class="flex items-center justify-between mt-3">
-                    <p class="text-[10px] font-bold text-slate-600">Progress</p>
-                    <p class="text-[11px] font-black text-[#6B3F2A]"><span id="qduProgressValue">${first.progress_percentage || 0}</span>%</p>
-                </div>
-                <input type="range" id="qduProgressInput" min="0" max="100" value="${first.progress_percentage || 0}"
-                    oninput="document.getElementById('qduProgressValue').textContent = this.value" class="w-full accent-[#6B3F2A]">
-            </div>
-
-            <div class="flex flex-col">
-                <p class="text-[10px] font-bold text-slate-600 mb-1">What did you complete today?</p>
-                <textarea id="qduNoteInput" rows="4" maxlength="500" oninput="document.getElementById('qduNoteCount').textContent = this.value.length"
-                    placeholder="Share a brief update…" class="w-full flex-1 text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500 resize-none"></textarea>
-                <p class="text-[9px] text-slate-400 text-right mt-0.5"><span id="qduNoteCount">0</span> / 500</p>
-            </div>
-        </div>
-
-        <div class="flex items-center justify-between gap-2 mt-4">
-            <button onclick="renderNewTaskForm(true)" class="text-[11px] font-bold text-[#6B3F2A] shrink-0">+ Add an unplanned task</button>
-            <button onclick="submitQuickDailyUpdate()" class="px-5 py-2.5 rounded-xl bg-[#16A34A] hover:bg-[#15803D] text-white text-[12px] font-black shrink-0">Submit Update</button>
-        </div>
-        <p id="qduFeedback" class="hidden text-[10px] font-bold mt-2 text-center"></p>
-    `)}</div>`;
-}
-
-function setQduStatus(s) {
-    __qduStatus = s;
-    document.querySelectorAll('.qdu-status-btn').forEach(b => {
-        const active = b.dataset.qduStatus === s;
-        b.classList.toggle('border-[#6B3F2A]', active);
-        b.classList.toggle('bg-[#F5EAE0]', active);
-        b.classList.toggle('text-[#6B3F2A]', active);
-        b.classList.toggle('border-[#D9C4A0]', !active);
-        b.classList.toggle('text-slate-500', !active);
-    });
-}
-
-function onQduTaskChange() {
-    const id = document.getElementById('qduTaskSelect').value;
-    const t = __homeData.tasks.find(x => x.id === id);
-    if (!t) return;
-    setQduStatus(normalizeQduStatus(t.status));
-    document.getElementById('qduProgressInput').value = t.progress_percentage || 0;
-    document.getElementById('qduProgressValue').textContent = t.progress_percentage || 0;
-    document.getElementById('qduNoteInput').value = '';
-    document.getElementById('qduNoteCount').textContent = '0';
-}
-
-async function submitQuickDailyUpdate() {
-    const feedback = document.getElementById('qduFeedback');
-    const taskId = document.getElementById('qduTaskSelect').value;
-    const progress = Number(document.getElementById('qduProgressInput').value);
-    const note = document.getElementById('qduNoteInput').value.trim() || null;
-
-    feedback.classList.add('hidden');
-
-    try {
-        await api(`/tasks/${taskId}/daily-update`, {
-            method: 'POST',
-            body: JSON.stringify({ status: __qduStatus, progress, note }),
-        });
-        showToast('Daily update saved!');
-        renderHome();
-    } catch (e) {
-        feedback.textContent = e.data?.message || "Couldn't save — please try again.";
-        feedback.classList.remove('hidden');
-    }
-}
-
-/* Sidebar — AI Daily Insight (lazy-generated, same ai_summaries table    */
-/* the Score tab's weekly summary already writes to, just period=daily), */
-/* KPI Alignment (straight from /kpis/summary, no new computation), and   */
-/* Upcoming Reminders (each task's own reminder_at, nothing fabricated).  */
-
-function homeAiInsightLoadingCard() {
-    return card(`${sectionHeader('AI Daily Insight')}<p class="text-[11px] text-slate-400">Loading…</p>`);
-}
-
-async function loadHomeAiInsight() {
-    const box = document.getElementById('homeAiInsight');
-    if (!box) return;
-    try {
-        const data = await api('/summaries?scope=employee&period=daily');
-        box.innerHTML = data.summary ? homeAiInsightCard(data.summary) : homeAiInsightEmptyCard();
-    } catch (e) {
-        box.innerHTML = homeAiInsightEmptyCard();
-    }
-}
-
-function homeAiInsightCard(summary) {
-    const facts = summary.facts || {};
-    const total = facts.scored_task_count ?? 0;
-    const completed = facts.completed_count ?? 0;
-    const attention = (facts.overdue_count ?? 0) + (facts.blocked_count ?? 0);
-    return card(`
-        ${sectionHeader('AI Daily Insight')}
-        <p class="text-[11px] text-slate-600 leading-relaxed">${summary.narrative}</p>
-        <div class="mt-2.5 space-y-1">
-            <p class="text-[10px] text-emerald-700 font-bold">✓ ${completed} of ${total} tasks updated</p>
-            ${attention > 0 ? `<p class="text-[10px] text-amber-700 font-bold">⚠ ${attention} task(s) need attention</p>` : ''}
-        </div>
-        <button onclick="generateHomeAiInsight()" class="mt-2.5 w-full py-2 rounded-xl bg-[#F5EAE0] text-[#6B3F2A] text-[10px] font-black">↻ Refresh Insight</button>
-    `, 'bg-gradient-to-br from-[#FFFCF4] to-[#FBF0E0]');
-}
-
-function homeAiInsightEmptyCard() {
-    return card(`
-        ${sectionHeader('AI Daily Insight')}
-        <p class="text-[11px] text-slate-500">No insight generated yet today.</p>
-        <button onclick="generateHomeAiInsight()" class="mt-2 w-full py-2 rounded-xl bg-[#6B3F2A] hover:bg-[#5a341f] text-white text-[10px] font-black">Generate Insight</button>
-    `);
-}
-
-async function generateHomeAiInsight() {
-    const box = document.getElementById('homeAiInsight');
-    if (!box) return;
-    box.innerHTML = card(`${sectionHeader('AI Daily Insight')}<p class="text-[11px] text-slate-400">Generating…</p>`);
-    try {
-        const data = await api('/summaries/regenerate', { method: 'POST', body: JSON.stringify({ scope: 'employee', period: 'daily' }) });
-        box.innerHTML = homeAiInsightCard(data.summary);
-    } catch (e) {
-        box.innerHTML = card(`${sectionHeader('AI Daily Insight')}<p class="text-[11px] text-red-500">${e.data?.message || "Couldn't generate right now."}</p>`);
-    }
-}
-
-function homeKpiAlignmentCard() {
-    const kpis = __homeData.kpis;
-    if (!kpis.length) {
-        return card(`${sectionHeader('KPI Alignment')}<p class="text-[11px] text-slate-400">No KPIs set up for this financial year.</p>`);
-    }
-    const rows = kpis.map(k => {
-        const pct = Math.max(0, Math.min(100, k.achievement_percentage));
-        return `
-            <div class="mt-2.5">
-                <div class="flex items-center justify-between gap-2">
-                    <p class="text-[10px] font-bold text-slate-600 truncate min-w-0">${k.kpi_title}</p>
-                    <p class="text-[10px] font-black text-slate-700 shrink-0">${pct.toFixed(0)}%</p>
-                </div>
-                <div class="w-full h-1.5 bg-[#EFE3C7] rounded-full mt-1 overflow-hidden">
-                    <div class="h-full rounded-full bg-gradient-to-r ${achvBadge(pct).bar}" style="width:${pct}%"></div>
-                </div>
-            </div>
-        `;
-    }).join('');
-    return card(`
-        ${sectionHeader('KPI Alignment')}
-        ${rows}
-        <p class="text-[9px] text-slate-400 mt-3 leading-relaxed">Task activity supports KPI tracking but does not update KPI Actual automatically.</p>
-    `);
-}
-
-function homeRemindersCard() {
-    const now = new Date();
-    const upcoming = __homeData.tasks
-        .filter(t => t.reminder_at && new Date(t.reminder_at) >= now && !['done', 'cancelled'].includes(t.status))
-        .sort((a, b) => new Date(a.reminder_at) - new Date(b.reminder_at))
-        .slice(0, 5);
-
-    if (!upcoming.length) {
-        return card(`${sectionHeader('Upcoming Reminders')}<p class="text-[11px] text-slate-400">No reminders scheduled.</p>`);
-    }
-
-    const rows = upcoming.map(t => {
-        const when = new Date(t.reminder_at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
-        return `
-            <div class="mt-2">
-                <p class="text-[11px] font-bold text-slate-700 truncate">${t.title}</p>
-                <p class="text-[9px] text-slate-400">${when}</p>
-            </div>
-        `;
-    }).join('');
-
-    return card(`${sectionHeader('Upcoming Reminders')}${rows}`);
-}
-
-/* ---------------------------------------------------------------- */
 /* TO-DO LIST — a personal to-do list separate from KPI actuals. A    */
 /* task can optionally be tied to a KPI purely for visibility — doing */
 /* so never changes that KPI's official actual (only the "My KPIs"    */
@@ -863,7 +519,7 @@ async function moveTaskCard(taskId, newStatus) {
     try {
         await api(`/tasks/${taskId}/daily-update`, { method: 'POST', body: JSON.stringify({ status: newStatus }) });
         showToast(`Moved to ${(STATUS_PILL[newStatus] || {}).label || newStatus}.`);
-        if (currentTab === 'home') renderHome(); else renderTodo();
+        renderTodo();
     } catch (e) {
         showToast(e.data?.message || "Couldn't move the task — please try again.");
     }
@@ -1028,7 +684,7 @@ function taskCard(t) {
                 </div>
                 ${kpiChips}
                 <div class="flex items-center gap-2 mt-3">
-                    <button onclick="window.__taskDetailBackTo='${currentTab === 'home' ? 'home' : 'todo'}'; renderTaskDetail('${t.id}')" class="flex-1 py-2 rounded-xl bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-black">Details</button>
+                    <button onclick="renderTaskDetail('${t.id}')" class="flex-1 py-2 rounded-xl bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-black">Details</button>
                     <button onclick="confirmDeleteTask('${t.id}')" class="px-3 py-2 rounded-xl bg-white border-2 border-red-300 text-red-600 text-[11px] font-black">🗑️</button>
                 </div>
             </div>
@@ -1175,16 +831,14 @@ function taskFormValues() {
     };
 }
 
-function renderNewTaskForm(isUnplanned = false) {
-    window.__newTaskIsUnplanned = isUnplanned;
-    const cancelTo = isUnplanned ? 'renderHome()' : 'renderTodo()';
+function renderNewTaskForm() {
     document.getElementById('app').innerHTML = card(`
-        <p class="text-[14px] font-black text-slate-900 mb-3">${isUnplanned ? 'Add Unplanned Task' : 'New Task'}</p>
+        <p class="text-[14px] font-black text-slate-900 mb-3">New Task</p>
         ${taskFormFields(null)}
         ${taskKpiField()}
         <p class="text-[10px] text-slate-400 mt-3">Optionally align this task to a KPI above, or link one later from Edit.</p>
         <div class="flex items-center gap-2 mt-4">
-            <button onclick="${cancelTo}" class="flex-1 py-2.5 rounded-xl bg-white border-2 border-[#D9C4A0] text-[#6B3F2A] text-[12px] font-black">Cancel</button>
+            <button onclick="renderTodo()" class="flex-1 py-2.5 rounded-xl bg-white border-2 border-[#D9C4A0] text-[#6B3F2A] text-[12px] font-black">Cancel</button>
             <button onclick="saveNewTask()" class="flex-1 py-2.5 rounded-xl bg-[#16A34A] hover:bg-[#15803D] text-white text-[12px] font-black">Save Task</button>
         </div>
         <p id="taskFormFeedback" class="hidden text-[10px] font-bold text-red-600 mt-2 text-center"></p>
@@ -1207,10 +861,10 @@ async function saveNewTask() {
     try {
         await api('/tasks', {
             method: 'POST',
-            body: JSON.stringify({ ...v, target: Number(v.target), is_unplanned: !!window.__newTaskIsUnplanned, kpi_ids: kpiIds }),
+            body: JSON.stringify({ ...v, target: Number(v.target), kpi_ids: kpiIds }),
         });
         showToast('Task saved!');
-        if (window.__newTaskIsUnplanned) renderHome(); else renderTodo();
+        renderTodo();
     } catch (e) {
         feedback.textContent = e.data?.message || "Couldn't save — please try again.";
         feedback.classList.remove('hidden');
@@ -1284,7 +938,7 @@ async function renderTaskDetail(taskId) {
     try {
         data = await api(`/tasks/${taskId}`);
     } catch (e) {
-        app.innerHTML = card(`<p class="text-[13px] text-slate-600 text-center py-6">Could not load this task.</p>`) + `<button onclick="${window.__taskDetailBackTo === 'home' ? 'renderHome()' : 'renderTodo()'}" class="w-full mt-3 py-2 rounded-xl bg-white border-2 border-[#D9C4A0] text-[#6B3F2A] text-[12px] font-black">← Back</button>`;
+        app.innerHTML = card(`<p class="text-[13px] text-slate-600 text-center py-6">Could not load this task.</p>`) + `<button onclick="renderTodo()" class="w-full mt-3 py-2 rounded-xl bg-white border-2 border-[#D9C4A0] text-[#6B3F2A] text-[12px] font-black">← Back</button>`;
         return;
     }
 
@@ -1306,10 +960,8 @@ async function renderTaskDetail(taskId) {
         `).join('')
         : `<p class="text-[11px] text-slate-400 mt-1.5">Not linked to a KPI yet.</p>`;
 
-    const backTo = window.__taskDetailBackTo === 'home' ? { fn: 'renderHome()', label: 'Home' } : { fn: 'renderTodo()', label: 'To-Do' };
-
     app.innerHTML = `
-        <button onclick="${backTo.fn}" class="text-[11px] font-bold text-[#6B3F2A] mb-1">← Back to ${backTo.label}</button>
+        <button onclick="renderTodo()" class="text-[11px] font-bold text-[#6B3F2A] mb-1">← Back to To-Do</button>
 
         ${card(`
             <div class="flex items-center justify-between gap-2">
@@ -1585,7 +1237,7 @@ function confirmDeleteTask(taskId) {
     if (!confirm(`Delete "${t.title}"? This can't be undone.`)) return;
 
     api(`/tasks/${taskId}`, { method: 'DELETE' })
-        .then(() => { showToast('Task deleted.'); if (currentTab === 'home') renderHome(); else renderTodo(); })
+        .then(() => { showToast('Task deleted.'); renderTodo(); })
         .catch(e => showToast(e.data?.message || "Couldn't delete — please try again."));
 }
 
@@ -1802,8 +1454,8 @@ async function renderTeam() {
     `;
 }
 
-if (document.getElementById('tab-home')) {
-    switchTab('home');
+if (document.getElementById('tab-todo')) {
+    switchTab('todo');
 }
 </script>
 
