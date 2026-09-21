@@ -128,6 +128,12 @@
 <script>
 const _csrfToken = '{{ csrf_token() }}';
 const CURRENT_EMPLOYEE_ID = '{{ session('employee.id') }}';
+// "1st Accent" (settings.blade.php) -- this employee/company's own main
+// brand colour, defaulting to the app-wide gold if never customized. The
+// To-Do board's dark panel is a darkened mix of this, not a flat neutral
+// black, so it still reads as "this company's Performix" in dark mode.
+const THEME_ACCENT = '{{ session('theme_accent') ?: '#D4AF37' }}';
+const TODO_PANEL_BG = `color-mix(in srgb, ${THEME_ACCENT} 20%, black)`;
 
 async function api(path, opts = {}) {
     const res = await fetch('/mini-app/api' + path, {
@@ -478,7 +484,7 @@ function renderTodoShell() {
     const tasks = window.__myTasks || [];
 
     app.innerHTML = `
-        <div class="bg-[#0a0a0a] rounded-3xl p-4 md:p-6">
+        <div class="rounded-3xl p-4 md:p-6" style="background: ${TODO_PANEL_BG};">
             ${todoHeader()}
             ${todoStatCards(tasks)}
             <div id="taskScoreCard" class="mt-4"></div>
