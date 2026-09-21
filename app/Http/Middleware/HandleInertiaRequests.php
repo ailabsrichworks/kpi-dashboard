@@ -117,13 +117,19 @@ class HandleInertiaRequests extends Middleware
         }
 
         try {
+            // Not filtered by `is_read => eq.false` here: rows written before
+            // NotificationService::notify() started setting `is_read`
+            // explicitly have it as NULL, and Postgres/PostgREST's `eq.false`
+            // never matches NULL — undercounting exactly the same way
+            // NotificationController::markAllRead() used to. Counting in PHP
+            // with the same "falsy is unread" rule the Notifications page
+            // itself uses (`!n.is_read`) keeps both in agreement.
             $rows = $this->supabase->get('notifications', [
                 'recipient_employee_id' => 'eq.' . $employeeId,
-                'is_read' => 'eq.false',
-                'select' => 'id',
+                'select' => 'is_read',
             ]) ?? [];
 
-            return count($rows);
+            return count(array_filter($rows, fn ($row) => empty($row['is_read'])));
         } catch (\Throwable $e) {
             Log::warning('Failed to fetch unread notification count for layout props: ' . $e->getMessage());
 

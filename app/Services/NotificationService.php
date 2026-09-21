@@ -91,6 +91,12 @@ class NotificationService
                     'title'                 => $title,
                     'message'               => $message,
                     'link'                  => $link,
+                    // Explicit, not left to the column default — a default of
+                    // NULL (as opposed to false) is what made "Mark all as
+                    // read" and the unread badge disagree forever, since
+                    // Postgres/PostgREST's `eq.false` filter never matches
+                    // NULL. See NotificationController::markAllRead().
+                    'is_read'               => false,
                 ]);
             } catch (\Throwable $e) {
                 Log::error('Failed to create notification', ['recipient' => $recipientId, 'error' => $e->getMessage()]);

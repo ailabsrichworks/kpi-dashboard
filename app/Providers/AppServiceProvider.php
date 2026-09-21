@@ -49,12 +49,14 @@ class AppServiceProvider extends ServiceProvider
 
             if ($employeeId) {
                 try {
+                    // Not filtered by `is_read => eq.false` — see the matching
+                    // comment in HandleInertiaRequests::unreadNotificationCount()
+                    // for why that silently undercounts NULL rows.
                     $rows = $this->app->make(SupabaseService::class)->get('notifications', [
                         'recipient_employee_id' => 'eq.' . $employeeId,
-                        'is_read'                => 'eq.false',
-                        'select'                 => 'id',
+                        'select'                 => 'is_read',
                     ]) ?? [];
-                    $unreadCount = count($rows);
+                    $unreadCount = count(array_filter($rows, fn ($row) => empty($row['is_read'])));
                 } catch (\Throwable $e) {
                     // Sidebar must never break the whole page over a notification query.
                 }

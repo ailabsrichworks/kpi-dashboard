@@ -89,9 +89,16 @@ class NotificationController extends Controller
     {
         $user = $this->currentUser($supabase);
 
+        // Deliberately no `is_read => eq.false` filter here. Rows inserted
+        // before NotificationService::notify() started setting `is_read`
+        // explicitly have it as NULL, not false — and Postgres/PostgREST's
+        // `eq.false` never matches NULL, so that filter silently skipped
+        // every such row forever (the bell/page kept counting them as
+        // unread no matter how many times "Mark all as read" was pressed).
+        // Filtering on recipient alone and unconditionally setting true is
+        // idempotent for already-read rows, so it's safe to drop.
         $supabase->update('notifications', [
             'recipient_employee_id' => 'eq.' . $user['id'],
-            'is_read'               => 'eq.false',
         ], ['is_read' => true]);
 
         return redirect()->route('notifications');
