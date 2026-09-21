@@ -105,6 +105,7 @@ class TaskController extends Controller
             'status' => 'nullable|in:open,in_progress,done,cancelled',
             'priority' => 'nullable|in:low,medium,high',
             'due_date' => 'nullable|date',
+            'meeting_time' => 'nullable|date_format:H:i',
             'assignee_user_id' => 'nullable|uuid',
             'kpi_ids' => 'nullable|array',
             'kpi_ids.*' => 'uuid',
@@ -122,6 +123,11 @@ class TaskController extends Controller
                 'status' => $request->input('status', 'open'),
                 'priority' => $request->input('priority', 'medium'),
                 'due_date' => $request->due_date ?: null,
+                // A meeting is a task with a specific time-of-day, not just a
+                // due date — kept as a plain nullable column rather than a
+                // separate "is_meeting" flag, since "has a time" already
+                // says exactly that with nothing else to fall out of sync.
+                'meeting_time' => $request->meeting_time ?: null,
                 'assignee_user_id' => $request->assignee_user_id ?: null,
                 'created_by' => $callerId,
             ]);
@@ -171,6 +177,7 @@ class TaskController extends Controller
             'status' => 'required|in:open,in_progress,done,cancelled',
             'priority' => 'required|in:low,medium,high',
             'due_date' => 'nullable|date',
+            'meeting_time' => 'nullable|date_format:H:i',
             'assignee_user_id' => 'nullable|uuid',
         ]);
 
@@ -180,7 +187,7 @@ class TaskController extends Controller
         $before = $supabase->first('tasks', [
             'id' => 'eq.' . $task,
             'company_id' => 'eq.' . $company,
-            'select' => 'id,title,description,status,priority,due_date,assignee_user_id',
+            'select' => 'id,title,description,status,priority,due_date,meeting_time,assignee_user_id',
         ]);
 
         if (!$before) {
@@ -193,6 +200,7 @@ class TaskController extends Controller
             'status' => $request->status,
             'priority' => $request->priority,
             'due_date' => $request->due_date ?: null,
+            'meeting_time' => $request->meeting_time ?: null,
             'assignee_user_id' => $request->assignee_user_id ?: null,
             'updated_at' => now()->toIso8601String(),
         ];

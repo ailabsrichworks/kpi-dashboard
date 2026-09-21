@@ -170,3 +170,26 @@ export const PlusIcon = base(<path strokeLinecap="round" strokeLinejoin="round" 
 export const XMarkIcon = base(<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />);
 
 export const MenuIcon = base(<path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />);
+
+export const ClockIcon = base(
+    <>
+        <circle cx="12" cy="12" r="9" strokeLinecap="round" strokeLinejoin="round" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3.5 2" />
+    </>,
+);
+
+export const CalendarIcon = base(
+    <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M6.75 3v2.25M17.25 3v2.25M3.75 8.25h16.5M4.5 6h15A1.5 1.5 0 0121 7.5v12A1.5 1.5 0 0119.5 21h-15A1.5 1.5 0 013 19.5v-12A1.5 1.5 0 014.5 6z"
+    />,
+);
+
+export const ViewColumnsIcon = base(
+    <>
+        <rect x="3" y="4.5" width="5" height="15" rx="1.2" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="9.5" y="4.5" width="5" height="15" rx="1.2" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="16" y="4.5" width="5" height="15" rx="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </>,
+);
