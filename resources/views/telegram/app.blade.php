@@ -396,9 +396,20 @@
     }
 
     // Mirrors the employee's Account Settings > Appearance colours here too,
-    // via two CSS custom properties every themed element already reads from
-    // — falls back silently to the default navy/blue look if nothing was
-    // ever customised or the fetch fails.
+    // via CSS custom properties every themed element already reads from —
+    // falls back silently to the default palette if nothing was ever
+    // customised or the fetch fails.
+    //
+    // A custom theme_bg is always a LIGHT colour (Account Settings, and the
+    // web mini-app it's shared with, only ever offer light backgrounds to
+    // pick from) — but it's applied as an inline style, which beats any CSS
+    // rule including the [data-theme="dark"] block below. Left alone, a dark
+    // system colorScheme would still swap --card-bg/--text-strong/etc to
+    // their dark values while --bg stayed pinned to the light custom color
+    // via that inline style, producing a broken half-dark/half-light mix
+    // (pale text on a light background, dark cards floating on it). Forcing
+    // data-theme to "light" whenever a custom background is set keeps the
+    // whole palette consistent with the choice the employee actually made.
     let _themeApplied = false;
     async function applyTheme() {
         if (_themeApplied) return;
@@ -407,7 +418,10 @@
             const t = await api('/theme?employee_id=' + encodeURIComponent(state.employeeId) + '&company_code=' + encodeURIComponent(state.companyCode));
             if (t.theme_accent) document.documentElement.style.setProperty('--accent', t.theme_accent);
             if (t.theme_accent2) document.documentElement.style.setProperty('--accent2', t.theme_accent2);
-            if (t.theme_bg) document.documentElement.style.setProperty('--bg', t.theme_bg);
+            if (t.theme_bg) {
+                document.documentElement.style.setProperty('--bg', t.theme_bg);
+                document.documentElement.setAttribute('data-theme', 'light');
+            }
         } catch (e) {
             // Not linked in this context, or a transient error — keep defaults.
         }
