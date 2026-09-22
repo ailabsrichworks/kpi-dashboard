@@ -534,6 +534,7 @@
         }
         selectDashboard(d, false);
         _themeApplied = false;
+        __assignableEmployeesCache = null;
         switchRootTab('home');
         applyTheme();
     }
@@ -680,6 +681,9 @@
             <div class="flex flex-wrap gap-1.5 mt-2">
                 <span class="text-[8px] font-black px-1.5 py-0.5 rounded-full ${priorityPill.color}">${priorityPill.label}</span>
                 ${dueDateBadge(t.due_date)}
+                ${t.due_time ? `<span class="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-[var(--track-bg)] text-[var(--text-secondary)]">🕒 ${t.due_time.slice(0, 5)}</span>` : ''}
+                ${t.assignee_employee_id && t.assignee_employee_id !== state.employeeId ? `<span class="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-[var(--track-bg)] text-[var(--text-secondary)]">👤 ${t.assignee_name || 'Assigned'}</span>` : ''}
+                ${t.notify_employee_name ? `<span class="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-[var(--track-bg)] text-[var(--text-secondary)]">📨 ${t.notify_employee_name}</span>` : ''}
             </div>
             <div class="w-full h-1.5 bg-[var(--track-bg)] rounded-full mt-2 overflow-hidden">
                 <div class="h-full rounded-full bg-[var(--accent)]" style="width:${t.progress_percentage || 0}%"></div>
@@ -757,6 +761,33 @@
         return __defaultProjectId;
     }
 
+    // Shared by Create Task and Edit Task — same rule as the web Mini App's
+    // assignableEmployees(): every employee this caller may see/assign to,
+    // ordered alphabetically by Supabase itself, each flagged with
+    // has_telegram so the Notify dropdown can filter to only people who can
+    // actually receive a Telegram message.
+    let __assignableEmployeesCache = null;
+    async function fetchAssignableEmployees() {
+        if (__assignableEmployeesCache) return __assignableEmployeesCache;
+        try {
+            const data = await api(`/project-tasks/assignable-employees?employee_id=${state.employeeId}&company_code=${state.companyCode}`);
+            __assignableEmployeesCache = data.employees || [];
+        } catch (e) {
+            __assignableEmployeesCache = [];
+        }
+        return __assignableEmployeesCache;
+    }
+
+    function assignToOptionsHtml(employees, selectedId) {
+        return employees.map(e => `<option value="${e.id}" ${e.id === selectedId ? 'selected' : ''}>${e.short_name}${e.id === state.employeeId ? ' (Myself)' : ''}</option>`).join('');
+    }
+
+    function notifyOptionsHtml(employees, selectedId) {
+        const linked = employees.filter(e => e.has_telegram);
+        const options = `<option value="">None</option>` + linked.map(e => `<option value="${e.id}" ${e.id === selectedId ? 'selected' : ''}>${e.short_name}</option>`).join('');
+        return { options, hasAny: linked.length > 0 };
+    }
+
     async function renderCreateTask(isUnplanned = false) {
         showSubScreenChrome('Create Task');
         const app = document.getElementById('app');
@@ -770,18 +801,44 @@
             // Non-fatal — the form still works without KPI options loaded.
         }
 
+        const employees = await fetchAssignableEmployees();
+        const notify = notifyOptionsHtml(employees, null);
+
         app.innerHTML = card(`
             <p class="text-[10px] font-bold text-[var(--text-secondary)] mb-1">Task Name</p>
             <input type="text" id="ctTitle" placeholder="Enter task name" oninput="debounceKpiSuggestion()"
                 class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
 
-            <p class="text-[10px] font-bold text-[var(--text-secondary)] mt-3 mb-1">Due Date</p>
-            <input type="date" id="ctDueDate" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
+            <p class="text-[10px] font-bold text-[var(--text-secondary)] mt-3 mb-1">Description <span class="text-[var(--text-muted)] font-normal">(optional)</span></p>
+            <textarea id="ctDescription" rows="3" placeholder="Add more detail…"
+                class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)] resize-none"></textarea>
+
+            <div class="flex gap-2 mt-3">
+                <div class="flex-1 min-w-0">
+                    <p class="text-[10px] font-bold text-[var(--text-secondary)] mb-1">Due Date</p>
+                    <input type="date" id="ctDueDate" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-[10px] font-bold text-[var(--text-secondary)] mb-1">Due Time <span class="text-[var(--text-muted)] font-normal">(optional)</span></p>
+                    <input type="time" id="ctDueTime" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
+                </div>
+            </div>
 
             <p class="text-[10px] font-bold text-[var(--text-secondary)] mt-3 mb-1">Priority</p>
             <select id="ctPriority" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
                 ${Object.entries(PRIORITY_LABELS).map(([key, p]) => `<option value="${key}" ${key === 'medium' ? 'selected' : ''}>${p.label}</option>`).join('')}
             </select>
+
+            <p class="text-[10px] font-bold text-[var(--text-secondary)] mt-3 mb-1">Assign To</p>
+            <select id="ctAssignee" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
+                ${assignToOptionsHtml(employees, state.employeeId)}
+            </select>
+
+            <p class="text-[10px] font-bold text-[var(--text-secondary)] mt-3 mb-1">Notify via Telegram <span class="text-[var(--text-muted)] font-normal">(optional)</span></p>
+            <select id="ctNotify" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
+                ${notify.options}
+            </select>
+            <p class="text-[9px] text-[var(--text-muted)] mt-1">${notify.hasAny ? 'Sends this task straight to that person\'s Telegram, if they\'ve linked their account — picked from the same list as Assign To.' : 'Nobody in your list has linked their Telegram account yet.'}</p>
 
             <div class="flex items-center justify-between mt-3 mb-1">
                 <p class="text-[10px] font-bold text-[var(--text-secondary)]">Align to KPI <span class="text-[var(--text-muted)] font-normal">(optional, pick any that apply)</span></p>
@@ -849,8 +906,12 @@
     async function saveNewTaskSimple(addAnother) {
         const feedback = document.getElementById('ctFeedback');
         const title = document.getElementById('ctTitle').value.trim();
+        const description = document.getElementById('ctDescription').value.trim() || null;
         const dueDate = document.getElementById('ctDueDate').value || null;
+        const dueTime = document.getElementById('ctDueTime').value || null;
         const priority = document.getElementById('ctPriority').value;
+        const assigneeEmployeeId = document.getElementById('ctAssignee').value || null;
+        const notifyEmployeeId = document.getElementById('ctNotify').value || null;
         const kpiIds = [...document.querySelectorAll('.ct-kpi-checkbox:checked')].map(el => el.value);
 
         if (!title) {
@@ -862,16 +923,18 @@
 
         try {
             const projectId = await ensureDefaultProject();
-            await api('/project-tasks', {
+            const data = await api('/project-tasks', {
                 method: 'POST',
                 body: JSON.stringify({
                     employee_id: state.employeeId, company_code: state.companyCode,
-                    project_id: projectId, title, unit: 'number', target: 0,
-                    due_date: dueDate, priority, kpi_ids: kpiIds,
+                    project_id: projectId, title, description, unit: 'number', target: 0,
+                    due_date: dueDate, due_time: dueTime, priority,
+                    assignee_employee_id: assigneeEmployeeId, notify_employee_id: notifyEmployeeId,
+                    kpi_ids: kpiIds,
                 }),
             });
             if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-            if (tg?.showPopup) tg.showPopup({ message: 'Task saved!' });
+            if (tg?.showPopup) tg.showPopup({ message: data.message || 'Task saved!' });
             if (addAnother) {
                 renderCreateTask();
             } else {
@@ -899,18 +962,44 @@
             return;
         }
 
+        const employees = await fetchAssignableEmployees();
+        const notify = notifyOptionsHtml(employees, t.notify_employee_id || null);
+
         app.innerHTML = card(`
             <p class="text-[10px] font-bold text-[var(--text-secondary)] mb-1">Task Name</p>
             <input type="text" id="etTitle" value="${(t.title || '').replace(/"/g, '&quot;')}"
                 class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
 
-            <p class="text-[10px] font-bold text-[var(--text-secondary)] mt-3 mb-1">Due Date</p>
-            <input type="date" id="etDueDate" value="${t.due_date || ''}" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
+            <p class="text-[10px] font-bold text-[var(--text-secondary)] mt-3 mb-1">Description <span class="text-[var(--text-muted)] font-normal">(optional)</span></p>
+            <textarea id="etDescription" rows="3" placeholder="Add more detail…"
+                class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)] resize-none">${(t.description || '').replace(/</g, '&lt;')}</textarea>
+
+            <div class="flex gap-2 mt-3">
+                <div class="flex-1 min-w-0">
+                    <p class="text-[10px] font-bold text-[var(--text-secondary)] mb-1">Due Date</p>
+                    <input type="date" id="etDueDate" value="${t.due_date || ''}" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-[10px] font-bold text-[var(--text-secondary)] mb-1">Due Time <span class="text-[var(--text-muted)] font-normal">(optional)</span></p>
+                    <input type="time" id="etDueTime" value="${(t.due_time || '').slice(0, 5)}" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
+                </div>
+            </div>
 
             <p class="text-[10px] font-bold text-[var(--text-secondary)] mt-3 mb-1">Priority</p>
             <select id="etPriority" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
                 ${Object.entries(PRIORITY_LABELS).map(([key, p]) => `<option value="${key}" ${key === t.priority ? 'selected' : ''}>${p.label}</option>`).join('')}
             </select>
+
+            <p class="text-[10px] font-bold text-[var(--text-secondary)] mt-3 mb-1">Assign To</p>
+            <select id="etAssignee" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
+                ${assignToOptionsHtml(employees, t.assignee_employee_id || state.employeeId)}
+            </select>
+
+            <p class="text-[10px] font-bold text-[var(--text-secondary)] mt-3 mb-1">Notify via Telegram <span class="text-[var(--text-muted)] font-normal">(optional)</span></p>
+            <select id="etNotify" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
+                ${notify.options}
+            </select>
+            <p class="text-[9px] text-[var(--text-muted)] mt-1">${notify.hasAny ? 'Sends this task straight to that person\'s Telegram, if they\'ve linked their account — picked from the same list as Assign To.' : 'Nobody in your list has linked their Telegram account yet.'}</p>
 
             <button onclick="saveEditTask('${taskId}')" class="w-full mt-4 py-3 rounded-2xl bg-[var(--accent)] hover:opacity-90 text-[#1a1408] text-[13px] font-black">Save Changes</button>
             <p id="etFeedback" class="hidden text-[10px] font-bold text-red-600 mt-2 text-center"></p>
@@ -921,8 +1010,12 @@
         const t = window.__taskDetail;
         const feedback = document.getElementById('etFeedback');
         const title = document.getElementById('etTitle').value.trim();
+        const description = document.getElementById('etDescription').value.trim() || null;
         const dueDate = document.getElementById('etDueDate').value || null;
+        const dueTime = document.getElementById('etDueTime').value || null;
         const priority = document.getElementById('etPriority').value;
+        const assigneeEmployeeId = document.getElementById('etAssignee').value || null;
+        const notifyEmployeeId = document.getElementById('etNotify').value || null;
 
         if (!title) {
             feedback.textContent = 'Enter a task name.';
@@ -932,16 +1025,17 @@
         feedback.classList.add('hidden');
 
         try {
-            await api(`/project-tasks/${taskId}`, {
+            const data = await api(`/project-tasks/${taskId}`, {
                 method: 'PATCH',
                 body: JSON.stringify({
                     employee_id: state.employeeId, company_code: state.companyCode,
-                    title, unit: t.unit, target: t.target,
-                    due_date: dueDate, priority,
+                    title, description, unit: t.unit, target: t.target,
+                    due_date: dueDate, due_time: dueTime, priority,
+                    assignee_employee_id: assigneeEmployeeId, notify_employee_id: notifyEmployeeId,
                 }),
             });
             if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-            if (tg?.showPopup) tg.showPopup({ message: 'Task updated!' });
+            if (tg?.showPopup) tg.showPopup({ message: data.message || 'Task updated!' });
             renderTaskDetail(taskId);
         } catch (e) {
             feedback.textContent = e.data?.message || "Couldn't save — please try again.";
@@ -1160,7 +1254,10 @@
                     <span class="text-[8px] font-black px-1.5 py-0.5 rounded-full ${statusPill.color}">${statusPill.label}</span>
                     <span class="text-[8px] font-black px-1.5 py-0.5 rounded-full ${priorityPill.color}">${priorityPill.label} priority</span>
                     ${dueDateBadge(t.due_date)}
+                    ${t.due_time ? `<span class="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-[var(--track-bg)] text-[var(--text-secondary)]">🕒 ${t.due_time.slice(0, 5)}</span>` : ''}
                 </div>
+                <p class="text-[10px] text-[var(--text-muted)] mt-2">👤 Assigned to: <span class="font-bold text-[var(--text-secondary)]">${t.assignee_name || 'You'}</span></p>
+                ${t.notify_employee_name ? `<p class="text-[10px] text-[var(--text-muted)] mt-0.5">📨 Notify: <span class="font-bold text-[var(--text-secondary)]">${t.notify_employee_name}</span></p>` : ''}
                 <div class="flex items-center gap-2 mt-3">
                     <button onclick="renderDailyUpdate('${t.id}')" class="flex-1 py-2 rounded-xl bg-[var(--accent)] hover:opacity-90 text-[#1a1408] text-[11px] font-black">Daily Update</button>
                     <button onclick="renderEditTask('${t.id}')" class="px-3 py-2 rounded-xl bg-[var(--card-bg)] border-2 border-[var(--card-border)] text-[var(--text-secondary)] text-[11px] font-black">✎ Edit</button>

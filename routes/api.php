@@ -45,6 +45,7 @@ Route::middleware('telegram.webapp.auth')->prefix('telegram')->group(function ()
     Route::get('/project-tasks', [TelegramProjectTaskController::class, 'listTasks']);
     Route::post('/project-tasks', [TelegramProjectTaskController::class, 'createTask']);
     Route::get('/project-tasks/kpi-options', [TelegramProjectTaskController::class, 'kpiOptions']);
+    Route::get('/project-tasks/assignable-employees', [TelegramProjectTaskController::class, 'assignableEmployees']);
     Route::post('/project-tasks/kpi-suggestion-draft', [TelegramProjectTaskController::class, 'suggestKpiForDraft']);
     Route::get('/project-tasks/{id}', [TelegramProjectTaskController::class, 'show']);
     Route::patch('/project-tasks/{id}', [TelegramProjectTaskController::class, 'update']);
