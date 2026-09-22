@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Mail\TaskNotifyMail;
 use App\Services\AiService;
-use App\Services\EmailVerificationService;
 use App\Services\NotificationService;
 use App\Services\SupabaseService;
 use App\Services\TaskAccessPolicy;
@@ -37,15 +36,14 @@ class MiniAppTaskController extends Controller
     }
 
     /**
-     * Checks a task's optional notify_email before it's saved: accepted
-     * outright if it matches an employee already on file (Supabase), or --
-     * for anyone else, e.g. a report with no Performix account -- if its
-     * domain can actually receive mail at all (see EmailVerificationService
-     * for exactly what that does and doesn't prove).
+     * Checks a task's optional notify_email before it's saved: only accepted
+     * if it matches an employee already on file in Supabase -- there's no
+     * fallback for an arbitrary outside address, deliberately, so this can
+     * never become a way to relay mail to whoever a task happens to name.
      *
      * @return array{ok: bool, email: ?string, message?: string}
      */
-    private function verifyNotifyEmail(?string $email, SupabaseService $supabase, EmailVerificationService $verifier): array
+    private function verifyNotifyEmail(?string $email, SupabaseService $supabase): array
     {
         if (empty($email)) {
             return ['ok' => true, 'email' => null];
@@ -58,11 +56,11 @@ class MiniAppTaskController extends Controller
             'select' => 'id',
         ]);
 
-        if (!$knownEmployee && !$verifier->domainCanReceiveMail($email)) {
+        if (!$knownEmployee) {
             return [
                 'ok' => false,
                 'email' => null,
-                'message' => "We couldn't verify that \"{$email}\" can actually receive mail — double check for typos.",
+                'message' => "\"{$email}\" isn't a recognised Performix email — pick someone from the list.",
             ];
         }
 
@@ -78,6 +76,7 @@ class MiniAppTaskController extends Controller
                 $task['due_date'] ?? null,
                 $task['due_time'] ?? null,
                 $this->employeeName(),
+                $task['priority'] ?? 'medium',
             ));
         } catch (\Throwable $e) {
             Log::error('Task notify email failed to send', ['error' => $e->getMessage()]);
@@ -217,7 +216,7 @@ class MiniAppTaskController extends Controller
     | KPI linking is optional here — a TTD task can exist purely as a
     | personal to-do, with no effect on any KPI's actual.
     */
-    public function store(Request $request, SupabaseService $supabase, NotificationService $notifications, TaskAccessPolicy $policy, EmailVerificationService $emailVerifier)
+    public function store(Request $request, SupabaseService $supabase, NotificationService $notifications, TaskAccessPolicy $policy)
     {
         $validated = $request->validate([
             'title' => 'required|string|max:200',
@@ -250,7 +249,7 @@ class MiniAppTaskController extends Controller
             return response()->json(['success' => false, 'message' => "You're not allowed to assign tasks to this person."], 403);
         }
 
-        $emailCheck = $this->verifyNotifyEmail($validated['notify_email'] ?? null, $supabase, $emailVerifier);
+        $emailCheck = $this->verifyNotifyEmail($validated['notify_email'] ?? null, $supabase);
         if (!$emailCheck['ok']) {
             return response()->json(['success' => false, 'message' => $emailCheck['message']], 422);
         }
@@ -419,9 +418,13 @@ class MiniAppTaskController extends Controller
     |--------------------------------------------------------------------------
     | GET /mini-app/api/tasks/assignable
     |--------------------------------------------------------------------------
-    | Employees the caller may assign a task to, for the "Assign To" field
-    | on the task detail update form. Just TaskAccessPolicy's own visibility
-    | set (an EXECUTIVE only ever sees themselves) -- no separate rule here.
+    | Employees the caller may assign a task to (Assign To) or point a
+    | notify_email at (Notify by email) -- both use TaskAccessPolicy's own
+    | visibility set (an EXECUTIVE only ever sees themselves; an SLT sees
+    | the whole company), so both fields always list exactly who the caller
+    | is allowed to see, never more. `email` is included specifically for
+    | the Notify by email field, whose only valid values are addresses that
+    | actually exist in this list.
     */
     public function assignableEmployees(Request $request, SupabaseService $supabase, TaskAccessPolicy $policy)
     {
@@ -433,7 +436,7 @@ class MiniAppTaskController extends Controller
 
         $employees = $supabase->get('employees', [
             'id' => 'in.(' . implode(',', $employeeIds) . ')',
-            'select' => 'id,short_name',
+            'select' => 'id,short_name,email',
         ]) ?? [];
 
         return response()->json(['employees' => $employees]);
@@ -594,7 +597,7 @@ class MiniAppTaskController extends Controller
     | Edits the task's own details (title/target/unit) — the Telegram
     | controller never had this, it only ever adjusted progress.
     */
-    public function update(Request $request, SupabaseService $supabase, NotificationService $notifications, TaskAccessPolicy $policy, EmailVerificationService $emailVerifier, string $id)
+    public function update(Request $request, SupabaseService $supabase, NotificationService $notifications, TaskAccessPolicy $policy, string $id)
     {
         $validated = $request->validate([
             'title' => 'required|string|max:200',
@@ -635,7 +638,7 @@ class MiniAppTaskController extends Controller
             }
         }
 
-        $emailCheck = $this->verifyNotifyEmail($validated['notify_email'] ?? null, $supabase, $emailVerifier);
+        $emailCheck = $this->verifyNotifyEmail($validated['notify_email'] ?? null, $supabase);
         if (!$emailCheck['ok']) {
             return response()->json(['success' => false, 'message' => $emailCheck['message']], 422);
         }
@@ -680,6 +683,7 @@ class MiniAppTaskController extends Controller
                 'description' => $validated['description'] ?? $task['description'] ?? null,
                 'due_date' => $validated['due_date'] ?? $task['due_date'] ?? null,
                 'due_time' => $validated['due_time'] ?? null,
+                'priority' => $validated['priority'] ?? $task['priority'] ?? 'medium',
             ]);
         }
 

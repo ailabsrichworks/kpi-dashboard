@@ -585,8 +585,9 @@ function taskFormFields(t) {
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
             <div>
                 <p class="text-[10px] font-bold text-slate-600 mb-1">Notify by email <span class="text-slate-400 font-normal">(optional)</span></p>
-                <input type="email" id="taskNotifyEmailInput" value="${t?.notify_email || ''}" placeholder="e.g. teammate@richworks.com"
-                    class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
+                <select id="taskNotifyEmailInput" data-current="${t?.notify_email || ''}" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
+                    <option value="">Loading…</option>
+                </select>
             </div>
             <div>
                 <p class="text-[10px] font-bold text-slate-600 mb-1">Unit</p>
@@ -602,7 +603,7 @@ function taskFormFields(t) {
                     class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
             </div>
         </div>
-        <p class="text-[9px] text-slate-400 mt-1">Notify by email sends this task straight to that inbox — handy for looping in someone who doesn't have a Performix account yet. We'll check the address looks real before sending.</p>
+        <p class="text-[9px] text-slate-400 mt-1">Notify by email sends this task straight to that person's inbox — picked from the same list as Assign to, since only a real Performix email can be notified.</p>
     `;
 }
 
@@ -680,10 +681,6 @@ function taskFormValues() {
     };
 }
 
-function isPlausibleEmail(email) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
 function renderNewTaskForm() {
     document.getElementById('app').innerHTML = card(`
         <p class="text-[14px] font-black text-slate-900 mb-3">New Task</p>
@@ -707,12 +704,6 @@ async function saveNewTask() {
 
     if (!v.title || v.target === '' || isNaN(Number(v.target)) || Number(v.target) < 0) {
         feedback.textContent = 'Enter a task title and a valid target.';
-        feedback.classList.remove('hidden');
-        return;
-    }
-
-    if (v.notify_email && !isPlausibleEmail(v.notify_email)) {
-        feedback.textContent = 'Enter a valid notify email address, or leave it blank.';
         feedback.classList.remove('hidden');
         return;
     }
@@ -752,12 +743,6 @@ async function saveEditTask(taskId) {
 
     if (!v.title || v.target === '' || isNaN(Number(v.target)) || Number(v.target) < 0) {
         feedback.textContent = 'Enter a task title and a valid target.';
-        feedback.classList.remove('hidden');
-        return;
-    }
-
-    if (v.notify_email && !isPlausibleEmail(v.notify_email)) {
-        feedback.textContent = 'Enter a valid notify email address, or leave it blank.';
         feedback.classList.remove('hidden');
         return;
     }
@@ -904,16 +889,29 @@ async function renderTaskDetail(taskId) {
 
 async function loadAssignableEmployees(t) {
     const select = document.getElementById('taskAssigneeInput');
-    if (!select) return;
+    const notifySelect = document.getElementById('taskNotifyEmailInput');
+    if (!select && !notifySelect) return;
 
+    let employees = [];
     try {
         const data = await api('/tasks/assignable');
-        const employees = data.employees || [];
+        employees = data.employees || [];
+    } catch (e) {
+        // fall through with an empty list -- both selects below already
+        // handle that by showing just their own "nobody" option.
+    }
+
+    if (select) {
         select.innerHTML = employees.length
             ? employees.map(e => `<option value="${e.id}" ${e.id === t.assignee_employee_id ? 'selected' : ''}>${e.short_name}</option>`).join('')
             : `<option value="">—</option>`;
-    } catch (e) {
-        select.innerHTML = `<option value="">—</option>`;
+    }
+
+    if (notifySelect) {
+        const current = notifySelect.dataset.current || '';
+        const withEmail = employees.filter(e => e.email);
+        notifySelect.innerHTML = `<option value="">— No one —</option>` +
+            withEmail.map(e => `<option value="${e.email}" ${e.email === current ? 'selected' : ''}>${e.short_name} (${e.email})</option>`).join('');
     }
 }
 

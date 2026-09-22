@@ -22,10 +22,14 @@ class TaskNotifyMail extends Mailable
         public ?string $dueDate,
         public ?string $dueTime,
         public string $creatorName,
+        public string $priority = 'medium',
     ) {}
 
     public function build()
     {
-        return $this->subject('Task for you: ' . $this->taskTitle)->view('emails.task-notify');
+        // Leads with "TTD (Things To Do)" specifically because the
+        // recipient may have no Performix account at all -- the subject is
+        // often the only context they get for what this system even is.
+        return $this->subject('TTD (Things To Do): ' . $this->taskTitle)->view('emails.task-notify');
     }
 }
