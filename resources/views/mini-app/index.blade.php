@@ -1080,6 +1080,24 @@ function confirmDeleteTask(taskId) {
 let __calendarCursor = new Date();
 __calendarCursor.setDate(1);
 
+// Color-codes each inline calendar bar by the task's priority, the same
+// signal the taskCard()'s left-border already uses, so a busy month reads
+// at a glance without introducing a second, unrelated color scheme.
+const PRIORITY_BAR = {
+    low: 'bg-slate-500',
+    medium: 'bg-indigo-500',
+    high: 'bg-amber-600',
+    critical: 'bg-rose-600',
+};
+
+function calendarEventBar(t) {
+    const label = (t.meeting_time ? fmtTime12(t.meeting_time) + ' ' : '') + t.title;
+    const bg = PRIORITY_BAR[t.priority] || PRIORITY_BAR.medium;
+    return `<button type="button" onclick="event.stopPropagation(); renderTaskDetail('${t.id}')" class="block w-full text-left ${bg} text-white text-[8px] font-bold leading-tight px-1.5 py-0.5 rounded truncate hover:opacity-90">${label}</button>`;
+}
+
+const CALENDAR_MAX_VISIBLE = 3;
+
 function calendarBoard() {
     const tasks = window.__myTasks || [];
 
@@ -1094,36 +1112,47 @@ function calendarBoard() {
         if (!t.due_date) return;
         (tasksByDate[t.due_date] = tasksByDate[t.due_date] || []).push(t);
     });
+    Object.values(tasksByDate).forEach(list =>
+        list.sort((a, b) => (a.meeting_time || '99:99').localeCompare(b.meeting_time || '99:99')));
 
     let cells = '';
-    for (let i = 0; i < firstDow; i++) cells += `<div></div>`;
+    for (let i = 0; i < firstDow; i++) cells += `<div class="min-h-[88px] border border-slate-100 bg-slate-50/50"></div>`;
     for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         const dayTasks = tasksByDate[dateStr] || [];
-        const hasMeeting = dayTasks.some(x => x.meeting_time);
         const isToday = dateStr === todayISO();
+        const visible = dayTasks.slice(0, CALENDAR_MAX_VISIBLE);
+        const hiddenCount = dayTasks.length - visible.length;
+
         cells += `
-            <button onclick="renderCalendarDay('${dateStr}')" class="aspect-square rounded-lg flex flex-col items-center justify-center relative ${isToday ? 'bg-slate-900 font-black' : 'hover:bg-slate-100'}">
-                <span class="text-[11px] ${isToday ? 'text-white' : 'text-slate-500'}">${d}</span>
-                ${dayTasks.length ? `<span class="w-1.5 h-1.5 rounded-full ${hasMeeting ? 'bg-sky-500' : 'bg-emerald-500'} absolute bottom-1"></span>` : ''}
+            <button onclick="renderCalendarDay('${dateStr}')" class="min-h-[88px] text-left p-1.5 border border-slate-100 hover:bg-slate-50 transition-colors flex flex-col gap-1">
+                <span class="text-[11px] font-bold ${isToday ? 'w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center' : 'text-slate-600'}">${d}</span>
+                <div class="space-y-0.5">
+                    ${visible.map(t => calendarEventBar(t)).join('')}
+                    ${hiddenCount > 0 ? `<p class="text-[8px] font-bold text-slate-400 px-1.5">+${hiddenCount} more</p>` : ''}
+                </div>
             </button>
         `;
     }
 
-    const dow = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    const dow = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
     return `
-        ${darkCard(`
-            <div class="flex items-center justify-between mb-3">
+        <div class="rounded-2xl border border-slate-200 overflow-hidden">
+            <div class="flex items-center justify-between px-3 py-2.5 bg-slate-50 border-b border-slate-200">
                 <button onclick="shiftCalendar(-1)" class="px-2 py-1 text-[13px] font-black text-slate-400 hover:text-slate-900">‹</button>
                 <p class="text-[13px] font-black text-slate-900">${monthLabel}</p>
                 <button onclick="shiftCalendar(1)" class="px-2 py-1 text-[13px] font-black text-slate-400 hover:text-slate-900">›</button>
             </div>
-            <div class="grid grid-cols-7 gap-1 text-center mb-1">
-                ${dow.map(d => `<p class="text-[9px] font-black text-slate-500">${d}</p>`).join('')}
+            <div class="overflow-x-auto">
+                <div class="min-w-[640px]">
+                    <div class="grid grid-cols-7 text-center border-b border-slate-200">
+                        ${dow.map(d => `<p class="text-[9px] font-black text-slate-500 py-2">${d}</p>`).join('')}
+                    </div>
+                    <div class="grid grid-cols-7">${cells}</div>
+                </div>
             </div>
-            <div class="grid grid-cols-7 gap-1">${cells}</div>
-        `)}
+        </div>
         <div id="calendarDayTasks" class="mt-3"></div>
     `;
 }
