@@ -2,9 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Mail\TaskNotifyMail;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 /**
@@ -15,12 +13,15 @@ use Tests\TestCase;
  * `meeting_time` (distinct from the date-only `due_date`) and reassigning a
  * task's `assignee_employee_id` from Edit, both gated by the same
  * `TaskAccessPolicy::canAssign()` the create form already used; the
- * `/tasks/assignable` endpoint that both Assign To and Notify by email
+ * `/tasks/assignable` endpoint that both Assign To and Notify via Telegram
  * draw their options from (same `TaskAccessPolicy::visibleEmployeeIds()`
  * scope — an SLT sees the whole company, an EXECUTIVE with no reports sees
- * only themselves); and `due_time`/`notify_email`, where notify_email is
- * only ever accepted if it matches an employee already on file in
- * Supabase — there is no other way to satisfy it.
+ * only themselves); and `due_time`/`notify_employee_id`, where
+ * notify_employee_id is only ever accepted if it's someone the caller can
+ * see (same scope as the dropdown itself) and is sent via the existing
+ * NotificationService Telegram pipeline (this app has no real mail driver
+ * configured in production, so a Telegram-based notify is the one that
+ * actually delivers).
  */
 class MiniAppTaskControllerTest extends TestCase
 {
@@ -190,82 +191,104 @@ class MiniAppTaskControllerTest extends TestCase
         $this->assertSame('Colleague', $task['assignee_name']);
     }
 
-    public function test_store_saves_due_time_and_sends_notify_email_to_a_known_employee(): void
+    public function test_store_saves_due_time_and_notifies_a_known_employee_via_telegram(): void
     {
-        Mail::fake();
-
         Http::fake([
             '*/rest/v1/telegram_projects*' => Http::response([['id' => 'proj-1']], 200),
-            '*/rest/v1/employees*' => Http::response([['id' => 'colleague-1', 'email' => 'colleague@richworks.com']], 200),
+            // Serves three different lookups (the company's visible-employee
+            // list for verifyNotifyEmployee, notifyAndDescribe's own
+            // short_name lookup, and notify()'s best-effort email lookup) --
+            // one row satisfies all three.
+            '*/rest/v1/employees*' => Http::response([['id' => 'colleague-1', 'short_name' => 'Colleague']], 200),
+            '*/rest/v1/user_company_roles*' => Http::response([['user_id' => 'user-1']], 200),
+            '*/rest/v1/users*' => Http::response([['telegram_chat_id' => 555]], 200),
+            '*/rest/v1/notifications*' => Http::response([['id' => 'notif-1']], 201),
+            'https://api.telegram.org/*' => Http::response(['ok' => true], 200),
             '*/rest/v1/telegram_project_tasks*' => Http::response([[
                 'id' => 'task-1', 'title' => 'Send the client proposal',
                 'due_date' => '2026-10-01', 'due_time' => '17:00', 'priority' => 'high',
             ]], 201),
         ]);
 
-        $this->withSession($this->employeeSession())
+        // SLT sees the whole company, so it may notify anyone in it
+        // (TaskAccessPolicy::canView()).
+        $response = $this->withSession($this->employeeSession('SLT'))
             ->post('/mini-app/api/tasks', [
                 'title' => 'Send the client proposal',
                 'unit' => 'number',
                 'target' => 1,
                 'due_date' => '2026-10-01',
                 'due_time' => '17:00',
-                'notify_email' => 'colleague@richworks.com',
-            ])
-            ->assertOk();
+                'notify_employee_id' => 'colleague-1',
+            ]);
+
+        $response->assertOk();
+        $this->assertStringContainsString('Notified Colleague via Telegram', $response->json('message'));
 
         Http::assertSent(function ($request) {
             return str_contains($request->url(), '/rest/v1/telegram_project_tasks')
                 && $request->method() === 'POST'
                 && $request['due_time'] === '17:00'
-                && $request['notify_email'] === 'colleague@richworks.com';
+                && $request['notify_employee_id'] === 'colleague-1';
         });
 
-        // Subject is the task title itself (not a "TTD:" prefix); recipient
-        // is exactly the chosen notify_email; the description and the due
-        // date/time/priority/creator detail render in the body.
-        Mail::assertSent(TaskNotifyMail::class, function ($mail) {
-            $mail->assertHasSubject('Send the client proposal');
-            $mail->assertTo('colleague@richworks.com');
-
-            return true;
-        });
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'api.telegram.org') && $request['chat_id'] === 555);
     }
 
-    public function test_store_rejects_a_notify_email_that_does_not_match_any_employee(): void
+    public function test_store_notifies_but_flags_an_employee_who_has_not_linked_telegram(): void
     {
-        Mail::fake();
-
         Http::fake([
-            '*/rest/v1/employees*' => Http::response([], 200), // no matching employee
+            '*/rest/v1/telegram_projects*' => Http::response([['id' => 'proj-1']], 200),
+            '*/rest/v1/employees*' => Http::response([['id' => 'colleague-1', 'short_name' => 'Colleague']], 200),
+            '*/rest/v1/user_company_roles*' => Http::response([], 200), // never linked a Performix account to Telegram
+            '*/rest/v1/notifications*' => Http::response([['id' => 'notif-1']], 201),
+            '*/rest/v1/telegram_project_tasks*' => Http::response([[
+                'id' => 'task-1', 'title' => 'Send the client proposal',
+            ]], 201),
         ]);
 
-        $response = $this->withSession($this->employeeSession())
+        $response = $this->withSession($this->employeeSession('SLT'))
             ->post('/mini-app/api/tasks', [
                 'title' => 'Send the client proposal',
                 'unit' => 'number',
                 'target' => 1,
-                'notify_email' => 'someone-outside@gmail.com',
+                'notify_employee_id' => 'colleague-1',
+            ]);
+
+        $response->assertOk();
+        $this->assertStringContainsString("Colleague hasn't linked Telegram", $response->json('message'));
+
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'api.telegram.org'));
+    }
+
+    public function test_store_rejects_a_notify_employee_id_the_caller_cannot_see(): void
+    {
+        // A plain EXECUTIVE only ever sees themselves -- no Supabase call
+        // needed to know 'someone-else' isn't in that set.
+        $response = $this->withSession($this->employeeSession('EXECUTIVE'))
+            ->post('/mini-app/api/tasks', [
+                'title' => 'Send the client proposal',
+                'unit' => 'number',
+                'target' => 1,
+                'notify_employee_id' => 'someone-else',
             ]);
 
         $response->assertStatus(422);
 
         Http::assertNotSent(fn ($request) => str_contains($request->url(), '/rest/v1/telegram_project_tasks'));
-        Mail::assertNothingSent();
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'api.telegram.org'));
     }
 
-    public function test_update_does_not_resend_notify_email_when_it_is_unchanged(): void
+    public function test_update_does_not_renotify_when_notify_employee_id_is_unchanged(): void
     {
-        Mail::fake();
-
         Http::fake([
-            '*/rest/v1/employees*' => Http::response([['id' => 'colleague-1', 'email' => 'colleague@richworks.com']], 200),
+            '*/rest/v1/employees*' => Http::response([['id' => 'colleague-1', 'short_name' => 'Colleague']], 200),
             '*/rest/v1/telegram_project_tasks*' => function ($request) {
                 if ($request->method() === 'GET') {
                     return Http::response([[
                         'id' => 'task-1', 'employee_id' => 'emp-1', 'assignee_employee_id' => 'emp-1',
                         'title' => 'Old title', 'unit' => 'number', 'target' => 10, 'actual' => 0,
-                        'status' => 'not_started', 'priority' => 'medium', 'notify_email' => 'colleague@richworks.com',
+                        'status' => 'not_started', 'priority' => 'medium', 'notify_employee_id' => 'colleague-1',
                     ]], 200);
                 }
 
@@ -273,33 +296,33 @@ class MiniAppTaskControllerTest extends TestCase
             },
         ]);
 
-        $this->withSession($this->employeeSession())
+        $response = $this->withSession($this->employeeSession('SLT'))
             ->patch('/mini-app/api/tasks/task-1', [
                 'title' => 'Weekly ops sync',
                 'unit' => 'number',
                 'target' => 10,
-                'notify_email' => 'colleague@richworks.com',
-            ])
-            ->assertOk();
+                'notify_employee_id' => 'colleague-1',
+            ]);
 
-        // The ordinary "task updated" activity notification (which may email
-        // the actor themself via AppNotificationMail) still fires as normal
-        // -- only the dedicated TaskNotifyMail resend should be suppressed.
-        Mail::assertNotSent(TaskNotifyMail::class);
+        $response->assertOk();
+        $this->assertSame('Changes saved!', $response->json('message'));
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'api.telegram.org'));
     }
 
-    public function test_update_sends_notify_email_when_it_changes_to_another_known_employee(): void
+    public function test_update_notifies_when_notify_employee_id_changes_to_another_employee(): void
     {
-        Mail::fake();
-
         Http::fake([
-            '*/rest/v1/employees*' => Http::response([['id' => 'colleague-2', 'email' => 'newcolleague@richworks.com']], 200),
+            '*/rest/v1/employees*' => Http::response([['id' => 'colleague-2', 'short_name' => 'Colleague Two']], 200),
+            '*/rest/v1/user_company_roles*' => Http::response([['user_id' => 'user-2']], 200),
+            '*/rest/v1/users*' => Http::response([['telegram_chat_id' => 777]], 200),
+            '*/rest/v1/notifications*' => Http::response([['id' => 'notif-1']], 201),
+            'https://api.telegram.org/*' => Http::response(['ok' => true], 200),
             '*/rest/v1/telegram_project_tasks*' => function ($request) {
                 if ($request->method() === 'GET') {
                     return Http::response([[
                         'id' => 'task-1', 'employee_id' => 'emp-1', 'assignee_employee_id' => 'emp-1',
                         'title' => 'Old title', 'unit' => 'number', 'target' => 10, 'actual' => 0,
-                        'status' => 'not_started', 'priority' => 'medium', 'notify_email' => 'colleague@richworks.com',
+                        'status' => 'not_started', 'priority' => 'medium', 'notify_employee_id' => 'colleague-1',
                     ]], 200);
                 }
 
@@ -307,16 +330,17 @@ class MiniAppTaskControllerTest extends TestCase
             },
         ]);
 
-        $this->withSession($this->employeeSession())
+        $response = $this->withSession($this->employeeSession('SLT'))
             ->patch('/mini-app/api/tasks/task-1', [
                 'title' => 'Weekly ops sync',
                 'unit' => 'number',
                 'target' => 10,
-                'notify_email' => 'newcolleague@richworks.com',
-            ])
-            ->assertOk();
+                'notify_employee_id' => 'colleague-2',
+            ]);
 
-        Mail::assertSent(TaskNotifyMail::class, fn ($mail) => $mail->hasTo('newcolleague@richworks.com'));
+        $response->assertOk();
+        $this->assertStringContainsString('Notified Colleague Two via Telegram', $response->json('message'));
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'api.telegram.org') && $request['chat_id'] === 777);
     }
 
     public function test_assignable_employees_returns_the_whole_company_for_slt(): void

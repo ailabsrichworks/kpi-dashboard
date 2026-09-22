@@ -221,7 +221,13 @@ class NotificationService
         }
     }
 
-    private function telegramChatIdFor(string $employeeId): ?int
+    /**
+     * Public specifically so callers can check deliverability up front (e.g.
+     * MiniAppTaskController telling the task creator "so-and-so hasn't
+     * linked Telegram yet" right in the save response) without duplicating
+     * this lookup -- notify() itself still calls it the same way.
+     */
+    public function telegramChatIdFor(string $employeeId): ?int
     {
         $role = $this->supabase->first('user_company_roles', [
             'employee_id' => 'eq.' . $employeeId,

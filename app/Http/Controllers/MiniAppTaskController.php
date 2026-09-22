@@ -2,14 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Mail\TaskNotifyMail;
 use App\Services\AiService;
 use App\Services\NotificationService;
 use App\Services\SupabaseService;
 use App\Services\TaskAccessPolicy;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Carbon;
 
 /**
  * The web Mini App's "TTD" (to-do) list — a personal task tracker that is
@@ -36,51 +34,96 @@ class MiniAppTaskController extends Controller
     }
 
     /**
-     * Checks a task's optional notify_email before it's saved: only accepted
-     * if it matches an employee already on file in Supabase -- there's no
-     * fallback for an arbitrary outside address, deliberately, so this can
-     * never become a way to relay mail to whoever a task happens to name.
+     * Checks a task's optional notify_employee_id before it's saved: only
+     * accepted if it's someone the caller can actually see (the exact same
+     * TaskAccessPolicy scope the dropdown itself is built from) -- there's
+     * no way to point a task's notification at an arbitrary employee id the
+     * caller was never shown.
      *
-     * @return array{ok: bool, email: ?string, message?: string}
+     * @return array{ok: bool, employee_id: ?string, message?: string}
      */
-    private function verifyNotifyEmail(?string $email, SupabaseService $supabase): array
+    private function verifyNotifyEmployee(?string $employeeId, array $actor, TaskAccessPolicy $policy): array
     {
-        if (empty($email)) {
-            return ['ok' => true, 'email' => null];
+        if (empty($employeeId)) {
+            return ['ok' => true, 'employee_id' => null];
         }
 
-        $email = trim($email);
-
-        $knownEmployee = $supabase->first('employees', [
-            'email' => 'eq.' . $email,
-            'select' => 'id',
-        ]);
-
-        if (!$knownEmployee) {
+        if (!$policy->canView($actor, $employeeId)) {
             return [
                 'ok' => false,
-                'email' => null,
-                'message' => "\"{$email}\" isn't a recognised Performix email — pick someone from the list.",
+                'employee_id' => null,
+                'message' => "That's not someone you can notify — pick someone from the list.",
             ];
         }
 
-        return ['ok' => true, 'email' => $email];
+        return ['ok' => true, 'employee_id' => $employeeId];
     }
 
-    private function sendTaskNotifyEmail(string $email, array $task): void
+    /**
+     * Sends the task detail via the same Telegram notification pipeline
+     * every other task/approval notification in this app already uses
+     * (NotificationService::notify() -> sendTelegram()) -- deliberately not
+     * a bespoke sender, per this class's own docblock. Returns whether the
+     * recipient actually has Telegram linked, purely so the save response
+     * can tell the caller "notified" vs. "saved, but they haven't linked
+     * Telegram yet" instead of claiming success either way.
+     */
+    private function sendTaskNotifyTelegram(string $employeeId, array $task, NotificationService $notifications): bool
     {
-        try {
-            Mail::to($email)->send(new TaskNotifyMail(
-                $task['title'],
-                $task['description'] ?? null,
-                $task['due_date'] ?? null,
-                $task['due_time'] ?? null,
-                $this->employeeName(),
-                $task['priority'] ?? 'medium',
-            ));
-        } catch (\Throwable $e) {
-            Log::error('Task notify email failed to send', ['error' => $e->getMessage()]);
+        $linked = (bool) $notifications->telegramChatIdFor($employeeId);
+
+        $notifications->notify(
+            [$employeeId],
+            'ttd_task_notify',
+            ['id' => session('employee.id'), 'name' => $this->employeeName()],
+            $task['title'],
+            $this->notifyMessageFor($task),
+            route('mini-app')
+        );
+
+        return $linked;
+    }
+
+    /**
+     * Sends the Telegram notification and turns the result into a clause for
+     * the save response -- "Notified X via Telegram." vs. "X hasn't linked
+     * Telegram yet, so they weren't notified." -- so the caller always knows
+     * what actually happened instead of a save silently claiming success
+     * either way.
+     */
+    private function notifyAndDescribe(string $employeeId, array $task, SupabaseService $supabase, NotificationService $notifications): string
+    {
+        $linked = $this->sendTaskNotifyTelegram($employeeId, $task, $notifications);
+
+        $recipient = $supabase->first('employees', ['id' => 'eq.' . $employeeId, 'select' => 'short_name']);
+        $name = $recipient['short_name'] ?? 'They';
+
+        return $linked
+            ? "Notified {$name} via Telegram."
+            : "{$name} hasn't linked Telegram yet, so they weren't notified.";
+    }
+
+    private function notifyMessageFor(array $task): string
+    {
+        $lines = [];
+
+        if (!empty($task['description'])) {
+            $lines[] = $task['description'];
         }
+
+        $lines[] = 'Priority: ' . ucfirst($task['priority'] ?? 'medium');
+
+        if (!empty($task['due_date'])) {
+            $due = Carbon::parse($task['due_date'])->format('j M Y');
+            if (!empty($task['due_time'])) {
+                $due .= ' at ' . Carbon::parse($task['due_time'])->format('g:i A');
+            }
+            $lines[] = 'Due: ' . $due;
+        }
+
+        $lines[] = 'Assigned by: ' . $this->employeeName();
+
+        return implode("\n", $lines);
     }
 
     /**
@@ -162,9 +205,9 @@ class MiniAppTaskController extends Controller
         // design.md's "who assign" requirement) — resolve names once here
         // rather than per-card, same two-query-joined-in-PHP pattern used
         // elsewhere in this codebase instead of a Supabase embed.
-        $assigneeIds = array_unique(array_filter(array_map(
-            fn ($t) => $t['assignee_employee_id'] ?? $t['employee_id'] ?? null,
-            $tasks
+        $assigneeIds = array_unique(array_filter(array_merge(
+            array_map(fn ($t) => $t['assignee_employee_id'] ?? $t['employee_id'] ?? null, $tasks),
+            array_column($tasks, 'notify_employee_id')
         )));
         $employees = empty($assigneeIds) ? [] : ($supabase->get('employees', [
             'id' => 'in.(' . implode(',', $assigneeIds) . ')',
@@ -195,7 +238,8 @@ class MiniAppTaskController extends Controller
                 'due_date' => $task['due_date'] ?? null,
                 'due_time' => $task['due_time'] ?? null,
                 'meeting_time' => $task['meeting_time'] ?? null,
-                'notify_email' => $task['notify_email'] ?? null,
+                'notify_employee_id' => $task['notify_employee_id'] ?? null,
+                'notify_employee_name' => $employeeMap->get($task['notify_employee_id'] ?? null)['short_name'] ?? null,
                 'reminder_at' => $task['reminder_at'] ?? null,
                 'visibility' => $task['visibility'] ?? 'private',
                 'recurrence_rule' => $task['recurrence_rule'] ?? 'none',
@@ -237,7 +281,7 @@ class MiniAppTaskController extends Controller
             'visibility' => 'nullable|in:private,team,department',
             'recurrence_rule' => 'nullable|in:none,daily,weekdays,weekly,monthly',
             'is_unplanned' => 'nullable|boolean',
-            'notify_email' => 'nullable|email:rfc',
+            'notify_employee_id' => 'nullable|string',
         ]);
 
         $employeeId = session('employee.id');
@@ -249,9 +293,9 @@ class MiniAppTaskController extends Controller
             return response()->json(['success' => false, 'message' => "You're not allowed to assign tasks to this person."], 403);
         }
 
-        $emailCheck = $this->verifyNotifyEmail($validated['notify_email'] ?? null, $supabase);
-        if (!$emailCheck['ok']) {
-            return response()->json(['success' => false, 'message' => $emailCheck['message']], 422);
+        $notifyCheck = $this->verifyNotifyEmployee($validated['notify_employee_id'] ?? null, session('employee') ?? [], $policy);
+        if (!$notifyCheck['ok']) {
+            return response()->json(['success' => false, 'message' => $notifyCheck['message']], 422);
         }
 
         $kpiIds = array_unique($validated['kpi_ids'] ?? []);
@@ -300,7 +344,7 @@ class MiniAppTaskController extends Controller
             'visibility' => $validated['visibility'] ?? 'private',
             'recurrence_rule' => $validated['recurrence_rule'] ?? 'none',
             'is_unplanned' => $validated['is_unplanned'] ?? false,
-            'notify_email' => $emailCheck['email'],
+            'notify_employee_id' => $notifyCheck['employee_id'],
         ]);
 
         $task = $inserted[0] ?? null;
@@ -314,6 +358,8 @@ class MiniAppTaskController extends Controller
             }
         }
 
+        $message = 'Task saved!';
+
         if ($task) {
             $notifications->notify(
                 [$employeeId],
@@ -324,12 +370,12 @@ class MiniAppTaskController extends Controller
                 route('mini-app')
             );
 
-            if ($emailCheck['email']) {
-                $this->sendTaskNotifyEmail($emailCheck['email'], $task);
+            if ($notifyCheck['employee_id']) {
+                $message = 'Task saved! ' . $this->notifyAndDescribe($notifyCheck['employee_id'], $task, $supabase, $notifications);
             }
         }
 
-        return response()->json(['task' => $task]);
+        return response()->json(['task' => $task, 'message' => $message]);
     }
 
     /*
@@ -384,6 +430,11 @@ class MiniAppTaskController extends Controller
             'order' => 'created_at.desc',
         ]) ?? [];
 
+        $notifyEmployee = empty($task['notify_employee_id']) ? null : $supabase->first('employees', [
+            'id' => 'eq.' . $task['notify_employee_id'],
+            'select' => 'short_name',
+        ]);
+
         return response()->json([
             'task' => [
                 'id' => $task['id'],
@@ -398,7 +449,8 @@ class MiniAppTaskController extends Controller
                 'due_date' => $task['due_date'] ?? null,
                 'due_time' => $task['due_time'] ?? null,
                 'start_date' => $task['start_date'] ?? null,
-                'notify_email' => $task['notify_email'] ?? null,
+                'notify_employee_id' => $task['notify_employee_id'] ?? null,
+                'notify_employee_name' => $notifyEmployee['short_name'] ?? null,
                 'assignee_employee_id' => $task['assignee_employee_id'] ?? $task['employee_id'],
                 'linked_kpis' => $linkedKpis,
             ],
@@ -419,12 +471,10 @@ class MiniAppTaskController extends Controller
     | GET /mini-app/api/tasks/assignable
     |--------------------------------------------------------------------------
     | Employees the caller may assign a task to (Assign To) or point a
-    | notify_email at (Notify by email) -- both use TaskAccessPolicy's own
-    | visibility set (an EXECUTIVE only ever sees themselves; an SLT sees
-    | the whole company), so both fields always list exactly who the caller
-    | is allowed to see, never more. `email` is included specifically for
-    | the Notify by email field, whose only valid values are addresses that
-    | actually exist in this list.
+    | notify_employee_id at (Notify via Telegram) -- both use
+    | TaskAccessPolicy's own visibility set (an EXECUTIVE only ever sees
+    | themselves; an SLT sees the whole company), so both fields always list
+    | exactly who the caller is allowed to see, never more.
     */
     public function assignableEmployees(Request $request, SupabaseService $supabase, TaskAccessPolicy $policy)
     {
@@ -437,10 +487,10 @@ class MiniAppTaskController extends Controller
         // Alphabetical by name, straight from Supabase's own ORDER BY
         // (matches DashboardController's existing 'short_name.asc' convention)
         // rather than re-sorting an unordered result in PHP -- both the
-        // Assign To and Notify by email dropdowns draw from this same list.
+        // Assign To and Notify via Telegram dropdowns draw from this same list.
         $employees = $supabase->get('employees', [
             'id' => 'in.(' . implode(',', $employeeIds) . ')',
-            'select' => 'id,short_name,email',
+            'select' => 'id,short_name',
             'order' => 'short_name.asc',
         ]) ?? [];
 
@@ -620,7 +670,7 @@ class MiniAppTaskController extends Controller
             'visibility' => 'nullable|in:private,team,department',
             'recurrence_rule' => 'nullable|in:none,daily,weekdays,weekly,monthly',
             'assignee_employee_id' => 'nullable|string',
-            'notify_email' => 'nullable|email:rfc',
+            'notify_employee_id' => 'nullable|string',
         ]);
 
         $employeeId = session('employee.id');
@@ -643,9 +693,9 @@ class MiniAppTaskController extends Controller
             }
         }
 
-        $emailCheck = $this->verifyNotifyEmail($validated['notify_email'] ?? null, $supabase);
-        if (!$emailCheck['ok']) {
-            return response()->json(['success' => false, 'message' => $emailCheck['message']], 422);
+        $notifyCheck = $this->verifyNotifyEmployee($validated['notify_employee_id'] ?? null, session('employee') ?? [], $policy);
+        if (!$notifyCheck['ok']) {
+            return response()->json(['success' => false, 'message' => $notifyCheck['message']], 422);
         }
 
         $supabase->safePatch('telegram_project_tasks', ['id' => 'eq.' . $id], [
@@ -669,7 +719,7 @@ class MiniAppTaskController extends Controller
             'visibility' => $validated['visibility'] ?? $task['visibility'] ?? 'private',
             'recurrence_rule' => $validated['recurrence_rule'] ?? $task['recurrence_rule'] ?? 'none',
             'assignee_employee_id' => $newAssignee ?: $currentAssignee,
-            'notify_email' => $emailCheck['email'],
+            'notify_employee_id' => $notifyCheck['employee_id'],
             'status' => (float) $task['actual'] >= (float) $validated['target'] && (float) $validated['target'] > 0 ? 'done' : $task['status'],
             'updated_at' => $this->nowMy(),
         ]);
@@ -683,21 +733,23 @@ class MiniAppTaskController extends Controller
             route('mini-app')
         );
 
-        // Only send when notify_email is new or has actually changed --
-        // notify_email is always resent by the frontend on every save (same
-        // convention as meeting_time above), so without this check every
-        // unrelated edit would re-email the same address.
-        if ($emailCheck['email'] && $emailCheck['email'] !== ($task['notify_email'] ?? null)) {
-            $this->sendTaskNotifyEmail($emailCheck['email'], [
+        $message = 'Changes saved!';
+
+        // Only send when notify_employee_id is new or has actually changed --
+        // it's always resent by the frontend on every save (same convention
+        // as meeting_time above), so without this check every unrelated edit
+        // would re-notify the same person.
+        if ($notifyCheck['employee_id'] && $notifyCheck['employee_id'] !== ($task['notify_employee_id'] ?? null)) {
+            $message = 'Changes saved! ' . $this->notifyAndDescribe($notifyCheck['employee_id'], [
                 'title' => trim($validated['title']),
                 'description' => $validated['description'] ?? $task['description'] ?? null,
                 'due_date' => $validated['due_date'] ?? $task['due_date'] ?? null,
                 'due_time' => $validated['due_time'] ?? null,
                 'priority' => $validated['priority'] ?? $task['priority'] ?? 'medium',
-            ]);
+            ], $supabase, $notifications);
         }
 
-        return response()->json(['success' => true]);
+        return response()->json(['success' => true, 'message' => $message]);
     }
 
     /*

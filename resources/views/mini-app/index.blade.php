@@ -499,7 +499,7 @@ function taskCard(t) {
                 <div class="flex items-center flex-wrap gap-2 mt-2.5">
                     ${assigneeName ? `<span class="w-5 h-5 rounded-full ${avatarColorFor(t.assignee_employee_id || assigneeName)} text-white text-[8px] font-black flex items-center justify-center shrink-0">${initialsOf(assigneeName)}</span>` : ''}
                     ${t.meeting_time ? `<span class="text-[10px] font-bold text-slate-500 flex items-center gap-1">🕐 ${fmtTime12(t.meeting_time)}</span>` : ''}
-                    ${t.notify_email ? `<span title="Notifies ${t.notify_email}" class="text-[10px] text-slate-400">✉️</span>` : ''}
+                    ${t.notify_employee_name ? `<span title="Notifies ${t.notify_employee_name} via Telegram" class="text-[10px] text-slate-400">📨</span>` : ''}
                     ${t.due_date ? `<span class="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${isOverdue ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-500'}">${fmtDateShort(t.due_date)}${t.due_time ? ' ' + fmtTime12(t.due_time) : ''}</span>` : ''}
                 </div>
                 ${kpiChips}
@@ -575,8 +575,8 @@ function taskFormFields(t) {
 
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
             <div>
-                <p class="text-[10px] font-bold text-slate-600 mb-1">Notify by email <span class="text-slate-400 font-normal">(optional)</span></p>
-                <select id="taskNotifyEmailInput" data-current="${t?.notify_email || ''}" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
+                <p class="text-[10px] font-bold text-slate-600 mb-1">Notify via Telegram <span class="text-slate-400 font-normal">(optional)</span></p>
+                <select id="taskNotifyTelegramInput" data-current="${t?.notify_employee_id || ''}" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
                     <option value="">Loading…</option>
                 </select>
             </div>
@@ -594,7 +594,7 @@ function taskFormFields(t) {
                     class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
             </div>
         </div>
-        <p class="text-[9px] text-slate-400 mt-1">Notify by email sends this task straight to that person's inbox — picked from the same list as Assign to, since only a real Performix email can be notified.</p>
+        <p class="text-[9px] text-slate-400 mt-1">Notify via Telegram sends this task straight to that person's Telegram, if they've linked their account — picked from the same list as Assign to.</p>
     `;
 }
 
@@ -661,7 +661,7 @@ function taskFormValues() {
         assignee_employee_id: document.getElementById('taskAssigneeInput')?.value || null,
         unit: document.getElementById('taskUnitInput').value,
         target: document.getElementById('taskTargetInput').value,
-        notify_email: document.getElementById('taskNotifyEmailInput')?.value.trim() || null,
+        notify_employee_id: document.getElementById('taskNotifyTelegramInput')?.value || null,
     };
 }
 
@@ -693,11 +693,11 @@ async function saveNewTask() {
     }
 
     try {
-        await api('/tasks', {
+        const data = await api('/tasks', {
             method: 'POST',
             body: JSON.stringify({ ...v, target: Number(v.target), kpi_ids: kpiIds }),
         });
-        showToast('Task saved!');
+        showToast(data.message || 'Task saved!');
         renderTodo();
     } catch (e) {
         feedback.textContent = e.data?.message || "Couldn't save — please try again.";
@@ -732,8 +732,8 @@ async function saveEditTask(taskId) {
     }
 
     try {
-        await api(`/tasks/${taskId}`, { method: 'PATCH', body: JSON.stringify({ ...v, target: Number(v.target) }) });
-        showToast('Task updated!');
+        const data = await api(`/tasks/${taskId}`, { method: 'PATCH', body: JSON.stringify({ ...v, target: Number(v.target) }) });
+        showToast(data.message || 'Task updated!');
         renderTaskDetail(taskId);
     } catch (e) {
         feedback.textContent = e.data?.message || "Couldn't save — please try again.";
@@ -806,7 +806,7 @@ async function renderTaskDetail(taskId) {
             <div class="flex flex-wrap gap-1.5 mt-2">
                 <span class="text-[8px] font-black px-1.5 py-0.5 rounded-full ${priorityPill.color}">${priorityPill.label} priority</span>
                 ${dueDateBadge(t.due_date)}
-                ${t.notify_email ? `<span class="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700">✉️ ${t.notify_email}</span>` : ''}
+                ${t.notify_employee_name ? `<span class="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700">📨 ${t.notify_employee_name}</span>` : ''}
             </div>
             <div class="w-full h-1.5 bg-[#EFE3C7] rounded-full mt-3 overflow-hidden">
                 <div class="h-full rounded-full bg-gradient-to-r ${badge.bar}" style="width:${pct}%"></div>
@@ -873,7 +873,7 @@ async function renderTaskDetail(taskId) {
 
 async function loadAssignableEmployees(t) {
     const select = document.getElementById('taskAssigneeInput');
-    const notifySelect = document.getElementById('taskNotifyEmailInput');
+    const notifySelect = document.getElementById('taskNotifyTelegramInput');
     if (!select && !notifySelect) return;
 
     let employees = [];
@@ -893,9 +893,8 @@ async function loadAssignableEmployees(t) {
 
     if (notifySelect) {
         const current = notifySelect.dataset.current || '';
-        const withEmail = employees.filter(e => e.email);
         notifySelect.innerHTML = `<option value="">— No one —</option>` +
-            withEmail.map(e => `<option value="${e.email}" ${e.email === current ? 'selected' : ''}>${e.short_name} (${e.email})</option>`).join('');
+            employees.map(e => `<option value="${e.id}" ${e.id === current ? 'selected' : ''}>${e.short_name}</option>`).join('');
     }
 }
 
