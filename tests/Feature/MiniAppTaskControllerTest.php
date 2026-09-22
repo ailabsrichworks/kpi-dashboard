@@ -384,6 +384,36 @@ class MiniAppTaskControllerTest extends TestCase
         });
     }
 
+    public function test_assignable_employees_flags_who_has_linked_telegram(): void
+    {
+        Http::fake([
+            '*/rest/v1/employees*' => Http::response([
+                ['id' => 'emp-1', 'short_name' => 'Test User'],
+                ['id' => 'colleague-1', 'short_name' => 'Colleague One'],
+                ['id' => 'colleague-2', 'short_name' => 'Colleague Two'],
+            ], 200),
+            // colleague-1 has an active, Telegram-linked account; emp-1 has
+            // an active account but never linked Telegram; colleague-2 has
+            // no user_company_roles row at all (never even logged in).
+            '*/rest/v1/user_company_roles*' => Http::response([
+                ['employee_id' => 'emp-1', 'user_id' => 'user-1'],
+                ['employee_id' => 'colleague-1', 'user_id' => 'user-2'],
+            ], 200),
+            '*/rest/v1/users*' => Http::response([
+                ['id' => 'user-1', 'telegram_chat_id' => null],
+                ['id' => 'user-2', 'telegram_chat_id' => 999],
+            ], 200),
+        ]);
+
+        $response = $this->withSession($this->employeeSession('SLT'))->get('/mini-app/api/tasks/assignable');
+
+        $response->assertOk();
+        $byId = collect($response->json('employees'))->keyBy('id');
+        $this->assertFalse($byId['emp-1']['has_telegram']);
+        $this->assertTrue($byId['colleague-1']['has_telegram']);
+        $this->assertFalse($byId['colleague-2']['has_telegram']);
+    }
+
     public function test_assignable_employees_defaults_to_self_only_for_an_executive_with_no_reports(): void
     {
         // EXECUTIVE never even queries `employees` -- visibleEmployeeIds()

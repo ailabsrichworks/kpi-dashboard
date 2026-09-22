@@ -893,8 +893,12 @@ async function loadAssignableEmployees(t) {
 
     if (notifySelect) {
         const current = notifySelect.dataset.current || '';
+        // Only people who've actually linked Telegram -- notifying someone
+        // with no linked chat can never deliver, so they don't belong in
+        // this list at all (unlike Assign To, which lists everyone visible).
+        const withTelegram = employees.filter(e => e.has_telegram);
         notifySelect.innerHTML = `<option value="">— No one —</option>` +
-            employees.map(e => `<option value="${e.id}" ${e.id === current ? 'selected' : ''}>${e.short_name}</option>`).join('');
+            withTelegram.map(e => `<option value="${e.id}" ${e.id === current ? 'selected' : ''}>${e.short_name}</option>`).join('');
     }
 }
 

@@ -8,6 +8,7 @@ use App\Services\SupabaseService;
 use App\Services\TaskAccessPolicy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 
 /**
  * The web Mini App's "TTD" (to-do) list — a personal task tracker that is
@@ -474,7 +475,10 @@ class MiniAppTaskController extends Controller
     | notify_employee_id at (Notify via Telegram) -- both use
     | TaskAccessPolicy's own visibility set (an EXECUTIVE only ever sees
     | themselves; an SLT sees the whole company), so both fields always list
-    | exactly who the caller is allowed to see, never more.
+    | exactly who the caller is allowed to see, never more. `has_telegram`
+    | additionally lets the frontend narrow the Notify dropdown to only
+    | people who can actually receive it -- Assign To still lists everyone
+    | visible regardless, since assigning a task never depended on Telegram.
     */
     public function assignableEmployees(Request $request, SupabaseService $supabase, TaskAccessPolicy $policy)
     {
@@ -493,6 +497,40 @@ class MiniAppTaskController extends Controller
             'select' => 'id,short_name',
             'order' => 'short_name.asc',
         ]) ?? [];
+
+        // Two batched queries (not one telegramChatIdFor() call per employee)
+        // to find out who has a linked Telegram chat -- same two tables that
+        // lookup already uses (NotificationService::telegramChatIdFor()),
+        // just resolved for the whole visible list at once. Wrapped: a
+        // transient failure here must degrade to "nobody's linked" (Notify
+        // shows empty, Assign To is unaffected), never break the whole
+        // endpoint the way an unwrapped throw would.
+        $userIdByEmployeeId = collect();
+        $chatIdByUserId = collect();
+
+        try {
+            $roles = $supabase->get('user_company_roles', [
+                'employee_id' => 'in.(' . implode(',', $employeeIds) . ')',
+                'is_active' => 'eq.true',
+                'select' => 'employee_id,user_id',
+            ]) ?? [];
+            $userIdByEmployeeId = collect($roles)->pluck('user_id', 'employee_id');
+
+            $userIds = array_values(array_unique(array_filter($userIdByEmployeeId->all())));
+            $chatIdByUserId = empty($userIds) ? collect() : collect($supabase->get('users', [
+                'id' => 'in.(' . implode(',', $userIds) . ')',
+                'select' => 'id,telegram_chat_id',
+            ]) ?? [])->pluck('telegram_chat_id', 'id');
+        } catch (\Throwable $e) {
+            Log::warning('Could not resolve Telegram linkage for assignable employees', ['error' => $e->getMessage()]);
+        }
+
+        $employees = array_map(function ($employee) use ($userIdByEmployeeId, $chatIdByUserId) {
+            $userId = $userIdByEmployeeId->get($employee['id']);
+            $employee['has_telegram'] = $userId ? !empty($chatIdByUserId->get($userId)) : false;
+
+            return $employee;
+        }, $employees);
 
         return response()->json(['employees' => $employees]);
     }
