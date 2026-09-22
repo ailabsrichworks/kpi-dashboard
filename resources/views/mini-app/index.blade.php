@@ -14,7 +14,7 @@
         .soft-card {
             box-shadow: 0 14px 26px -10px rgba(107,63,42,.28), 0 4px 10px rgba(107,63,42,.14), inset 0 1px 0 rgba(255,255,255,.7);
         }
-        .kanban-dragover { background: rgba(255,255,255,.08); outline: 2px dashed rgba(255,255,255,.35); outline-offset: -2px; }
+        .kanban-dragover { background: rgba(15,23,42,.05); outline: 2px dashed rgba(15,23,42,.25); outline-offset: -2px; }
     </style>
 </head>
 <body class="bg-[#F5F5F3] min-h-screen">
@@ -112,11 +112,8 @@ const CURRENT_EMPLOYEE_ID = '{{ session('employee.id') }}';
 // "1st Accent" (settings.blade.php) -- this employee/company's own main
 // brand colour, defaulting to the app-wide gold if never customized. Used
 // as a highlight on specific elements (the primary "+ New task" button,
-// "AI Summary") -- the panel itself stays a plain neutral black, since
-// tinting the whole background with it read as a muddy olive rather than
-// "black with an accent".
+// "AI Summary").
 const THEME_ACCENT = '{{ session('theme_accent') ?: '#D4AF37' }}';
-const TODO_PANEL_BG = '#0a0a0a';
 
 async function api(path, opts = {}) {
     const res = await fetch('/mini-app/api' + path, {
@@ -196,12 +193,12 @@ function fmtDateShort(iso) {
     return new Date(iso + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
-// A dark panel for the whole To-Do board -- deliberately separate from the
-// light "card()" helper the rest of the app (My KPIs/Score/Team, and the
-// New Task/Edit/Details sub-screens) still uses, so this redesign doesn't
-// silently break text legibility on pages built around a light background.
+// A light, subtly-bordered panel used inside the To-Do board (score card,
+// calendar) -- distinct from the tan/cream "card()" helper the New
+// Task/Edit/Details sub-screens use, but the same light theme as the rest
+// of the app.
 function darkCard(inner, extra = '') {
-    return `<div class="bg-white/5 border border-white/10 rounded-2xl p-4 ${extra}">${inner}</div>`;
+    return `<div class="bg-white border border-slate-200 rounded-2xl p-4 ${extra}">${inner}</div>`;
 }
 
 let __todoView = 'board'; // 'board' | 'calendar'
@@ -234,7 +231,7 @@ function renderTodoShell() {
     const tasks = window.__myTasks || [];
 
     app.innerHTML = `
-        <div class="rounded-3xl p-4 md:p-6" style="background: ${TODO_PANEL_BG};">
+        <div class="rounded-3xl p-4 md:p-6 bg-white border border-slate-200 shadow-sm">
             ${todoHeader()}
             ${todoStatCards(tasks)}
             <div id="taskScoreCard" class="mt-4"></div>
@@ -251,13 +248,13 @@ function todoHeader() {
     return `
         <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
             <div class="min-w-0">
-                <p class="text-[22px] font-black text-white leading-tight">Things To Do</p>
-                <p class="text-[12px] text-slate-400 mt-1 max-w-md leading-relaxed">Day-to-day work and meetings — drag a card between stages, or switch to Calendar to see everything by date and time.</p>
+                <p class="text-[22px] font-black text-slate-900 leading-tight">Things To Do</p>
+                <p class="text-[12px] text-slate-500 mt-1 max-w-md leading-relaxed">Day-to-day work and meetings — drag a card between stages, or switch to Calendar to see everything by date and time.</p>
             </div>
             <div class="flex items-center gap-2 shrink-0">
-                <div class="flex items-center bg-white/5 border border-white/10 rounded-xl p-1">
-                    <button onclick="switchTodoView('board')" class="px-3 py-1.5 rounded-lg text-[11px] font-black whitespace-nowrap ${__todoView === 'board' ? 'bg-white/10 text-white' : 'text-slate-400'}">▦ Board</button>
-                    <button onclick="switchTodoView('calendar')" class="px-3 py-1.5 rounded-lg text-[11px] font-black whitespace-nowrap ${__todoView === 'calendar' ? 'bg-white/10 text-white' : 'text-slate-400'}">📅 Calendar</button>
+                <div class="flex items-center bg-slate-100 border border-slate-200 rounded-xl p-1">
+                    <button onclick="switchTodoView('board')" class="px-3 py-1.5 rounded-lg text-[11px] font-black whitespace-nowrap ${__todoView === 'board' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}">▦ Board</button>
+                    <button onclick="switchTodoView('calendar')" class="px-3 py-1.5 rounded-lg text-[11px] font-black whitespace-nowrap ${__todoView === 'calendar' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}">📅 Calendar</button>
                 </div>
                 <button onclick="renderNewTaskForm()" style="background: ${THEME_ACCENT};" class="px-4 py-2 rounded-xl text-[#1a1408] text-[12px] font-black whitespace-nowrap hover:opacity-90">+ New task</button>
             </div>
@@ -277,9 +274,9 @@ function todoStatCards(tasks) {
     const meetingsThisWeek = tasks.filter(t => t.meeting_time && t.due_date && t.due_date >= today && t.due_date <= in7Str).length;
 
     const stat = (label, value, tone) => `
-        <div class="bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5">
-            <p class="text-[9px] font-black text-slate-400 uppercase tracking-wide">${label}</p>
-            <p class="text-[24px] font-black ${tone || 'text-white'} leading-none mt-1.5">${value}</p>
+        <div class="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3.5">
+            <p class="text-[9px] font-black text-slate-500 uppercase tracking-wide">${label}</p>
+            <p class="text-[24px] font-black ${tone || 'text-slate-900'} leading-none mt-1.5">${value}</p>
         </div>
     `;
 
@@ -287,7 +284,7 @@ function todoStatCards(tasks) {
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
             ${stat('Open Items', openItems)}
             ${stat('Due Today', dueToday)}
-            ${stat('Overdue', overdue, overdue > 0 ? 'text-rose-400' : 'text-white')}
+            ${stat('Overdue', overdue, overdue > 0 ? 'text-rose-600' : 'text-slate-900')}
             ${stat('Meetings This Week', meetingsThisWeek)}
         </div>
     `;
@@ -315,14 +312,14 @@ function kanbanBoard(tasks) {
             <div class="min-w-0">
                 <div class="flex items-center gap-2 px-1 mb-2.5">
                     <span class="w-2 h-2 rounded-full ${col.dot}"></span>
-                    <span class="text-[11px] font-black text-white uppercase tracking-wide">${col.label}</span>
-                    <span class="ml-auto text-[10px] font-bold text-slate-400 bg-white/5 rounded-full w-5 h-5 flex items-center justify-center shrink-0">${colTasks.length}</span>
+                    <span class="text-[11px] font-black text-slate-900 uppercase tracking-wide">${col.label}</span>
+                    <span class="ml-auto text-[10px] font-bold text-slate-500 bg-slate-100 rounded-full w-5 h-5 flex items-center justify-center shrink-0">${colTasks.length}</span>
                 </div>
                 <div class="kanban-col space-y-2 min-h-[64px] rounded-xl p-1 -m-1 transition-colors"
                     ondragover="event.preventDefault(); this.classList.add('kanban-dragover')"
                     ondragleave="this.classList.remove('kanban-dragover')"
                     ondrop="onDropTaskCard(event, '${col.key}')">
-                    ${colTasks.length ? colTasks.map(t => taskCard(t)).join('') : `<p class="text-[10px] text-slate-600 text-center py-6">No tasks</p>`}
+                    ${colTasks.length ? colTasks.map(t => taskCard(t)).join('') : `<p class="text-[10px] text-slate-400 text-center py-6">No tasks</p>`}
                 </div>
             </div>
         `;
@@ -362,10 +359,10 @@ async function moveTaskCard(taskId, newStatus) {
 /* ---------------------------------------------------------------- */
 
 function scoreStatusBand(status) {
-    if (status === 'on_track') return { label: 'On Track', color: 'bg-emerald-500/15 text-emerald-300' };
-    if (status === 'at_risk') return { label: 'At Risk', color: 'bg-amber-500/15 text-amber-300' };
-    if (status === 'critical') return { label: 'Critical', color: 'bg-rose-500/15 text-rose-300' };
-    return { label: 'Not enough data yet', color: 'bg-white/10 text-slate-400' };
+    if (status === 'on_track') return { label: 'On Track', color: 'bg-emerald-100 text-emerald-700' };
+    if (status === 'at_risk') return { label: 'At Risk', color: 'bg-amber-100 text-amber-700' };
+    if (status === 'critical') return { label: 'Critical', color: 'bg-rose-100 text-rose-700' };
+    return { label: 'Not enough data yet', color: 'bg-slate-100 text-slate-500' };
 }
 
 async function loadTaskScoreCard() {
@@ -384,13 +381,13 @@ async function loadTaskScoreCard() {
     el.innerHTML = darkCard(`
         <div class="flex items-center justify-between">
             <div>
-                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">This Week's Task Score</p>
-                <p class="text-[24px] font-black text-white leading-none mt-1">${score.score !== null ? Math.round(score.score) : '—'}<span class="text-[12px] font-bold text-slate-500">/100</span></p>
+                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">This Week's Task Score</p>
+                <p class="text-[24px] font-black text-slate-900 leading-none mt-1">${score.score !== null ? Math.round(score.score) : '—'}<span class="text-[12px] font-bold text-slate-400">/100</span></p>
                 <span class="inline-block mt-1.5 px-2 py-0.5 rounded-full ${band.color} text-[9px] font-black">${band.label}</span>
             </div>
             <button onclick="toggleTaskSummary()" style="background: ${THEME_ACCENT};" class="text-[10px] font-black text-[#1a1408] px-3 py-1.5 rounded-full shrink-0 hover:opacity-90">✨ AI Summary</button>
         </div>
-        <div id="taskSummaryBox" class="hidden mt-3 pt-3 border-t border-white/10"></div>
+        <div id="taskSummaryBox" class="hidden mt-3 pt-3 border-t border-slate-200"></div>
     `);
 }
 
@@ -400,7 +397,7 @@ async function toggleTaskSummary() {
     box.classList.toggle('hidden');
     if (box.classList.contains('hidden') || __summaryLoaded) return;
 
-    box.innerHTML = `<p class="text-[11px] text-slate-400">Loading…</p>`;
+    box.innerHTML = `<p class="text-[11px] text-slate-500">Loading…</p>`;
 
     try {
         const data = await api('/summaries?scope=employee&period=weekly');
@@ -409,32 +406,32 @@ async function toggleTaskSummary() {
         } else {
             box.innerHTML = `
                 <p class="text-[11px] text-slate-500">No summary generated yet for this week.</p>
-                <button onclick="generateTaskSummary()" class="mt-2 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-[10px] font-black">Generate now</button>
+                <button onclick="generateTaskSummary()" class="mt-2 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-[10px] font-black">Generate now</button>
             `;
         }
         __summaryLoaded = true;
     } catch (e) {
-        box.innerHTML = `<p class="text-[11px] text-rose-400">Could not load a summary right now.</p>`;
+        box.innerHTML = `<p class="text-[11px] text-rose-600">Could not load a summary right now.</p>`;
     }
 }
 
 function summaryBlock(summary) {
-    const recs = (summary.facts?.recommendations || []).map(r => `<li class="text-[10px] text-slate-400 mt-1">• ${r}</li>`).join('');
+    const recs = (summary.facts?.recommendations || []).map(r => `<li class="text-[10px] text-slate-500 mt-1">• ${r}</li>`).join('');
     return `
-        <p class="text-[11px] text-slate-300 leading-relaxed">${summary.narrative}</p>
+        <p class="text-[11px] text-slate-600 leading-relaxed">${summary.narrative}</p>
         ${recs ? `<ul class="mt-2">${recs}</ul>` : ''}
-        <button onclick="generateTaskSummary()" class="mt-2 text-[10px] font-bold text-white">↻ Regenerate</button>
+        <button onclick="generateTaskSummary()" class="mt-2 text-[10px] font-bold text-slate-700">↻ Regenerate</button>
     `;
 }
 
 async function generateTaskSummary() {
     const box = document.getElementById('taskSummaryBox');
-    box.innerHTML = `<p class="text-[11px] text-slate-400">Generating…</p>`;
+    box.innerHTML = `<p class="text-[11px] text-slate-500">Generating…</p>`;
     try {
         const data = await api('/summaries/regenerate', { method: 'POST', body: JSON.stringify({ scope: 'employee', period: 'weekly' }) });
         box.innerHTML = summaryBlock(data.summary);
     } catch (e) {
-        box.innerHTML = `<p class="text-[11px] text-rose-400">${e.data?.message || "Couldn't generate a summary right now."}</p>`;
+        box.innerHTML = `<p class="text-[11px] text-rose-600">${e.data?.message || "Couldn't generate a summary right now."}</p>`;
     }
 }
 
@@ -491,33 +488,33 @@ function taskCard(t) {
     const assigneeName = t.assignee_name || (t.assignee_employee_id === CURRENT_EMPLOYEE_ID ? 'You' : null);
     const isOverdue = t.due_date && t.due_date < todayISO() && !['done', 'cancelled'].includes(t.status);
     const kpiChips = (t.linked_kpis || []).length
-        ? `<div class="flex flex-wrap gap-1.5 mt-2">${t.linked_kpis.map(k => `<span class="px-2 py-0.5 rounded-full bg-white/10 text-slate-300 text-[8px] font-black">${k.kpi_title}</span>`).join('')}</div>`
+        ? `<div class="flex flex-wrap gap-1.5 mt-2">${t.linked_kpis.map(k => `<span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[8px] font-black">${k.kpi_title}</span>`).join('')}</div>`
         : '';
     const safeId = t.id.replace(/[^a-zA-Z0-9_-]/g, '');
 
     return `
-        <div draggable="true" ondragstart="onDragStartTaskCard(event,'${t.id}')" class="bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 border-l-[3px] ${priorityBorder} overflow-hidden cursor-grab active:cursor-grabbing transition-colors">
+        <div draggable="true" ondragstart="onDragStartTaskCard(event,'${t.id}')" class="bg-white hover:bg-slate-50 rounded-xl border border-slate-200 border-l-[3px] ${priorityBorder} overflow-hidden cursor-grab active:cursor-grabbing transition-colors shadow-sm">
             <button type="button" onclick="toggleTaskCard('${safeId}')" class="w-full text-left p-3">
-                <p class="text-[13px] font-bold text-white leading-snug">${t.title}</p>
+                <p class="text-[13px] font-bold text-slate-900 leading-snug">${t.title}</p>
                 <div class="flex items-center flex-wrap gap-2 mt-2.5">
                     ${assigneeName ? `<span class="w-5 h-5 rounded-full ${avatarColorFor(t.assignee_employee_id || assigneeName)} text-white text-[8px] font-black flex items-center justify-center shrink-0">${initialsOf(assigneeName)}</span>` : ''}
-                    ${t.meeting_time ? `<span class="text-[10px] font-bold text-slate-300 flex items-center gap-1">🕐 ${fmtTime12(t.meeting_time)}</span>` : ''}
-                    ${t.due_date ? `<span class="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${isOverdue ? 'bg-rose-500/15 text-rose-300' : 'bg-white/5 text-slate-400'}">${fmtDateShort(t.due_date)}</span>` : ''}
+                    ${t.meeting_time ? `<span class="text-[10px] font-bold text-slate-500 flex items-center gap-1">🕐 ${fmtTime12(t.meeting_time)}</span>` : ''}
+                    ${t.due_date ? `<span class="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${isOverdue ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-500'}">${fmtDateShort(t.due_date)}</span>` : ''}
                 </div>
                 ${kpiChips}
             </button>
-            <div id="task-body-${safeId}" class="hidden px-3 pb-3 pt-1 border-t border-white/10">
+            <div id="task-body-${safeId}" class="hidden px-3 pb-3 pt-1 border-t border-slate-200">
                 <div class="flex items-center justify-between pt-2">
-                    <p class="text-[10px] text-slate-400">Target: <span class="font-bold text-slate-200">${formatUnit(t.target, t.unit)}</span></p>
-                    <p class="text-[10px] text-slate-400">Actual: <span class="font-bold text-slate-200">${formatUnit(t.actual, t.unit)}</span></p>
-                    <p class="text-[10px] font-black text-slate-200">${pct.toFixed(0)}%</p>
+                    <p class="text-[10px] text-slate-500">Target: <span class="font-bold text-slate-700">${formatUnit(t.target, t.unit)}</span></p>
+                    <p class="text-[10px] text-slate-500">Actual: <span class="font-bold text-slate-700">${formatUnit(t.actual, t.unit)}</span></p>
+                    <p class="text-[10px] font-black text-slate-700">${pct.toFixed(0)}%</p>
                 </div>
-                <div class="w-full h-1.5 bg-white/10 rounded-full mt-2 overflow-hidden">
+                <div class="w-full h-1.5 bg-slate-100 rounded-full mt-2 overflow-hidden">
                     <div class="h-full rounded-full bg-gradient-to-r ${badge.bar}" style="width:${pct}%"></div>
                 </div>
                 <div class="flex items-center gap-2 mt-3">
-                    <button onclick="renderTaskDetail('${t.id}')" class="flex-1 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-[11px] font-black">Details</button>
-                    <button onclick="confirmDeleteTask('${t.id}')" class="px-3 py-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-[11px] font-black">🗑️</button>
+                    <button onclick="renderTaskDetail('${t.id}')" class="flex-1 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-black">Details</button>
+                    <button onclick="confirmDeleteTask('${t.id}')" class="px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-600 text-[11px] font-black">🗑️</button>
                 </div>
             </div>
         </div>
@@ -1106,9 +1103,9 @@ function calendarBoard() {
         const hasMeeting = dayTasks.some(x => x.meeting_time);
         const isToday = dateStr === todayISO();
         cells += `
-            <button onclick="renderCalendarDay('${dateStr}')" class="aspect-square rounded-lg flex flex-col items-center justify-center relative ${isToday ? 'bg-white/10 font-black' : 'hover:bg-white/5'}">
-                <span class="text-[11px] ${isToday ? 'text-white' : 'text-slate-400'}">${d}</span>
-                ${dayTasks.length ? `<span class="w-1.5 h-1.5 rounded-full ${hasMeeting ? 'bg-sky-400' : 'bg-emerald-400'} absolute bottom-1"></span>` : ''}
+            <button onclick="renderCalendarDay('${dateStr}')" class="aspect-square rounded-lg flex flex-col items-center justify-center relative ${isToday ? 'bg-slate-900 font-black' : 'hover:bg-slate-100'}">
+                <span class="text-[11px] ${isToday ? 'text-white' : 'text-slate-500'}">${d}</span>
+                ${dayTasks.length ? `<span class="w-1.5 h-1.5 rounded-full ${hasMeeting ? 'bg-sky-500' : 'bg-emerald-500'} absolute bottom-1"></span>` : ''}
             </button>
         `;
     }
@@ -1118,9 +1115,9 @@ function calendarBoard() {
     return `
         ${darkCard(`
             <div class="flex items-center justify-between mb-3">
-                <button onclick="shiftCalendar(-1)" class="px-2 py-1 text-[13px] font-black text-slate-400 hover:text-white">‹</button>
-                <p class="text-[13px] font-black text-white">${monthLabel}</p>
-                <button onclick="shiftCalendar(1)" class="px-2 py-1 text-[13px] font-black text-slate-400 hover:text-white">›</button>
+                <button onclick="shiftCalendar(-1)" class="px-2 py-1 text-[13px] font-black text-slate-400 hover:text-slate-900">‹</button>
+                <p class="text-[13px] font-black text-slate-900">${monthLabel}</p>
+                <button onclick="shiftCalendar(1)" class="px-2 py-1 text-[13px] font-black text-slate-400 hover:text-slate-900">›</button>
             </div>
             <div class="grid grid-cols-7 gap-1 text-center mb-1">
                 ${dow.map(d => `<p class="text-[9px] font-black text-slate-500">${d}</p>`).join('')}
