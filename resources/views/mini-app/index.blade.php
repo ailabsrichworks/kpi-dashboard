@@ -14,11 +14,6 @@
         .soft-card {
             box-shadow: 0 14px 26px -10px rgba(107,63,42,.28), 0 4px 10px rgba(107,63,42,.14), inset 0 1px 0 rgba(255,255,255,.7);
         }
-        .soft-card-sm { box-shadow: 0 6px 14px -6px rgba(107,63,42,.22), inset 0 1px 0 rgba(255,255,255,.6); }
-        .tap-card { transition: border-color .15s, background .15s; }
-        .nav-btn { transition: all .15s; color: #64748b; }
-        .nav-btn.active { background: #F5EAE0; color: #6B3F2A; }
-        .nav-btn:not(.active):hover { background: #F8FAFC; color: #334155; }
         .kanban-dragover { background: rgba(255,255,255,.08); outline: 2px dashed rgba(255,255,255,.35); outline-offset: -2px; }
     </style>
 </head>
@@ -100,22 +95,11 @@
 </script>
 @endif
 
-<div class="flex flex-col md:flex-row gap-4 items-start">
-    <nav class="w-full md:w-44 md:shrink-0 bg-white rounded-2xl border border-slate-200 shadow-sm p-2 flex md:flex-col gap-1.5 overflow-x-auto md:overflow-visible">
-        <button id="tab-kpis" onclick="switchTab('kpis')" class="nav-btn w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-[12px] font-black text-left whitespace-nowrap">
-            <span>My KPIs</span>
-            <span id="kpi-alert-badge" class="hidden min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[9px] font-black flex items-center justify-center px-1 shrink-0 shadow-lg shadow-red-500/30"></span>
-        </button>
-        <button id="tab-todo" onclick="switchTab('todo')" class="nav-btn active w-full flex items-center px-3 py-2.5 rounded-xl text-[12px] font-black text-left whitespace-nowrap">To-Do</button>
-        <button id="tab-score" onclick="switchTab('score')" class="nav-btn w-full flex items-center px-3 py-2.5 rounded-xl text-[12px] font-black text-left whitespace-nowrap">Score</button>
-    </nav>
+<div id="contentCol" class="space-y-3">
+    <div id="toast" class="hidden px-4 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-semibold"></div>
 
-    <div id="contentCol" class="flex-1 min-w-0 space-y-3">
-        <div id="toast" class="hidden px-4 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-semibold"></div>
-
-        <div id="app" class="space-y-3">
-            <p class="text-center text-slate-400 text-[12px] mt-10">Loading…</p>
-        </div>
+    <div id="app" class="space-y-3">
+        <p class="text-center text-slate-400 text-[12px] mt-10">Loading…</p>
     </div>
 </div>
 
@@ -160,11 +144,10 @@ function formatUnit(value, unit) {
     return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
-// Same category order/colors, status labels, and achievement bands used on
-// the web dashboard (resources/views/dashboard.blade.php,
-// kpi/my-department-kpi.blade.php) and mirrored 1:1 by the Telegram Mini
-// App — kept identical here so a KPI's status/score reads the same
-// everywhere in the system, not a mini-app-only interpretation.
+// Category order/colors used by the To-Do tab's "Edit KPI Links" screen —
+// mirrors the web dashboard (resources/views/dashboard.blade.php,
+// kpi/my-department-kpi.blade.php) and the Telegram Mini App so a KPI's
+// category reads the same everywhere in the system.
 const CATEGORY_ORDER = ['Financial', 'Growth & Customer', 'Initiatives', 'People'];
 const CATEGORY_COLORS = {
     'Financial':         { catPill: 'bg-emerald-700 text-white', subPill: 'bg-emerald-100 text-emerald-700' },
@@ -183,14 +166,6 @@ function sortByCategoryAndSub(items) {
     });
 }
 
-const STATUS_LABELS = {
-    completed:   { label: 'Completed',   color: 'bg-[#F5EAE0] text-[#6B3F2A]' },
-    on_track:    { label: 'On Track',    color: 'bg-emerald-100 text-emerald-700' },
-    at_risk:     { label: 'At Risk',     color: 'bg-yellow-100 text-yellow-700' },
-    in_trouble:  { label: 'In Trouble',  color: 'bg-red-100 text-red-700' },
-    not_started: { label: 'Not Started', color: 'bg-slate-100 text-slate-500' },
-};
-
 function achvBadge(score) {
     if (score >= 90) return { label: 'Excellent', color: 'bg-emerald-100 text-emerald-700', bar: 'from-emerald-400 to-green-500', ring: '#10B981' };
     if (score >= 75) return { label: 'Good',      color: 'bg-[#F5EAE0] text-[#6B3F2A]',     bar: 'from-[#8B5E4A] to-[#6B3F2A]', ring: '#6B3F2A' };
@@ -198,231 +173,8 @@ function achvBadge(score) {
     return              { label: 'Critical', color: 'bg-red-100 text-red-700',       bar: 'from-red-400 to-rose-500', ring: '#EF4444' };
 }
 
-// A circular "at a glance" ring of a KPI's achievement score — same visual
-// language as the Telegram Mini App, instead of just printing a number.
-function progressRing(scoreRaw) {
-    const badge = achvBadge(scoreRaw);
-    const score = Math.max(0, Math.min(100, scoreRaw));
-    const r = 24, c = 2 * Math.PI * r;
-    const offset = c - (score / 100) * c;
-    return `
-        <svg width="56" height="56" viewBox="0 0 60 60" class="shrink-0">
-            <circle cx="30" cy="30" r="${r}" fill="none" stroke="#EFE3C7" stroke-width="6"/>
-            <circle cx="30" cy="30" r="${r}" fill="none" stroke="${badge.ring}" stroke-width="6"
-                stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${offset}"
-                transform="rotate(-90 30 30)"/>
-            <text x="30" y="35" text-anchor="middle" font-size="12" font-weight="900" fill="#1e293b">${Math.round(scoreRaw)}%</text>
-        </svg>
-    `;
-}
-
 function card(inner, extra = '') {
     return `<div class="bg-[#FFFCF4] rounded-2xl soft-card border-2 border-[#D9C4A0] p-4 ${extra}">${inner}</div>`;
-}
-
-// Red counter on the "My KPIs" tab — same visual language as the sidebar's
-// notification bell badge — counting distinct KPIs that need attention
-// (not logged today, or status at_risk/in_trouble), so it's visible from
-// whichever tab the user is currently on.
-function updateKpiAlertBadge(count) {
-    const badge = document.getElementById('kpi-alert-badge');
-    if (!badge) return;
-    if (count > 0) {
-        badge.textContent = count > 9 ? '9+' : count;
-        badge.classList.remove('hidden');
-    } else {
-        badge.classList.add('hidden');
-    }
-}
-
-let currentTab = 'todo';
-function switchTab(tab) {
-    currentTab = tab;
-    ['kpis', 'todo', 'score'].forEach(t => {
-        const el = document.getElementById('tab-' + t);
-        if (el) el.classList.toggle('active', t === tab);
-    });
-    // The To-Do tab's Kanban board wants the full width next to the nav;
-    // the other tabs are simple card lists that read better at a capped
-    // width instead of stretching edge-to-edge on wide monitors.
-    document.getElementById('contentCol')?.classList.toggle('max-w-2xl', tab !== 'todo');
-    if (tab === 'kpis') renderMyKpis();
-    if (tab === 'todo') renderTodo();
-    if (tab === 'score') renderScore('monthly');
-}
-
-/* ---------------------------------------------------------------- */
-/* MY KPIS + REMINDER BANNER                                         */
-/* Value mapping is pulled straight from MiniAppController — same     */
-/* kpis/kpi_quarters rows, same achievement/status fields the rest    */
-/* of the system uses, nothing computed independently here.           */
-/* ---------------------------------------------------------------- */
-
-async function renderMyKpis() {
-    const app = document.getElementById('app');
-    app.innerHTML = `<p class="text-center text-slate-400 text-[12px] mt-10">Loading…</p>`;
-
-    let openData, summaryData;
-    try {
-        [openData, summaryData] = await Promise.all([api('/kpis/open'), api('/kpis/summary')]);
-    } catch (e) {
-        app.innerHTML = card(`<p class="text-[13px] text-slate-600 text-center py-6">Could not load your KPIs.</p>`);
-        return;
-    }
-
-    const notLogged = (openData.kpis || []).filter(k => !k.already_logged_today);
-    const warningKpiIds = (summaryData.kpis || [])
-        .filter(k => ['at_risk', 'in_trouble'].includes(k.status))
-        .map(k => k.kpi_id);
-    const alertKpiIds = new Set([...notLogged.map(k => k.kpi_id), ...warningKpiIds]);
-    updateKpiAlertBadge(alertKpiIds.size);
-
-    const banner = notLogged.length ? `
-        <div class="rounded-2xl bg-red-50 border-2 border-red-300 px-4 py-3">
-            <p class="text-[12px] font-black text-red-700">⏰ Reminder — ${notLogged.length} KPI(s) not updated today</p>
-            <p class="text-[11px] text-red-600 mt-1">${notLogged.map(k => k.kpi_title).join(', ')}</p>
-        </div>
-    ` : `
-        <div class="rounded-2xl bg-emerald-50 border-2 border-emerald-300 px-4 py-3">
-            <p class="text-[12px] font-black text-emerald-700">All caught up — every open KPI updated today.</p>
-        </div>
-    `;
-
-    if (!summaryData.kpis.length) {
-        app.innerHTML = banner + card(`<p class="text-[13px] text-slate-600 text-center py-6 mt-3">No KPIs found for this financial year.</p>`);
-        return;
-    }
-
-    window.__quarterActuals = {};
-    summaryData.kpis.forEach(k => (k.quarters || []).forEach(q => { window.__quarterActuals[q.id] = q.actual; }));
-
-    const sorted = sortByCategoryAndSub(summaryData.kpis);
-    let lastCategory = null;
-    let html = banner;
-
-    sorted.forEach(k => {
-        if (k.category !== lastCategory) {
-            const cat = CATEGORY_COLORS[k.category] || DEFAULT_CATEGORY_COLOR;
-            html += `
-                <div class="flex items-center gap-2 mt-4 mb-1 px-1">
-                    <p class="text-[11px] font-black uppercase tracking-wide text-[#6B3F2A]">${k.category || 'Other'}</p>
-                </div>
-            `;
-            lastCategory = k.category;
-        }
-
-        const cat = CATEGORY_COLORS[k.category] || DEFAULT_CATEGORY_COLOR;
-        const sDef = STATUS_LABELS[k.status] || STATUS_LABELS.not_started;
-        const aBadge = achvBadge(k.achievement_percentage);
-        const pct = Math.max(0, Math.min(100, k.achievement_percentage));
-        const annualTarget = (k.quarters || []).reduce((sum, q) => sum + (Number(q.target) || 0), 0);
-        const quarterRows = (k.quarters || []).map(q => quarterRow(k.kpi_id, q, k.unit)).join('');
-
-        html += card(`
-            <div class="flex items-start gap-3">
-                <div class="min-w-0 flex-1">
-                    <div class="flex flex-wrap items-center gap-1.5 mb-2">
-                        <span class="px-2 py-0.5 rounded-full ${cat.catPill} text-[8px] font-black">${k.category || '-'}</span>
-                        ${k.sub_category ? `<span class="px-2 py-0.5 rounded-full ${cat.subPill} text-[8px] font-black">${k.sub_category}</span>` : ''}
-                        <span class="px-2 py-0.5 rounded-full ${sDef.color} text-[8px] font-black">${sDef.label}</span>
-                    </div>
-                    <p class="text-[14px] font-black text-slate-900 leading-snug">${k.kpi_title}</p>
-                    <span class="inline-block mt-2 px-2 py-0.5 rounded-full ${aBadge.color} text-[9px] font-black">${aBadge.label}</span>
-                </div>
-                ${progressRing(k.achievement_percentage)}
-            </div>
-            <div class="w-full h-1.5 bg-[#EFE3C7] rounded-full mt-3 overflow-hidden">
-                <div class="h-full rounded-full bg-gradient-to-r ${aBadge.bar}" style="width:${pct}%"></div>
-            </div>
-            <div class="flex items-center justify-between mt-1.5">
-                <p class="text-[10px] text-slate-500 font-bold">Overall (Full Year)</p>
-                <p class="text-[11px] text-slate-700 font-black">${formatUnit(k.actual_value, k.unit)} / ${formatUnit(annualTarget, k.unit)}</p>
-            </div>
-            <div class="mt-3 pt-3 border-t-2 border-dashed border-[#E3D2B0]">
-                <p class="text-[9px] uppercase tracking-wide text-slate-400 font-black mb-2">By Quarter</p>
-                <div class="space-y-1.5">${quarterRows || '<p class="text-[10px] text-slate-400">No quarters set up yet.</p>'}</div>
-            </div>
-        `) + '<div class="h-2"></div>';
-    });
-
-    app.innerHTML = html;
-}
-
-function quarterLabel(state) {
-    if (state === 'current') return { text: '✏️ Update here', cls: 'bg-red-100 text-red-700' };
-    if (state === 'ended') return { text: '🔒 Done', cls: 'bg-slate-100 text-slate-500' };
-    return { text: '🔒 Upcoming', cls: 'bg-slate-100 text-slate-400' };
-}
-
-function quarterRow(kpiId, q, unit) {
-    const isCurrent = q.state === 'current';
-    const badge = achvBadge(q.achievement_percentage);
-    const barPct = Math.max(0, Math.min(100, q.achievement_percentage));
-    const label = quarterLabel(q.state);
-    const hint = `How much did today add? Use a minus sign to reduce.`;
-
-    const updateControl = isCurrent ? `
-        <div class="mt-2.5 flex items-center gap-2">
-            <input type="number" step="any" placeholder="e.g. 50 or -10" id="delta-${kpiId}"
-                class="flex-1 min-w-0 text-[12px] px-3 py-2 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
-            <button onclick="submitDelta('${kpiId}','${q.id}')" class="px-4 py-2 rounded-xl bg-[#16A34A] hover:bg-[#15803D] text-white text-[11px] font-black shrink-0 shadow-[0_4px_12px_rgba(22,163,74,.4)]">
-                Update
-            </button>
-        </div>
-        <p class="text-[9px] text-slate-400 mt-1">${hint}</p>
-        <p id="feedback-${kpiId}" class="hidden text-[10px] font-bold mt-1.5"></p>
-    ` : '';
-
-    return `
-        <div class="rounded-xl px-3 py-2.5 soft-card-sm ${isCurrent ? 'bg-red-50 border-2 border-red-500' : 'bg-[#FBF4E6] border-2 border-[#E3D2B0]'}">
-            <div class="flex items-center justify-between gap-2">
-                <p class="text-[11px] font-black ${isCurrent ? 'text-red-700' : 'text-slate-600'}">${q.quarter}</p>
-                <span class="text-[8px] font-black px-1.5 py-0.5 rounded-full ${label.cls}">${label.text}</span>
-            </div>
-            <div class="w-full h-1.5 bg-[#EFE3C7] rounded-full mt-2 overflow-hidden">
-                <div class="h-full rounded-full bg-gradient-to-r ${badge.bar}" style="width:${barPct}%"></div>
-            </div>
-            <div class="flex items-center justify-between mt-1.5">
-                <p class="text-[10px] text-slate-500">Target: <span class="font-bold text-slate-700">${formatUnit(q.target, unit)}</span></p>
-                <p class="text-[10px] text-slate-500">Actual: <span class="font-bold text-slate-700">${formatUnit(q.actual, unit)}</span></p>
-                <p class="text-[10px] font-black ${isCurrent ? 'text-red-700' : 'text-slate-500'}">${q.achievement_percentage}%</p>
-            </div>
-            ${updateControl}
-        </div>
-    `;
-}
-
-async function submitDelta(kpiId, quarterId) {
-    const input = document.getElementById(`delta-${kpiId}`);
-    const feedback = document.getElementById(`feedback-${kpiId}`);
-    const raw = input.value.trim();
-
-    if (raw === '' || isNaN(Number(raw)) || Number(raw) === 0) {
-        showToast('Enter an amount first, e.g. 50 or -10.');
-        return;
-    }
-
-    const delta = Number(raw);
-    const currentActual = window.__quarterActuals?.[quarterId] ?? 0;
-
-    if (delta < 0 && currentActual + delta < 0) {
-        feedback.textContent = `Can't reduce — this quarter's actual is only ${currentActual}.`;
-        feedback.className = 'text-[10px] font-bold mt-1.5 text-red-600';
-        feedback.classList.remove('hidden');
-        return;
-    }
-
-    feedback.classList.add('hidden');
-
-    try {
-        await api(`/kpis/${kpiId}/quarters/${quarterId}/adjust`, { method: 'POST', body: JSON.stringify({ delta }) });
-        showToast('Updated! Your KPI actual has been refreshed.');
-        renderMyKpis();
-    } catch (e) {
-        feedback.textContent = e.data?.message || "Couldn't update — please try again.";
-        feedback.className = 'text-[10px] font-bold mt-1.5 text-red-600';
-        feedback.classList.remove('hidden');
-    }
 }
 
 /* ---------------------------------------------------------------- */
@@ -1320,95 +1072,6 @@ function confirmDeleteTask(taskId) {
 }
 
 /* ---------------------------------------------------------------- */
-/* MONTHLY SCORE — AI-generated score + narrative, read-only, already */
-/* generated on a schedule (TelegramReviewService). Defaults to        */
-/* "monthly" here since that's the primary ask, but weekly/quarterly   */
-/* are one tap away, same as the Telegram version.                     */
-/* ---------------------------------------------------------------- */
-
-const REVIEW_PERIODS = [
-    { key: 'weekly', label: 'Weekly' },
-    { key: 'monthly', label: 'Monthly' },
-    { key: 'quarterly', label: 'Quarterly' },
-];
-
-function reviewBand(score) {
-    if (score >= 90) return { label: 'Excellent', cls: 'text-emerald-800 border-emerald-700' };
-    if (score >= 75) return { label: 'Good', cls: 'text-slate-700 border-slate-400' };
-    if (score >= 50) return { label: 'Needs Attention', cls: 'text-amber-800 border-amber-700' };
-    return { label: 'At Risk', cls: 'text-rose-800 border-rose-700' };
-}
-
-function reviewEmptyNote(periodType) {
-    if (periodType === 'weekly') return 'Generated every Sunday evening, covering the previous 7 days.';
-    if (periodType === 'monthly') return 'Generated on the 1st of each month, covering the month before.';
-    return 'Generated automatically when one of your KPI quarters closes.';
-}
-
-function reviewCard(r) {
-    const band = reviewBand(r.score);
-    return card(`
-        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">${r.period_label}</p>
-        <p class="text-[28px] font-black text-slate-900 mt-1 leading-none">${Math.round(r.score)}<span class="text-[13px] font-bold text-slate-400">/100</span></p>
-        <span class="inline-block mt-2 px-2 py-0.5 rounded-full border text-[9px] font-bold ${band.cls}">${band.label}</span>
-        <p class="text-[12px] text-slate-600 leading-relaxed mt-3 pt-3 border-t border-slate-200">${r.narrative}</p>
-    `);
-}
-
-async function renderScore(periodType) {
-    periodType = periodType || 'monthly';
-    const app = document.getElementById('app');
-
-    const tabs = `
-        <div class="flex items-center gap-1 border-b-2 border-slate-200 mb-4">
-            ${REVIEW_PERIODS.map(p => `
-                <button onclick="renderScore('${p.key}')"
-                    class="flex-1 pb-2.5 text-[12px] font-bold ${p.key === periodType ? 'text-slate-900 border-b-2 border-slate-900 -mb-[2px]' : 'text-slate-400'}">
-                    ${p.label}
-                </button>
-            `).join('')}
-        </div>
-    `;
-
-    app.innerHTML = tabs + `<p class="text-center text-slate-400 text-[12px] mt-10">Loading…</p>`;
-
-    let data;
-    try {
-        data = await api(`/reviews?period=${periodType}`);
-    } catch (e) {
-        app.innerHTML = tabs + card(`<p class="text-[13px] text-slate-600 text-center py-6">Could not load your review.</p>`);
-        return;
-    }
-
-    window.__reviewHistory = data.history || [];
-
-    if (!data.latest) {
-        app.innerHTML = tabs + card(`
-            <p class="text-[13px] font-bold text-slate-900 mb-1.5">No review yet</p>
-            <p class="text-[12px] text-slate-500 leading-relaxed">${reviewEmptyNote(periodType)}</p>
-        `);
-        return;
-    }
-
-    const historyRows = window.__reviewHistory.length ? `
-        <p class="text-[10px] uppercase tracking-wide text-slate-400 font-bold mt-4 mb-1.5 px-1">Previous periods</p>
-        <div>${window.__reviewHistory.map((r, i) => `
-            <button onclick="renderReviewDetail(${i})" class="w-full text-left tap-card">
-                ${card(`<div class="flex items-center justify-between gap-2"><p class="text-[12px] font-bold text-slate-700">${r.period_label}</p><p class="text-[12px] font-black text-slate-500">${Math.round(r.score)}/100</p></div>`, 'hover:border-slate-400')}
-            </button>
-        `).join('<div class="h-1.5"></div>')}</div>
-    ` : '';
-
-    app.innerHTML = tabs + reviewCard(data.latest) + historyRows;
-}
-
-function renderReviewDetail(index) {
-    const r = (window.__reviewHistory || [])[index];
-    if (!r) { renderScore('monthly'); return; }
-    document.getElementById('app').innerHTML = reviewCard(r);
-}
-
-/* ---------------------------------------------------------------- */
 /* CALENDAR — month view of To-Do due dates, rendered inside the same  */
 /* dark board shell as a Board/Calendar toggle (renderTodoShell()),    */
 /* built from the same task list already loaded on the To-Do tab (no   */
@@ -1484,8 +1147,8 @@ function renderCalendarDay(dateStr) {
     box.innerHTML = `<p class="text-[10px] uppercase tracking-wide text-slate-500 font-black mb-1.5 px-1">Due ${fmtDateShort(dateStr)}</p>` + dayTasks.map(t => taskCard(t)).join('<div class="h-2"></div>');
 }
 
-if (document.getElementById('tab-todo')) {
-    switchTab('todo');
+if (document.getElementById('app')) {
+    renderTodo();
 }
 </script>
 
