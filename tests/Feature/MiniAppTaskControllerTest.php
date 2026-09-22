@@ -302,6 +302,24 @@ class MiniAppTaskControllerTest extends TestCase
         $this->assertContains('colleague-2', $ids);
     }
 
+    public function test_assignable_employees_are_sorted_alphabetically_by_name(): void
+    {
+        Http::fake([
+            '*/rest/v1/employees*' => Http::response([
+                ['id' => 'emp-pia', 'short_name' => 'PIA', 'email' => 'pia@richworks.com'],
+                ['id' => 'emp-arina', 'short_name' => 'Arina', 'email' => 'arina@richworks.com'],
+                ['id' => 'emp-zaidi', 'short_name' => 'Zaidi', 'email' => 'zaidi@richworks.com'],
+                ['id' => 'emp-azwani', 'short_name' => 'Azwani', 'email' => 'azwani@richworks.com'],
+            ], 200),
+        ]);
+
+        $response = $this->withSession($this->employeeSession('SLT'))->get('/mini-app/api/tasks/assignable');
+
+        $response->assertOk();
+        $names = collect($response->json('employees'))->pluck('short_name')->all();
+        $this->assertSame(['Arina', 'Azwani', 'PIA', 'Zaidi'], $names);
+    }
+
     public function test_assignable_employees_defaults_to_self_only_for_an_executive_with_no_reports(): void
     {
         // EXECUTIVE never even queries `employees` -- visibleEmployeeIds()

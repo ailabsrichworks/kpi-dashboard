@@ -439,7 +439,12 @@ class MiniAppTaskController extends Controller
             'select' => 'id,short_name,email',
         ]) ?? [];
 
-        return response()->json(['employees' => $employees]);
+        // Alphabetical by name -- both the Assign To and Notify by email
+        // dropdowns draw from this same list, and Supabase returns rows in
+        // no particular order otherwise.
+        usort($employees, fn ($a, $b) => strcasecmp($a['short_name'] ?? '', $b['short_name'] ?? ''));
+
+        return response()->json(['employees' => array_values($employees)]);
     }
 
     /*
