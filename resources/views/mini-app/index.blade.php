@@ -110,11 +110,13 @@
 const _csrfToken = '{{ csrf_token() }}';
 const CURRENT_EMPLOYEE_ID = '{{ session('employee.id') }}';
 // "1st Accent" (settings.blade.php) -- this employee/company's own main
-// brand colour, defaulting to the app-wide gold if never customized. The
-// To-Do board's dark panel is a darkened mix of this, not a flat neutral
-// black, so it still reads as "this company's Performix" in dark mode.
+// brand colour, defaulting to the app-wide gold if never customized. Used
+// as a highlight on specific elements (the primary "+ New task" button,
+// "AI Summary") -- the panel itself stays a plain neutral black, since
+// tinting the whole background with it read as a muddy olive rather than
+// "black with an accent".
 const THEME_ACCENT = '{{ session('theme_accent') ?: '#D4AF37' }}';
-const TODO_PANEL_BG = `color-mix(in srgb, ${THEME_ACCENT} 20%, black)`;
+const TODO_PANEL_BG = '#0a0a0a';
 
 async function api(path, opts = {}) {
     const res = await fetch('/mini-app/api' + path, {
@@ -257,7 +259,7 @@ function todoHeader() {
                     <button onclick="switchTodoView('board')" class="px-3 py-1.5 rounded-lg text-[11px] font-black whitespace-nowrap ${__todoView === 'board' ? 'bg-white/10 text-white' : 'text-slate-400'}">▦ Board</button>
                     <button onclick="switchTodoView('calendar')" class="px-3 py-1.5 rounded-lg text-[11px] font-black whitespace-nowrap ${__todoView === 'calendar' ? 'bg-white/10 text-white' : 'text-slate-400'}">📅 Calendar</button>
                 </div>
-                <button onclick="renderNewTaskForm()" class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/[0.15] border border-white/10 text-white text-[12px] font-black whitespace-nowrap">+ New task</button>
+                <button onclick="renderNewTaskForm()" style="background: ${THEME_ACCENT};" class="px-4 py-2 rounded-xl text-[#1a1408] text-[12px] font-black whitespace-nowrap hover:opacity-90">+ New task</button>
             </div>
         </div>
     `;
@@ -386,7 +388,7 @@ async function loadTaskScoreCard() {
                 <p class="text-[24px] font-black text-white leading-none mt-1">${score.score !== null ? Math.round(score.score) : '—'}<span class="text-[12px] font-bold text-slate-500">/100</span></p>
                 <span class="inline-block mt-1.5 px-2 py-0.5 rounded-full ${band.color} text-[9px] font-black">${band.label}</span>
             </div>
-            <button onclick="toggleTaskSummary()" class="text-[10px] font-black text-white bg-white/10 hover:bg-white/15 px-3 py-1.5 rounded-full shrink-0">✨ AI Summary</button>
+            <button onclick="toggleTaskSummary()" style="background: ${THEME_ACCENT};" class="text-[10px] font-black text-[#1a1408] px-3 py-1.5 rounded-full shrink-0 hover:opacity-90">✨ AI Summary</button>
         </div>
         <div id="taskSummaryBox" class="hidden mt-3 pt-3 border-t border-white/10"></div>
     `);
