@@ -499,7 +499,8 @@ function taskCard(t) {
                 <div class="flex items-center flex-wrap gap-2 mt-2.5">
                     ${assigneeName ? `<span class="w-5 h-5 rounded-full ${avatarColorFor(t.assignee_employee_id || assigneeName)} text-white text-[8px] font-black flex items-center justify-center shrink-0">${initialsOf(assigneeName)}</span>` : ''}
                     ${t.meeting_time ? `<span class="text-[10px] font-bold text-slate-500 flex items-center gap-1">🕐 ${fmtTime12(t.meeting_time)}</span>` : ''}
-                    ${t.due_date ? `<span class="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${isOverdue ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-500'}">${fmtDateShort(t.due_date)}</span>` : ''}
+                    ${t.notify_email ? `<span title="Notifies ${t.notify_email}" class="text-[10px] text-slate-400">✉️</span>` : ''}
+                    ${t.due_date ? `<span class="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${isOverdue ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-500'}">${fmtDateShort(t.due_date)}${t.due_time ? ' ' + fmtTime12(t.due_time) : ''}</span>` : ''}
                 </div>
                 ${kpiChips}
             </button>
@@ -547,16 +548,20 @@ function taskFormFields(t) {
         <textarea id="taskDescriptionInput" rows="2" placeholder="Any extra context…"
             class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500 resize-none">${t?.description || ''}</textarea>
 
+        <p class="text-[10px] font-bold text-slate-600 mt-3 mb-1">Priority</p>
+        <select id="taskPriorityInput" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
+            ${Object.entries(PRIORITY_LABELS).map(([key, p]) => `<option value="${key}" ${(t?.priority || 'medium') === key ? 'selected' : ''}>${p.label}</option>`).join('')}
+        </select>
+
         <div class="grid grid-cols-2 gap-2 mt-3">
-            <div>
-                <p class="text-[10px] font-bold text-slate-600 mb-1">Priority</p>
-                <select id="taskPriorityInput" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
-                    ${Object.entries(PRIORITY_LABELS).map(([key, p]) => `<option value="${key}" ${(t?.priority || 'medium') === key ? 'selected' : ''}>${p.label}</option>`).join('')}
-                </select>
-            </div>
             <div>
                 <p class="text-[10px] font-bold text-slate-600 mb-1">Due date <span class="text-slate-400 font-normal">(optional)</span></p>
                 <input type="date" id="taskDueDateInput" value="${t?.due_date || ''}"
+                    class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
+            </div>
+            <div>
+                <p class="text-[10px] font-bold text-slate-600 mb-1">Due time <span class="text-slate-400 font-normal">(optional)</span></p>
+                <input type="time" id="taskDueTimeInput" value="${t?.due_time || ''}"
                     class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
             </div>
         </div>
@@ -568,6 +573,13 @@ function taskFormFields(t) {
             </label>
             <input type="time" id="taskMeetingTimeInput" value="${t?.meeting_time || ''}"
                 class="${t?.meeting_time ? '' : 'hidden'} w-full mt-2 text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
+        </div>
+
+        <div class="mt-3">
+            <p class="text-[10px] font-bold text-slate-600 mb-1">Notify by email <span class="text-slate-400 font-normal">(optional)</span></p>
+            <input type="email" id="taskNotifyEmailInput" value="${t?.notify_email || ''}" placeholder="e.g. teammate@richworks.com"
+                class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
+            <p class="text-[9px] text-slate-400 mt-1">Emails this task straight to that inbox — handy for looping in someone who doesn't have a Performix account yet. We'll check the address looks real before sending.</p>
         </div>
 
         <p class="text-[10px] font-bold text-slate-600 mt-3 mb-1">Assign to</p>
@@ -653,11 +665,17 @@ function taskFormValues() {
         description: document.getElementById('taskDescriptionInput').value.trim() || null,
         priority: document.getElementById('taskPriorityInput').value,
         due_date: document.getElementById('taskDueDateInput').value || null,
+        due_time: document.getElementById('taskDueTimeInput').value || null,
         meeting_time: isMeeting ? (document.getElementById('taskMeetingTimeInput').value || null) : null,
         assignee_employee_id: document.getElementById('taskAssigneeInput')?.value || null,
         unit: document.getElementById('taskUnitInput').value,
         target: document.getElementById('taskTargetInput').value,
+        notify_email: document.getElementById('taskNotifyEmailInput')?.value.trim() || null,
     };
+}
+
+function isPlausibleEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function renderNewTaskForm() {
@@ -683,6 +701,12 @@ async function saveNewTask() {
 
     if (!v.title || v.target === '' || isNaN(Number(v.target)) || Number(v.target) < 0) {
         feedback.textContent = 'Enter a task title and a valid target.';
+        feedback.classList.remove('hidden');
+        return;
+    }
+
+    if (v.notify_email && !isPlausibleEmail(v.notify_email)) {
+        feedback.textContent = 'Enter a valid notify email address, or leave it blank.';
         feedback.classList.remove('hidden');
         return;
     }
@@ -722,6 +746,12 @@ async function saveEditTask(taskId) {
 
     if (!v.title || v.target === '' || isNaN(Number(v.target)) || Number(v.target) < 0) {
         feedback.textContent = 'Enter a task title and a valid target.';
+        feedback.classList.remove('hidden');
+        return;
+    }
+
+    if (v.notify_email && !isPlausibleEmail(v.notify_email)) {
+        feedback.textContent = 'Enter a valid notify email address, or leave it blank.';
         feedback.classList.remove('hidden');
         return;
     }
@@ -801,6 +831,7 @@ async function renderTaskDetail(taskId) {
             <div class="flex flex-wrap gap-1.5 mt-2">
                 <span class="text-[8px] font-black px-1.5 py-0.5 rounded-full ${priorityPill.color}">${priorityPill.label} priority</span>
                 ${dueDateBadge(t.due_date)}
+                ${t.notify_email ? `<span class="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700">✉️ ${t.notify_email}</span>` : ''}
             </div>
             <div class="w-full h-1.5 bg-[#EFE3C7] rounded-full mt-3 overflow-hidden">
                 <div class="h-full rounded-full bg-gradient-to-r ${badge.bar}" style="width:${pct}%"></div>
@@ -1091,7 +1122,8 @@ const PRIORITY_BAR = {
 };
 
 function calendarEventBar(t) {
-    const label = (t.meeting_time ? fmtTime12(t.meeting_time) + ' ' : '') + t.title;
+    const time = t.meeting_time || t.due_time;
+    const label = (time ? fmtTime12(time) + ' ' : '') + t.title;
     const bg = PRIORITY_BAR[t.priority] || PRIORITY_BAR.medium;
     return `<button type="button" onclick="event.stopPropagation(); renderTaskDetail('${t.id}')" class="block w-full text-left ${bg} text-white text-[8px] font-bold leading-tight px-1.5 py-0.5 rounded truncate hover:opacity-90">${label}</button>`;
 }
@@ -1113,7 +1145,7 @@ function calendarBoard() {
         (tasksByDate[t.due_date] = tasksByDate[t.due_date] || []).push(t);
     });
     Object.values(tasksByDate).forEach(list =>
-        list.sort((a, b) => (a.meeting_time || '99:99').localeCompare(b.meeting_time || '99:99')));
+        list.sort((a, b) => (a.meeting_time || a.due_time || '99:99').localeCompare(b.meeting_time || b.due_time || '99:99')));
 
     let cells = '';
     for (let i = 0; i < firstDow; i++) cells += `<div class="min-h-[88px] border border-slate-100 bg-slate-50/50"></div>`;
@@ -1165,7 +1197,7 @@ function shiftCalendar(delta) {
 function renderCalendarDay(dateStr) {
     const dayTasks = (window.__myTasks || [])
         .filter(t => t.due_date === dateStr)
-        .sort((a, b) => (a.meeting_time || '99:99').localeCompare(b.meeting_time || '99:99'));
+        .sort((a, b) => (a.meeting_time || a.due_time || '99:99').localeCompare(b.meeting_time || b.due_time || '99:99'));
     const box = document.getElementById('calendarDayTasks');
     if (!box) return;
     if (!dayTasks.length) {

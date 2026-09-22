@@ -197,19 +197,24 @@ class NotificationService
 
     private function sendTelegram(string $recipientId, string $title, ?string $message, ?string $link): void
     {
-        $chatId = $this->telegramChatIdFor($recipientId);
-        if (!$chatId) {
-            return;
-        }
-
-        $text = "<b>{$title}</b>";
-        if ($message) {
-            $text .= "\n" . $message;
-        }
-
-        $keyboard = $link ? [['text' => 'Open', 'url' => $link]] : null;
-
+        // The whole body is wrapped, not just sendMessage() -- telegramChatIdFor()
+        // itself makes two Supabase calls, and a failure there (a transient
+        // Supabase hiccup, a timeout) must never crash the primary action any
+        // more than a failure inside sendMessage() would. Mirrors sendEmail()'s
+        // own full-body try/catch just above.
         try {
+            $chatId = $this->telegramChatIdFor($recipientId);
+            if (!$chatId) {
+                return;
+            }
+
+            $text = "<b>{$title}</b>";
+            if ($message) {
+                $text .= "\n" . $message;
+            }
+
+            $keyboard = $link ? [['text' => 'Open', 'url' => $link]] : null;
+
             $this->telegram->sendMessage($chatId, $text, $keyboard);
         } catch (\Throwable $e) {
             Log::error('Failed to send Telegram notification', ['recipient' => $recipientId, 'error' => $e->getMessage()]);

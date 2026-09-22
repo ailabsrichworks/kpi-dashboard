@@ -2,11 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\TaskNotifyMail;
 use App\Services\AiService;
+use App\Services\EmailVerificationService;
 use App\Services\NotificationService;
 use App\Services\SupabaseService;
 use App\Services\TaskAccessPolicy;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 /**
  * The web Mini App's "TTD" (to-do) list — a personal task tracker that is
@@ -30,6 +34,54 @@ class MiniAppTaskController extends Controller
     private function employeeName(): string
     {
         return session('employee.short_name') ?? 'You';
+    }
+
+    /**
+     * Checks a task's optional notify_email before it's saved: accepted
+     * outright if it matches an employee already on file (Supabase), or --
+     * for anyone else, e.g. a report with no Performix account -- if its
+     * domain can actually receive mail at all (see EmailVerificationService
+     * for exactly what that does and doesn't prove).
+     *
+     * @return array{ok: bool, email: ?string, message?: string}
+     */
+    private function verifyNotifyEmail(?string $email, SupabaseService $supabase, EmailVerificationService $verifier): array
+    {
+        if (empty($email)) {
+            return ['ok' => true, 'email' => null];
+        }
+
+        $email = trim($email);
+
+        $knownEmployee = $supabase->first('employees', [
+            'email' => 'eq.' . $email,
+            'select' => 'id',
+        ]);
+
+        if (!$knownEmployee && !$verifier->domainCanReceiveMail($email)) {
+            return [
+                'ok' => false,
+                'email' => null,
+                'message' => "We couldn't verify that \"{$email}\" can actually receive mail — double check for typos.",
+            ];
+        }
+
+        return ['ok' => true, 'email' => $email];
+    }
+
+    private function sendTaskNotifyEmail(string $email, array $task): void
+    {
+        try {
+            Mail::to($email)->send(new TaskNotifyMail(
+                $task['title'],
+                $task['description'] ?? null,
+                $task['due_date'] ?? null,
+                $task['due_time'] ?? null,
+                $this->employeeName(),
+            ));
+        } catch (\Throwable $e) {
+            Log::error('Task notify email failed to send', ['error' => $e->getMessage()]);
+        }
     }
 
     /**
@@ -142,7 +194,9 @@ class MiniAppTaskController extends Controller
                 'estimated_effort_hours' => isset($task['estimated_effort_hours']) ? (float) $task['estimated_effort_hours'] : null,
                 'start_date' => $task['start_date'] ?? null,
                 'due_date' => $task['due_date'] ?? null,
+                'due_time' => $task['due_time'] ?? null,
                 'meeting_time' => $task['meeting_time'] ?? null,
+                'notify_email' => $task['notify_email'] ?? null,
                 'reminder_at' => $task['reminder_at'] ?? null,
                 'visibility' => $task['visibility'] ?? 'private',
                 'recurrence_rule' => $task['recurrence_rule'] ?? 'none',
@@ -163,7 +217,7 @@ class MiniAppTaskController extends Controller
     | KPI linking is optional here — a TTD task can exist purely as a
     | personal to-do, with no effect on any KPI's actual.
     */
-    public function store(Request $request, SupabaseService $supabase, NotificationService $notifications, TaskAccessPolicy $policy)
+    public function store(Request $request, SupabaseService $supabase, NotificationService $notifications, TaskAccessPolicy $policy, EmailVerificationService $emailVerifier)
     {
         $validated = $request->validate([
             'title' => 'required|string|max:200',
@@ -178,11 +232,13 @@ class MiniAppTaskController extends Controller
             'estimated_effort_hours' => 'nullable|numeric|min:0',
             'start_date' => 'nullable|date',
             'due_date' => 'nullable|date',
+            'due_time' => 'nullable|date_format:H:i',
             'meeting_time' => 'nullable|date_format:H:i',
             'reminder_at' => 'nullable|date',
             'visibility' => 'nullable|in:private,team,department',
             'recurrence_rule' => 'nullable|in:none,daily,weekdays,weekly,monthly',
             'is_unplanned' => 'nullable|boolean',
+            'notify_email' => 'nullable|email:rfc',
         ]);
 
         $employeeId = session('employee.id');
@@ -192,6 +248,11 @@ class MiniAppTaskController extends Controller
 
         if ($assigneeId !== $employeeId && !$policy->canAssign(session('employee'), $assigneeId)) {
             return response()->json(['success' => false, 'message' => "You're not allowed to assign tasks to this person."], 403);
+        }
+
+        $emailCheck = $this->verifyNotifyEmail($validated['notify_email'] ?? null, $supabase, $emailVerifier);
+        if (!$emailCheck['ok']) {
+            return response()->json(['success' => false, 'message' => $emailCheck['message']], 422);
         }
 
         $kpiIds = array_unique($validated['kpi_ids'] ?? []);
@@ -230,6 +291,7 @@ class MiniAppTaskController extends Controller
             'estimated_effort_hours' => $validated['estimated_effort_hours'] ?? null,
             'start_date' => $validated['start_date'] ?? null,
             'due_date' => $validated['due_date'] ?? null,
+            'due_time' => $validated['due_time'] ?? null,
             // A meeting is a task with a specific time-of-day, not just a due
             // date — kept as a plain nullable column rather than a separate
             // "is_meeting" flag, matching the Platform Tasks feature's own
@@ -239,6 +301,7 @@ class MiniAppTaskController extends Controller
             'visibility' => $validated['visibility'] ?? 'private',
             'recurrence_rule' => $validated['recurrence_rule'] ?? 'none',
             'is_unplanned' => $validated['is_unplanned'] ?? false,
+            'notify_email' => $emailCheck['email'],
         ]);
 
         $task = $inserted[0] ?? null;
@@ -261,6 +324,10 @@ class MiniAppTaskController extends Controller
                 "\"{$task['title']}\" — target " . (float) $validated['target'] . ' ' . $validated['unit'],
                 route('mini-app')
             );
+
+            if ($emailCheck['email']) {
+                $this->sendTaskNotifyEmail($emailCheck['email'], $task);
+            }
         }
 
         return response()->json(['task' => $task]);
@@ -330,7 +397,9 @@ class MiniAppTaskController extends Controller
                 'status' => $task['status'],
                 'priority' => $task['priority'] ?? 'medium',
                 'due_date' => $task['due_date'] ?? null,
+                'due_time' => $task['due_time'] ?? null,
                 'start_date' => $task['start_date'] ?? null,
+                'notify_email' => $task['notify_email'] ?? null,
                 'assignee_employee_id' => $task['assignee_employee_id'] ?? $task['employee_id'],
                 'linked_kpis' => $linkedKpis,
             ],
@@ -525,7 +594,7 @@ class MiniAppTaskController extends Controller
     | Edits the task's own details (title/target/unit) — the Telegram
     | controller never had this, it only ever adjusted progress.
     */
-    public function update(Request $request, SupabaseService $supabase, NotificationService $notifications, TaskAccessPolicy $policy, string $id)
+    public function update(Request $request, SupabaseService $supabase, NotificationService $notifications, TaskAccessPolicy $policy, EmailVerificationService $emailVerifier, string $id)
     {
         $validated = $request->validate([
             'title' => 'required|string|max:200',
@@ -537,11 +606,13 @@ class MiniAppTaskController extends Controller
             'estimated_effort_hours' => 'nullable|numeric|min:0',
             'start_date' => 'nullable|date',
             'due_date' => 'nullable|date',
+            'due_time' => 'nullable|date_format:H:i',
             'meeting_time' => 'nullable|date_format:H:i',
             'reminder_at' => 'nullable|date',
             'visibility' => 'nullable|in:private,team,department',
             'recurrence_rule' => 'nullable|in:none,daily,weekdays,weekly,monthly',
             'assignee_employee_id' => 'nullable|string',
+            'notify_email' => 'nullable|email:rfc',
         ]);
 
         $employeeId = session('employee.id');
@@ -564,6 +635,11 @@ class MiniAppTaskController extends Controller
             }
         }
 
+        $emailCheck = $this->verifyNotifyEmail($validated['notify_email'] ?? null, $supabase, $emailVerifier);
+        if (!$emailCheck['ok']) {
+            return response()->json(['success' => false, 'message' => $emailCheck['message']], 422);
+        }
+
         $supabase->safePatch('telegram_project_tasks', ['id' => 'eq.' . $id], [
             'title' => trim($validated['title']),
             'description' => $validated['description'] ?? $task['description'] ?? null,
@@ -574,11 +650,13 @@ class MiniAppTaskController extends Controller
             'estimated_effort_hours' => $validated['estimated_effort_hours'] ?? $task['estimated_effort_hours'] ?? null,
             'start_date' => $validated['start_date'] ?? $task['start_date'] ?? null,
             'due_date' => $validated['due_date'] ?? $task['due_date'] ?? null,
+            'due_time' => $validated['due_time'] ?? null,
             'meeting_time' => $validated['meeting_time'] ?? null,
             'reminder_at' => $validated['reminder_at'] ?? $task['reminder_at'] ?? null,
             'visibility' => $validated['visibility'] ?? $task['visibility'] ?? 'private',
             'recurrence_rule' => $validated['recurrence_rule'] ?? $task['recurrence_rule'] ?? 'none',
             'assignee_employee_id' => $newAssignee ?: $currentAssignee,
+            'notify_email' => $emailCheck['email'],
             'status' => (float) $task['actual'] >= (float) $validated['target'] && (float) $validated['target'] > 0 ? 'done' : $task['status'],
             'updated_at' => $this->nowMy(),
         ]);
@@ -591,6 +669,19 @@ class MiniAppTaskController extends Controller
             "\"{$validated['title']}\" details were updated.",
             route('mini-app')
         );
+
+        // Only send when notify_email is new or has actually changed --
+        // notify_email is always resent by the frontend on every save (same
+        // convention as meeting_time above), so without this check every
+        // unrelated edit would re-email the same address.
+        if ($emailCheck['email'] && $emailCheck['email'] !== ($task['notify_email'] ?? null)) {
+            $this->sendTaskNotifyEmail($emailCheck['email'], [
+                'title' => trim($validated['title']),
+                'description' => $validated['description'] ?? $task['description'] ?? null,
+                'due_date' => $validated['due_date'] ?? $task['due_date'] ?? null,
+                'due_time' => $validated['due_time'] ?? null,
+            ]);
+        }
 
         return response()->json(['success' => true]);
     }
