@@ -117,29 +117,74 @@ Deno.serve(async (req) => {
   return json({ ok: true, notified })
 })
 
+const PRIORITY_LABELS: Record<string, string> = {
+  low: '🟢 Low',
+  medium: '🟡 Medium',
+  high: '🟠 High',
+  critical: '🔴 Critical',
+}
+
+// Renders as dd/mm/yyyy | HH:MM:SS, per the format requested for every
+// date/time shown in these notifications -- due_date/due_time come out of
+// Postgres as "yyyy-mm-dd"/"HH:MM:SS", so this is just a re-arrangement, not
+// a timezone conversion.
+function formatDueDateTime(dueDate?: string | null, dueTime?: string | null): string | null {
+  if (!dueDate) return null
+  const [y, m, d] = dueDate.split('-')
+  const time = dueTime ? dueTime.slice(0, 8) : '00:00:00'
+  return `${d}/${m}/${y} | ${time}`
+}
+
+// Telegram's HTML parse mode only needs these three characters escaped --
+// task titles/descriptions/names are free text and could contain any of
+// them, which would otherwise break formatting or get silently dropped.
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
 function buildMessage(
   type: WebhookPayload['type'],
   task: TaskRow,
   nameByEmployeeId: Map<string, string>,
 ): string {
   const assigneeName = task.assignee_employee_id
-    ? nameByEmployeeId.get(task.assignee_employee_id) ?? 'someone'
+    ? nameByEmployeeId.get(task.assignee_employee_id) ?? 'Unknown'
     : 'Unassigned'
-  const creatorName = nameByEmployeeId.get(task.employee_id) ?? 'Someone'
-  const due = task.due_date
-    ? ` (due ${task.due_date}${task.due_time ? ' ' + task.due_time : ''})`
-    : ''
+  const creatorName = nameByEmployeeId.get(task.employee_id) ?? 'Unknown'
+  const notifyName = task.notify_employee_id
+    ? nameByEmployeeId.get(task.notify_employee_id) ?? 'Unknown'
+    : null
 
-  switch (type) {
-    case 'INSERT':
-      return `🆕 New task: "${task.title}"${due}\nAssigned to: ${assigneeName}\nCreated by: ${creatorName}`
-    case 'UPDATE':
-      return `✏️ Task updated: "${task.title}"${due}\nAssigned to: ${assigneeName}`
-    case 'DELETE':
-      return `🗑️ Task deleted: "${task.title}"`
-    default:
-      return `Task "${task.title}" changed.`
+  const title = escapeHtml(task.title ?? 'Untitled task')
+  const description = task.description ? escapeHtml(task.description) : '-'
+  const priority = PRIORITY_LABELS[task.priority ?? ''] ?? '⚪ Not set'
+  const due = formatDueDateTime(task.due_date, task.due_time) ?? 'Not set'
+
+  const heading = type === 'INSERT'
+    ? '🆕 <b>New Task Created</b>'
+    : type === 'UPDATE'
+      ? '✏️ <b>Task Updated</b>'
+      : '🗑️ <b>Task Deleted</b>'
+
+  const dueLabel = type === 'DELETE' ? 'Was due' : 'Due'
+  const assignedLabel = type === 'DELETE' ? 'Was assigned to' : 'Assigned to'
+
+  const lines = [
+    heading,
+    '',
+    `📌 <b>Title:</b> ${title}`,
+    `📝 <b>Description:</b> ${description}`,
+    `⚡ <b>Priority:</b> ${priority}`,
+    `📅 <b>${dueLabel}:</b> ${due}`,
+    `👤 <b>${assignedLabel}:</b> ${escapeHtml(assigneeName)}`,
+    `✍️ <b>Created by:</b> ${escapeHtml(creatorName)}`,
+  ]
+
+  if (notifyName && type !== 'DELETE') {
+    lines.push(`📨 <b>Notify:</b> ${escapeHtml(notifyName)}`)
   }
+
+  return lines.join('\n')
 }
 
 async function sendTelegram(chatId: number, text: string): Promise<boolean> {
@@ -147,7 +192,7 @@ async function sendTelegram(chatId: number, text: string): Promise<boolean> {
     const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text }),
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
     })
     return res.ok
   } catch {
