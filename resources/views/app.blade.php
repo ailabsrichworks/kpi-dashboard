@@ -293,9 +293,19 @@
             font-family: '{{ $fontFamily }}', sans-serif !important;
         }
         #sidebar, #sidebar * { font-family: '{{ $fontFamily }}', sans-serif !important; }
+        {{-- #sidebar is deliberately excluded from zoom, unlike #mainContent.
+             #sidebar is `position: fixed; height: 100vh` (h-screen) — its 100vh
+             height is computed first and zoom then scales the already-computed
+             box, so it renders taller/shorter than the real viewport and can
+             leave the nav list clipped and unscrollable (confirmed cause of a
+             reported "sidebar cut off, can't reach Logout" bug). Keeping this
+             file in sync with resources/views/partials/sidebar.blade.php's own
+             fix so the sidebar is the same size on every page regardless of
+             whether it renders through the legacy Blade partial or here (the
+             Inertia/React root view) — only the font-family rule above still
+             applies to the sidebar; the size scaling is skipped here too. --}}
         @if($fontZoom != 1)
         #mainContent { zoom: {{ $fontZoom }}; }
-        #sidebar { zoom: {{ $fontZoom }}; }
         @endif
     </style>
     @endif
