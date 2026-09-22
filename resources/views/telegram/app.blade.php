@@ -771,7 +771,9 @@
         if (__assignableEmployeesCache) return __assignableEmployeesCache;
         try {
             const data = await api(`/project-tasks/assignable-employees?employee_id=${state.employeeId}&company_code=${state.companyCode}`);
-            __assignableEmployeesCache = data.employees || [];
+            // Defensive de-dupe by id -- a multi-company employee visible
+            // via more than one identity must only ever appear once here.
+            __assignableEmployeesCache = [...new Map((data.employees || []).map(e => [e.id, e])).values()];
         } catch (e) {
             __assignableEmployeesCache = [];
         }

@@ -879,7 +879,11 @@ async function loadAssignableEmployees(t) {
     let employees = [];
     try {
         const data = await api('/tasks/assignable');
-        employees = data.employees || [];
+        // Defensive de-dupe by id -- a multi-company employee (e.g. someone
+        // with both an RGHB and RCG identity that both happen to be visible
+        // to this actor) must only ever appear once in these dropdowns, not
+        // once per identity.
+        employees = [...new Map((data.employees || []).map(e => [e.id, e])).values()];
     } catch (e) {
         // fall through with an empty list -- both selects below already
         // handle that by showing just their own "nobody" option.
