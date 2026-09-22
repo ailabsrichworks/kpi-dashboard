@@ -185,7 +185,15 @@ class MiniAppTaskControllerTest extends TestCase
                 && $request['notify_email'] === 'colleague@richworks.com';
         });
 
-        Mail::assertSent(TaskNotifyMail::class, fn ($mail) => $mail->hasTo('colleague@richworks.com'));
+        // Subject is the task title itself (not a "TTD:" prefix); recipient
+        // is exactly the chosen notify_email; the description and the due
+        // date/time/priority/creator detail render in the body.
+        Mail::assertSent(TaskNotifyMail::class, function ($mail) {
+            $mail->assertHasSubject('Send the client proposal');
+            $mail->assertTo('colleague@richworks.com');
+
+            return true;
+        });
     }
 
     public function test_store_rejects_a_notify_email_that_does_not_match_any_employee(): void

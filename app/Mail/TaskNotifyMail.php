@@ -27,9 +27,12 @@ class TaskNotifyMail extends Mailable
 
     public function build()
     {
-        // Leads with "TTD (Things To Do)" specifically because the
-        // recipient may have no Performix account at all -- the subject is
-        // often the only context they get for what this system even is.
-        return $this->subject('TTD (Things To Do): ' . $this->taskTitle)->view('emails.task-notify');
+        // Subject is the task title itself, plainly -- so a recipient's
+        // inbox reads like a real task assignment ("Send the client
+        // proposal"), not a system-name prefix. The "TTD (Things To Do)"
+        // identification still happens prominently in the body (header
+        // eyebrow + intro line + footer) for a recipient who has no
+        // Performix account and needs to know what this system even is.
+        return $this->subject($this->taskTitle)->view('emails.task-notify');
     }
 }
