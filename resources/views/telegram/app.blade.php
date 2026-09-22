@@ -13,20 +13,52 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
     <style>
+        /*
+         * Palette matches the web Performix mini-app (resources/views/
+         * mini-app/index.blade.php) -- warm cream/gold/brown instead of the
+         * original navy/blue, so the Telegram Mini App and the web version
+         * read as the same product. --accent/--accent2/--bg stay runtime-
+         * overridable (see applyTheme() below, unchanged) since a signed-in
+         * employee's own Account Settings > Appearance colours still win;
+         * these are just the pre-fetch/no-custom-theme defaults.
+         *
+         * [data-theme] is set by the colour-scheme sync right after `tg` is
+         * defined below, from Telegram's own colorScheme (falling back to
+         * the OS's prefers-color-scheme outside Telegram) -- "appearance
+         * follows system" without a manual toggle anywhere in the UI.
+         */
         :root {
-            --navy: #0B1F3A;
-            --accent: #2563EB;
+            --navy: #6B3F2A;
+            --accent: #D4AF37;
             --accent2: #6B9080;
-            --bg: #F8FAFC;
+            --accent-soft: #FBF0D1;
+            --bg: #F5F5F3;
+            --card-bg: #FFFCF4;
+            --card-border: #D9C4A0;
+            --input-bg: #FFFFFF;
+            --track-bg: #EFE3C7;
+            --text-strong: #241B12;
+            --text-secondary: #6B5D4A;
+            --text-muted: #9C8E77;
+        }
+        :root[data-theme="dark"] {
+            --bg: #1C1712;
+            --card-bg: #241D15;
+            --card-border: #4A3B28;
+            --input-bg: #2A2318;
+            --track-bg: #3A2F20;
+            --text-strong: #F3EAD9;
+            --text-secondary: #C9BBA3;
+            --text-muted: #8A7D68;
         }
         body { font-family: 'Inter', sans-serif; }
         .tap-card { transition: border-color .15s, background .15s; }
         .sticky-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
         .nav-tab { transition: color .15s; }
-        input[type="range"] { height: 6px; border-radius: 999px; background: #E2E8F0; }
+        input[type="range"] { height: 6px; border-radius: 999px; background: var(--track-bg); }
     </style>
 </head>
-<body class="bg-[var(--bg)] min-h-screen text-slate-900">
+<body class="bg-[var(--bg)] min-h-screen text-[var(--text-strong)]">
 
 <div class="max-w-md mx-auto min-h-screen flex flex-col">
     <div id="topbar" class="hidden bg-[var(--accent2)] text-white px-4 py-3.5 flex items-center gap-3 shrink-0">
@@ -37,29 +69,29 @@
     <div id="toast" class="hidden mx-4 mt-3 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-semibold"></div>
 
     <div id="app" class="flex-1 p-4 space-y-3 overflow-y-auto">
-        <p class="text-center text-slate-400 text-[12px] mt-10">Loading…</p>
+        <p class="text-center text-[var(--text-muted)] text-[12px] mt-10">Loading…</p>
     </div>
 
-    <div id="bottomNav" class="hidden shrink-0 bg-white border-t border-slate-200 grid grid-cols-4 sticky-bottom">
+    <div id="bottomNav" class="hidden shrink-0 bg-[var(--card-bg)] border-t-2 border-[var(--card-border)] grid grid-cols-4 sticky-bottom">
         <button data-tab="home" onclick="switchRootTab('home')" class="nav-tab flex flex-col items-center gap-0.5 py-2.5 text-[var(--accent)]">
             <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955a1.5 1.5 0 0 1 2.122 0l8.954 8.955M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75"/>
             </svg>
             <span class="text-[10px] font-bold">Home</span>
         </button>
-        <button data-tab="tasks" onclick="switchRootTab('tasks')" class="nav-tab flex flex-col items-center gap-0.5 py-2.5 text-slate-400">
+        <button data-tab="tasks" onclick="switchRootTab('tasks')" class="nav-tab flex flex-col items-center gap-0.5 py-2.5 text-[var(--text-muted)]">
             <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m-8 4h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2.28a2 2 0 0 0-1.4.58l-.32.32a2 2 0 0 1-1.4.6H9.4a2 2 0 0 1-1.4-.6l-.32-.32A2 2 0 0 0 6.28 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z"/>
             </svg>
             <span class="text-[10px] font-bold">Tasks</span>
         </button>
-        <button data-tab="kpi" onclick="switchRootTab('kpi')" class="nav-tab flex flex-col items-center gap-0.5 py-2.5 text-slate-400">
+        <button data-tab="kpi" onclick="switchRootTab('kpi')" class="nav-tab flex flex-col items-center gap-0.5 py-2.5 text-[var(--text-muted)]">
             <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                 <path stroke-linecap="round" stroke-linejoin="round" d="m11.48 3.5 2.4 4.87 5.37.78-3.88 3.79.91 5.35-4.8-2.53-4.8 2.53.91-5.35-3.88-3.79 5.37-.78 2.4-4.87Z"/>
             </svg>
             <span class="text-[10px] font-bold">KPI</span>
         </button>
-        <button data-tab="profile" onclick="switchRootTab('profile')" class="nav-tab flex flex-col items-center gap-0.5 py-2.5 text-slate-400">
+        <button data-tab="profile" onclick="switchRootTab('profile')" class="nav-tab flex flex-col items-center gap-0.5 py-2.5 text-[var(--text-muted)]">
             <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M17.98 18.73A7.49 7.49 0 0 0 12 15.75a7.49 7.49 0 0 0-5.98 2.98m11.96 0a9 9 0 1 0-11.96 0m11.96 0A8.97 8.97 0 0 1 12 21a8.97 8.97 0 0 1-5.98-2.27M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
             </svg>
@@ -76,6 +108,20 @@
     // would just close the whole Mini App from any screen — route it through
     // the same goBack() our in-app arrow uses instead.
     tg?.BackButton?.onClick(() => goBack());
+
+    // "Appearance follows system" — Telegram exposes its own light/dark
+    // colorScheme (which itself follows the device's system theme unless the
+    // user picked a specific Telegram theme), so mirror it onto the page via
+    // [data-theme] rather than adding a manual toggle anywhere in this UI.
+    // Falls back to the OS's own prefers-color-scheme when opened outside
+    // Telegram (e.g. testing this page directly in a browser).
+    function applyColorScheme() {
+        const scheme = tg?.colorScheme
+            || (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', scheme);
+    }
+    applyColorScheme();
+    tg?.onEvent?.('themeChanged', applyColorScheme);
 
     const BOT_USERNAME = '{{ $botUsername }}';
     const initData = tg?.initData || '';
@@ -145,7 +191,7 @@
         'Initiatives':       { catPill: 'bg-amber-600 text-white',   subPill: 'bg-amber-100 text-amber-700' },
         'People':            { catPill: 'bg-pink-700 text-white',    subPill: 'bg-pink-100 text-pink-700' },
     };
-    const DEFAULT_CATEGORY_COLOR = { catPill: 'bg-slate-600 text-white', subPill: 'bg-slate-100 text-slate-600' };
+    const DEFAULT_CATEGORY_COLOR = { catPill: 'bg-slate-600 text-white', subPill: 'bg-[var(--track-bg)] text-[var(--text-secondary)]' };
 
     function sortByCategoryAndSub(items) {
         return [...items].sort((a, b) => {
@@ -161,19 +207,19 @@
         on_track:    { label: 'On Track',    color: 'bg-blue-100 text-blue-700',       dot: 'bg-blue-600' },
         at_risk:     { label: 'At Risk',     color: 'bg-amber-100 text-amber-700',     dot: 'bg-amber-500' },
         in_trouble:  { label: 'In Trouble',  color: 'bg-red-100 text-red-700',         dot: 'bg-red-500' },
-        not_started: { label: 'Not Started', color: 'bg-slate-100 text-slate-500',     dot: 'bg-slate-400' },
+        not_started: { label: 'Not Started', color: 'bg-[var(--track-bg)] text-[var(--text-secondary)]',     dot: 'bg-slate-400' },
     };
 
     const TASK_STATUS_PILL = {
-        not_started: { label: 'Not Started', color: 'bg-slate-100 text-slate-500' },
+        not_started: { label: 'Not Started', color: 'bg-[var(--track-bg)] text-[var(--text-secondary)]' },
         in_progress: { label: 'In Progress', color: 'bg-amber-100 text-amber-700' },
         done:        { label: 'Done',        color: 'bg-emerald-100 text-emerald-700' },
         blocked:     { label: 'Blocked',     color: 'bg-red-100 text-red-700' },
-        cancelled:   { label: 'Cancelled',   color: 'bg-slate-100 text-slate-400' },
+        cancelled:   { label: 'Cancelled',   color: 'bg-[var(--track-bg)] text-[var(--text-muted)]' },
     };
     const PRIORITY_LABELS = {
-        low:      { label: 'Low',      color: 'bg-slate-100 text-slate-600' },
-        medium:   { label: 'Medium',   color: 'bg-blue-50 text-blue-700' },
+        low:      { label: 'Low',      color: 'bg-[var(--track-bg)] text-[var(--text-secondary)]' },
+        medium:   { label: 'Medium',   color: 'bg-[var(--accent-soft)] text-blue-700' },
         high:     { label: 'High',     color: 'bg-amber-100 text-amber-700' },
         critical: { label: 'Critical', color: 'bg-red-100 text-red-700' },
     };
@@ -181,7 +227,7 @@
     function dueDateBadge(dueDate) {
         if (!dueDate) return '';
         const isOverdue = dueDate < todayStr();
-        return `<span class="text-[8px] font-black px-1.5 py-0.5 rounded-full ${isOverdue ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}">${isOverdue ? '⚠ ' : ''}Due ${dueDate}</span>`;
+        return `<span class="text-[8px] font-black px-1.5 py-0.5 rounded-full ${isOverdue ? 'bg-red-100 text-red-700' : 'bg-[var(--track-bg)] text-[var(--text-secondary)]'}">${isOverdue ? '⚠ ' : ''}Due ${dueDate}</span>`;
     }
 
     function achvBadge(score) {
@@ -199,11 +245,11 @@
         const offset = c - (score / 100) * c;
         return `
             <svg width="60" height="60" viewBox="0 0 60 60" class="shrink-0">
-                <circle cx="30" cy="30" r="${r}" fill="none" stroke="#E2E8F0" stroke-width="6"/>
+                <circle cx="30" cy="30" r="${r}" fill="none" stroke="var(--track-bg)" stroke-width="6"/>
                 <circle cx="30" cy="30" r="${r}" fill="none" stroke="${badge.ring}" stroke-width="6"
                     stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${offset}"
                     transform="rotate(-90 30 30)"/>
-                <text x="30" y="35" text-anchor="middle" font-size="13" font-weight="900" fill="#0F172A">${Math.round(scoreRaw)}%</text>
+                <text x="30" y="35" text-anchor="middle" font-size="13" font-weight="900" fill="var(--text-strong)">${Math.round(scoreRaw)}%</text>
             </svg>
         `;
     }
@@ -244,7 +290,7 @@
         document.querySelectorAll('.nav-tab').forEach(btn => {
             const active = btn.dataset.tab === tab;
             btn.classList.toggle('text-[var(--accent)]', active);
-            btn.classList.toggle('text-slate-400', !active);
+            btn.classList.toggle('text-[var(--text-muted)]', !active);
         });
 
         if (tab === 'home') {
@@ -289,7 +335,7 @@
     }
 
     function card(inner, extraClasses = '') {
-        return `<div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 ${extraClasses}">${inner}</div>`;
+        return `<div class="bg-[var(--card-bg)] rounded-2xl border-2 border-[var(--card-border)] p-4 ${extraClasses}">${inner}</div>`;
     }
 
     /* ---------------------------------------------------------------- */
@@ -374,15 +420,15 @@
     function renderError(message) {
         showBootChrome('Performix');
         document.getElementById('app').innerHTML = card(`
-            <p class="text-[13px] text-slate-600 text-center py-6">${message}</p>
+            <p class="text-[13px] text-[var(--text-secondary)] text-center py-6">${message}</p>
         `);
     }
 
     function renderNotLinked() {
         showBootChrome('Not Connected');
         document.getElementById('app').innerHTML = card(`
-            <p class="text-[13px] font-black text-slate-900 mb-1">Not connected yet</p>
-            <p class="text-[12px] text-slate-500 leading-relaxed">
+            <p class="text-[13px] font-black text-[var(--text-strong)] mb-1">Not connected yet</p>
+            <p class="text-[12px] text-[var(--text-secondary)] leading-relaxed">
                 Open the KPI Dashboard on the web, go to <b>My Profile</b>, and tap
                 <b>Connect Telegram</b> to link this account.
             </p>
@@ -393,8 +439,8 @@
         showBootChrome('Performix');
         const botLine = BOT_USERNAME ? ` Open <b>@${BOT_USERNAME}</b> in Telegram and` : ' Open the bot in Telegram and';
         document.getElementById('app').innerHTML = card(`
-            <p class="text-[13px] font-black text-slate-900 mb-1">Open this from Telegram</p>
-            <p class="text-[12px] text-slate-500 leading-relaxed">
+            <p class="text-[13px] font-black text-[var(--text-strong)] mb-1">Open this from Telegram</p>
+            <p class="text-[12px] text-[var(--text-secondary)] leading-relaxed">
                 This page only works when opened inside the Telegram app.${botLine}
                 tap the Performix button there.
             </p>
@@ -406,8 +452,8 @@
         const rows = dashboards.map(d => `
             <button onclick='pickDashboard(${JSON.stringify(d)})' class="w-full text-left tap-card">
                 ${card(`
-                    <p class="text-[13px] font-black text-slate-900">${d.company_display_name}</p>
-                    <p class="text-[11px] text-slate-500 mt-0.5">${d.short_name} · <span class="uppercase font-semibold">${d.role || ''}</span></p>
+                    <p class="text-[13px] font-black text-[var(--text-strong)]">${d.company_display_name}</p>
+                    <p class="text-[11px] text-[var(--text-secondary)] mt-0.5">${d.short_name} · <span class="uppercase font-semibold">${d.role || ''}</span></p>
                 `, 'hover:border-[var(--accent)]')}
             </button>
         `).join('');
@@ -428,14 +474,14 @@
     async function renderSwitchCompany() {
         showSubScreenChrome('Switch Company');
         const app = document.getElementById('app');
-        app.innerHTML = `<p class="text-center text-slate-400 text-[12px] mt-10">Loading…</p>`;
+        app.innerHTML = `<p class="text-center text-[var(--text-muted)] text-[12px] mt-10">Loading…</p>`;
 
         let status;
         try {
             status = await api('/link/status');
         } catch (e) {
             app.innerHTML = card(`
-                <p class="text-[13px] text-slate-600 text-center py-4">Could not load your companies.${e.status ? ` (${e.status})` : ''}</p>
+                <p class="text-[13px] text-[var(--text-secondary)] text-center py-4">Could not load your companies.${e.status ? ` (${e.status})` : ''}</p>
                 <button onclick="renderSwitchCompany()" class="w-full text-center text-[12px] font-bold text-[var(--accent)] py-2">Try again</button>
             `);
             return;
@@ -445,7 +491,7 @@
         window.__dashboards = dashboards;
 
         if (dashboards.length <= 1) {
-            app.innerHTML = card(`<p class="text-[13px] text-slate-600 text-center py-6">You only have one company linked.</p>`);
+            app.innerHTML = card(`<p class="text-[13px] text-[var(--text-secondary)] text-center py-6">You only have one company linked.</p>`);
             return;
         }
 
@@ -456,8 +502,8 @@
                     ${card(`
                         <div class="flex items-center justify-between gap-2">
                             <div class="min-w-0">
-                                <p class="text-[13px] font-black text-slate-900">${d.company_display_name}</p>
-                                <p class="text-[11px] text-slate-500 mt-0.5">${d.short_name} · <span class="uppercase font-semibold">${d.role || ''}</span></p>
+                                <p class="text-[13px] font-black text-[var(--text-strong)]">${d.company_display_name}</p>
+                                <p class="text-[11px] text-[var(--text-secondary)] mt-0.5">${d.short_name} · <span class="uppercase font-semibold">${d.role || ''}</span></p>
                             </div>
                             ${isCurrent ? '<span class="text-[9px] font-black text-emerald-700 px-2 py-0.5 rounded-full bg-emerald-50 shrink-0">Current</span>' : ''}
                         </div>
@@ -515,20 +561,20 @@
         const offset = c - (Math.max(0, Math.min(100, pct)) / 100) * c;
         return `
             <svg width="92" height="92" viewBox="0 0 92 92" class="shrink-0">
-                <circle cx="46" cy="46" r="${r}" fill="none" stroke="#E2E8F0" stroke-width="8"/>
+                <circle cx="46" cy="46" r="${r}" fill="none" stroke="var(--track-bg)" stroke-width="8"/>
                 <circle cx="46" cy="46" r="${r}" fill="none" stroke="#10B981" stroke-width="8" stroke-linecap="round"
                     stroke-dasharray="${c}" stroke-dashoffset="${offset}" transform="rotate(-90 46 46)"/>
-                <text x="46" y="52" text-anchor="middle" font-size="20" font-weight="900" fill="#0F172A">${Math.round(pct)}%</text>
+                <text x="46" y="52" text-anchor="middle" font-size="20" font-weight="900" fill="var(--text-strong)">${Math.round(pct)}%</text>
             </svg>
         `;
     }
 
     function statTile(icon, value, label) {
         return `
-            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 text-center flex-1">
-                <div class="w-8 h-8 rounded-full bg-blue-50 text-[var(--accent)] flex items-center justify-center mx-auto text-[14px]">${icon}</div>
-                <p class="text-[19px] font-black text-slate-900 leading-none mt-2">${value}</p>
-                <p class="text-[8px] text-slate-400 font-bold uppercase tracking-wide mt-1">${label}</p>
+            <div class="bg-[var(--card-bg)] rounded-2xl border-2 border-[var(--card-border)] p-3 text-center flex-1">
+                <div class="w-8 h-8 rounded-full bg-[var(--accent-soft)] text-[var(--accent)] flex items-center justify-center mx-auto text-[14px]">${icon}</div>
+                <p class="text-[19px] font-black text-[var(--text-strong)] leading-none mt-2">${value}</p>
+                <p class="text-[8px] text-[var(--text-muted)] font-bold uppercase tracking-wide mt-1">${label}</p>
             </div>
         `;
     }
@@ -536,7 +582,7 @@
     async function renderHome() {
         showRootChrome('home');
         const app = document.getElementById('app');
-        app.innerHTML = `<p class="text-center text-slate-400 text-[12px] mt-10">Loading…</p>`;
+        app.innerHTML = `<p class="text-center text-[var(--text-muted)] text-[12px] mt-10">Loading…</p>`;
 
         let tasksData, scoreData;
         try {
@@ -545,7 +591,7 @@
                 api(`/tasks/score?employee_id=${state.employeeId}&company_code=${state.companyCode}&period=weekly`),
             ]);
         } catch (e) {
-            app.innerHTML = card(`<p class="text-[13px] text-slate-600 text-center py-6">Could not load your dashboard.</p>`);
+            app.innerHTML = card(`<p class="text-[13px] text-[var(--text-secondary)] text-center py-6">Could not load your dashboard.</p>`);
             return;
         }
 
@@ -564,14 +610,14 @@
 
         app.innerHTML = `
             <div>
-                <p class="text-[18px] font-black text-slate-900">${greetingWord()}, ${state.employeeName}</p>
-                <p class="text-[12px] text-slate-400 mt-0.5">${dateLabel}</p>
+                <p class="text-[18px] font-black text-[var(--text-strong)]">${greetingWord()}, ${state.employeeName}</p>
+                <p class="text-[12px] text-[var(--text-muted)] mt-0.5">${dateLabel}</p>
             </div>
 
             ${card(`
                 <div class="flex items-center gap-4">
                     ${homeProgressRing(dailyProgressPct)}
-                    <p class="text-[13px] font-bold text-slate-500">Daily<br>Progress</p>
+                    <p class="text-[13px] font-bold text-[var(--text-secondary)]">Daily<br>Progress</p>
                 </div>
             `)}
 
@@ -585,13 +631,13 @@
                 <div class="flex items-start gap-3">
                     <div class="w-9 h-9 rounded-full bg-emerald-50 flex items-center justify-center shrink-0 text-[15px]">✨</div>
                     <div class="min-w-0">
-                        <p class="text-[12px] font-black text-slate-900">Daily Insight</p>
-                        <p class="text-[12px] text-slate-500 mt-0.5 leading-relaxed">${buildDailyInsight(tasks)}</p>
+                        <p class="text-[12px] font-black text-[var(--text-strong)]">Daily Insight</p>
+                        <p class="text-[12px] text-[var(--text-secondary)] mt-0.5 leading-relaxed">${buildDailyInsight(tasks)}</p>
                     </div>
                 </div>
             `)}
 
-            <button onclick="renderCreateTask()" class="w-full py-3.5 rounded-2xl bg-[var(--accent)] hover:opacity-90 text-white text-[13px] font-black shadow-lg shadow-blue-500/20 flex items-center justify-center gap-1.5">
+            <button onclick="renderCreateTask()" class="w-full py-3.5 rounded-2xl bg-[var(--accent)] hover:opacity-90 text-[#1a1408] text-[13px] font-black shadow-lg shadow-amber-400/20 flex items-center justify-center gap-1.5">
                 <span class="text-[16px] leading-none">+</span> Create Task
             </button>
         `;
@@ -609,25 +655,25 @@
         const extraKpis = (t.linked_kpis || []).filter(k => k.kpi_id !== primaryKpiId);
         const kpiChips = (primaryKpiId ? (t.linked_kpis || []).filter(k => k.kpi_id === primaryKpiId) : []).concat(extraKpis);
         const chipsHtml = kpiChips.length
-            ? `<div class="flex flex-wrap gap-1.5 mt-2">${kpiChips.map(k => `<span class="px-2 py-0.5 rounded-full bg-blue-50 text-[var(--accent)] text-[8px] font-black">${k.kpi_title}</span>`).join('')}</div>`
+            ? `<div class="flex flex-wrap gap-1.5 mt-2">${kpiChips.map(k => `<span class="px-2 py-0.5 rounded-full bg-[var(--accent-soft)] text-[var(--accent)] text-[8px] font-black">${k.kpi_title}</span>`).join('')}</div>`
             : '';
 
         return card(`
             <div class="flex items-center justify-between gap-2">
-                <p class="text-[13px] font-black text-slate-900 leading-snug min-w-0">${t.title}</p>
+                <p class="text-[13px] font-black text-[var(--text-strong)] leading-snug min-w-0">${t.title}</p>
                 <span class="text-[8px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${statusPill.color}">${statusPill.label}</span>
             </div>
             <div class="flex flex-wrap gap-1.5 mt-2">
                 <span class="text-[8px] font-black px-1.5 py-0.5 rounded-full ${priorityPill.color}">${priorityPill.label}</span>
                 ${dueDateBadge(t.due_date)}
             </div>
-            <div class="w-full h-1.5 bg-slate-100 rounded-full mt-2 overflow-hidden">
+            <div class="w-full h-1.5 bg-[var(--track-bg)] rounded-full mt-2 overflow-hidden">
                 <div class="h-full rounded-full bg-[var(--accent)]" style="width:${t.progress_percentage || 0}%"></div>
             </div>
             ${chipsHtml}
             <div class="flex items-center gap-2 mt-3">
-                <button onclick="renderDailyUpdate('${t.id}')" class="flex-1 py-2 rounded-xl bg-[var(--accent)] hover:opacity-90 text-white text-[11px] font-black">Update</button>
-                <button onclick="renderTaskDetail('${t.id}')" class="flex-1 py-2 rounded-xl bg-white border-2 border-slate-200 text-slate-600 text-[11px] font-black">Details</button>
+                <button onclick="renderDailyUpdate('${t.id}')" class="flex-1 py-2 rounded-xl bg-[var(--accent)] hover:opacity-90 text-[#1a1408] text-[11px] font-black">Update</button>
+                <button onclick="renderTaskDetail('${t.id}')" class="flex-1 py-2 rounded-xl bg-[var(--card-bg)] border-2 border-[var(--card-border)] text-[var(--text-secondary)] text-[11px] font-black">Details</button>
             </div>
         `);
     }
@@ -635,7 +681,7 @@
     async function renderTasksTab() {
         showRootChrome('tasks');
         const app = document.getElementById('app');
-        app.innerHTML = `<p class="text-center text-slate-400 text-[12px] mt-10">Loading your tasks…</p>`;
+        app.innerHTML = `<p class="text-center text-[var(--text-muted)] text-[12px] mt-10">Loading your tasks…</p>`;
 
         let data;
         try {
@@ -649,13 +695,13 @@
 
         const header = `
             <div class="flex items-center justify-between">
-                <p class="text-[16px] font-black text-slate-900">My Tasks</p>
-                <button onclick="renderCreateTask()" class="w-9 h-9 rounded-full bg-[var(--accent)] text-white text-[18px] font-black flex items-center justify-center leading-none shadow-lg shadow-blue-500/20">+</button>
+                <p class="text-[16px] font-black text-[var(--text-strong)]">My Tasks</p>
+                <button onclick="renderCreateTask()" class="w-9 h-9 rounded-full bg-[var(--accent)] text-[#1a1408] text-[18px] font-black flex items-center justify-center leading-none shadow-lg shadow-amber-400/20">+</button>
             </div>
         `;
 
         if (!window.__myTasks.length) {
-            app.innerHTML = header + `<div class="mt-3">${card(`<p class="text-[13px] text-slate-600 text-center py-6">No tasks yet — tap "+" to create one.</p>`)}</div>`;
+            app.innerHTML = header + `<div class="mt-3">${card(`<p class="text-[13px] text-[var(--text-secondary)] text-center py-6">No tasks yet — tap "+" to create one.</p>`)}</div>`;
             return;
         }
 
@@ -700,7 +746,7 @@
     async function renderCreateTask(isUnplanned = false) {
         showSubScreenChrome('Create Task');
         const app = document.getElementById('app');
-        app.innerHTML = `<p class="text-center text-slate-400 text-[12px] mt-10">Loading…</p>`;
+        app.innerHTML = `<p class="text-center text-[var(--text-muted)] text-[12px] mt-10">Loading…</p>`;
 
         let kpiOptions = [];
         try {
@@ -711,41 +757,41 @@
         }
 
         app.innerHTML = card(`
-            <p class="text-[10px] font-bold text-slate-600 mb-1">Task Name</p>
+            <p class="text-[10px] font-bold text-[var(--text-secondary)] mb-1">Task Name</p>
             <input type="text" id="ctTitle" placeholder="Enter task name" oninput="debounceKpiSuggestion()"
-                class="w-full text-[13px] px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none focus:border-[var(--accent)] focus:bg-white">
+                class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
 
-            <p class="text-[10px] font-bold text-slate-600 mt-3 mb-1">Due Date</p>
-            <input type="date" id="ctDueDate" class="w-full text-[13px] px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none focus:border-[var(--accent)] focus:bg-white">
+            <p class="text-[10px] font-bold text-[var(--text-secondary)] mt-3 mb-1">Due Date</p>
+            <input type="date" id="ctDueDate" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
 
-            <p class="text-[10px] font-bold text-slate-600 mt-3 mb-1">Priority</p>
-            <select id="ctPriority" class="w-full text-[13px] px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none focus:border-[var(--accent)] focus:bg-white">
+            <p class="text-[10px] font-bold text-[var(--text-secondary)] mt-3 mb-1">Priority</p>
+            <select id="ctPriority" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
                 ${Object.entries(PRIORITY_LABELS).map(([key, p]) => `<option value="${key}" ${key === 'medium' ? 'selected' : ''}>${p.label}</option>`).join('')}
             </select>
 
             <div class="flex items-center justify-between mt-3 mb-1">
-                <p class="text-[10px] font-bold text-slate-600">Align to KPI <span class="text-slate-400 font-normal">(optional, pick any that apply)</span></p>
+                <p class="text-[10px] font-bold text-[var(--text-secondary)]">Align to KPI <span class="text-[var(--text-muted)] font-normal">(optional, pick any that apply)</span></p>
                 <button type="button" onclick="renderCreateTask(${isUnplanned ? 'true' : 'false'})" class="text-[9px] font-black text-[var(--accent)] shrink-0">🔄 Refresh</button>
             </div>
             <div id="ctKpiOptions" class="space-y-1.5">
                 ${kpiOptions.length
                     ? kpiOptions.map(k => `
-                        <label class="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer">
+                        <label class="flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--card-border)] bg-[var(--input-bg)] cursor-pointer">
                             <input type="checkbox" value="${k.kpi_id}" onchange="clearKpiSuggestionPill()" class="ct-kpi-checkbox w-4 h-4 accent-[var(--accent)] shrink-0">
-                            <span class="text-[12px] font-bold text-slate-700 min-w-0">${k.kpi_title}</span>
+                            <span class="text-[12px] font-bold text-[var(--text-secondary)] min-w-0">${k.kpi_title}</span>
                         </label>
                     `).join('')
-                    : `<p class="text-[11px] text-slate-400">No open KPIs right now.</p>`}
+                    : `<p class="text-[11px] text-[var(--text-muted)]">No open KPIs right now.</p>`}
             </div>
             <p id="ctKpiSuggestPill" class="hidden mt-1.5"></p>
 
             <div class="flex items-start gap-2 mt-3 px-1">
-                <span class="text-slate-400 text-[12px]">ⓘ</span>
-                <p class="text-[10px] text-slate-400 leading-relaxed">Task activity will be calculated later. It will not update the KPI actual automatically.</p>
+                <span class="text-[var(--text-muted)] text-[12px]">ⓘ</span>
+                <p class="text-[10px] text-[var(--text-muted)] leading-relaxed">Task activity will be calculated later. It will not update the KPI actual automatically.</p>
             </div>
 
-            <button onclick="saveNewTaskSimple(false)" class="w-full mt-4 py-3 rounded-2xl bg-[var(--accent)] hover:opacity-90 text-white text-[13px] font-black">Save Task</button>
-            <button onclick="saveNewTaskSimple(true)" class="w-full mt-2 py-3 rounded-2xl bg-white border-2 border-slate-200 text-slate-700 text-[13px] font-black">Save & Add Another</button>
+            <button onclick="saveNewTaskSimple(false)" class="w-full mt-4 py-3 rounded-2xl bg-[var(--accent)] hover:opacity-90 text-[#1a1408] text-[13px] font-black">Save Task</button>
+            <button onclick="saveNewTaskSimple(true)" class="w-full mt-2 py-3 rounded-2xl bg-white border-2 border-[var(--card-border)] text-[var(--text-secondary)] text-[13px] font-black">Save & Add Another</button>
             <p id="ctFeedback" class="hidden text-[10px] font-bold text-red-600 mt-2 text-center"></p>
         `);
 
@@ -840,19 +886,19 @@
         }
 
         app.innerHTML = card(`
-            <p class="text-[10px] font-bold text-slate-600 mb-1">Task Name</p>
+            <p class="text-[10px] font-bold text-[var(--text-secondary)] mb-1">Task Name</p>
             <input type="text" id="etTitle" value="${(t.title || '').replace(/"/g, '&quot;')}"
-                class="w-full text-[13px] px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none focus:border-[var(--accent)] focus:bg-white">
+                class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
 
-            <p class="text-[10px] font-bold text-slate-600 mt-3 mb-1">Due Date</p>
-            <input type="date" id="etDueDate" value="${t.due_date || ''}" class="w-full text-[13px] px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none focus:border-[var(--accent)] focus:bg-white">
+            <p class="text-[10px] font-bold text-[var(--text-secondary)] mt-3 mb-1">Due Date</p>
+            <input type="date" id="etDueDate" value="${t.due_date || ''}" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
 
-            <p class="text-[10px] font-bold text-slate-600 mt-3 mb-1">Priority</p>
-            <select id="etPriority" class="w-full text-[13px] px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none focus:border-[var(--accent)] focus:bg-white">
+            <p class="text-[10px] font-bold text-[var(--text-secondary)] mt-3 mb-1">Priority</p>
+            <select id="etPriority" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
                 ${Object.entries(PRIORITY_LABELS).map(([key, p]) => `<option value="${key}" ${key === t.priority ? 'selected' : ''}>${p.label}</option>`).join('')}
             </select>
 
-            <button onclick="saveEditTask('${taskId}')" class="w-full mt-4 py-3 rounded-2xl bg-[var(--accent)] hover:opacity-90 text-white text-[13px] font-black">Save Changes</button>
+            <button onclick="saveEditTask('${taskId}')" class="w-full mt-4 py-3 rounded-2xl bg-[var(--accent)] hover:opacity-90 text-[#1a1408] text-[13px] font-black">Save Changes</button>
             <p id="etFeedback" class="hidden text-[10px] font-bold text-red-600 mt-2 text-center"></p>
         `);
     }
@@ -918,7 +964,7 @@
     function statusRadioBox(key, label, isSelected) {
         return `
             <button type="button" onclick="selectDailyStatus('${key}')" data-status-option="${key}"
-                class="daily-status-btn flex-1 py-3 rounded-xl border-2 text-[11px] font-bold text-center transition ${isSelected ? 'border-[var(--accent)] bg-blue-50 text-[var(--accent)]' : 'border-slate-200 text-slate-500'}">
+                class="daily-status-btn flex-1 py-3 rounded-xl border-2 text-[11px] font-bold text-center transition ${isSelected ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]' : 'border-[var(--card-border)] text-[var(--text-secondary)]'}">
                 ${label}
             </button>
         `;
@@ -927,7 +973,7 @@
     async function renderDailyUpdate(taskId) {
         showSubScreenChrome('5:30 PM Task Update');
         const app = document.getElementById('app');
-        app.innerHTML = `<p class="text-center text-slate-400 text-[12px] mt-10">Loading…</p>`;
+        app.innerHTML = `<p class="text-center text-[var(--text-muted)] text-[12px] mt-10">Loading…</p>`;
 
         let data;
         try {
@@ -944,17 +990,17 @@
         app.innerHTML = `
             ${card(`
                 <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center shrink-0 text-[16px]">📄</div>
+                    <div class="w-9 h-9 rounded-xl bg-[var(--accent-soft)] flex items-center justify-center shrink-0 text-[16px]">📄</div>
                     <div class="min-w-0">
-                        <p class="text-[13px] font-black text-slate-900 leading-snug">${t.title}</p>
-                        ${t.description ? `<p class="text-[11px] text-slate-400 mt-0.5">${t.description}</p>` : ''}
+                        <p class="text-[13px] font-black text-[var(--text-strong)] leading-snug">${t.title}</p>
+                        ${t.description ? `<p class="text-[11px] text-[var(--text-muted)] mt-0.5">${t.description}</p>` : ''}
                     </div>
                 </div>
             `)}
 
             <div class="h-2"></div>
             ${card(`
-                <p class="text-[11px] font-black text-slate-700 mb-2">Status</p>
+                <p class="text-[11px] font-black text-[var(--text-secondary)] mb-2">Status</p>
                 <div class="flex gap-2">
                     ${statusRadioBox('not_started', 'Not Started', t.status === 'not_started')}
                     ${statusRadioBox('in_progress', 'In Progress', t.status === 'in_progress')}
@@ -967,22 +1013,22 @@
                 <input type="hidden" id="dailyStatusInput" value="${t.status}">
 
                 <div class="flex items-center justify-between mt-4 mb-1">
-                    <p class="text-[11px] font-black text-slate-700">Progress</p>
+                    <p class="text-[11px] font-black text-[var(--text-secondary)]">Progress</p>
                     <p class="text-[11px] font-black text-[var(--accent)]"><span id="dailyProgressValue">${t.progress_percentage ?? 0}</span>%</p>
                 </div>
                 <input type="range" min="0" max="100" id="dailyProgressInput" value="${t.progress_percentage ?? 0}"
                     oninput="document.getElementById('dailyProgressValue').textContent = this.value"
                     class="w-full accent-[var(--accent)]">
-                <div class="flex items-center justify-between text-[9px] text-slate-400"><span>0%</span><span>100%</span></div>
+                <div class="flex items-center justify-between text-[9px] text-[var(--text-muted)]"><span>0%</span><span>100%</span></div>
 
-                <p class="text-[11px] font-black text-slate-700 mt-4 mb-1">Today's Update</p>
+                <p class="text-[11px] font-black text-[var(--text-secondary)] mt-4 mb-1">Today's Update</p>
                 <textarea id="dailyNoteInput" rows="3" maxlength="500" oninput="updateNoteCounter()" placeholder="Share what you worked on today…"
-                    class="w-full text-[13px] px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none focus:border-[var(--accent)] focus:bg-white resize-none"></textarea>
-                <p class="text-[9px] text-slate-400 text-right mt-0.5"><span id="dailyNoteCount">0</span>/500</p>
+                    class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)] resize-none"></textarea>
+                <p class="text-[9px] text-[var(--text-muted)] text-right mt-0.5"><span id="dailyNoteCount">0</span>/500</p>
 
-                <button onclick="renderCreateTask(true)" class="w-full mt-2 py-2.5 rounded-xl border-2 border-dashed border-slate-300 text-slate-500 text-[11px] font-bold">+ Add an unplanned task</button>
+                <button onclick="renderCreateTask(true)" class="w-full mt-2 py-2.5 rounded-xl border-2 border-dashed border-slate-300 text-[var(--text-secondary)] text-[11px] font-bold">+ Add an unplanned task</button>
 
-                <button onclick="submitDailyUpdate('${t.id}')" class="w-full mt-3 py-3 rounded-2xl bg-[var(--accent)] hover:opacity-90 text-white text-[13px] font-black">Submit Daily Update</button>
+                <button onclick="submitDailyUpdate('${t.id}')" class="w-full mt-3 py-3 rounded-2xl bg-[var(--accent)] hover:opacity-90 text-[#1a1408] text-[13px] font-black">Submit Daily Update</button>
 
                 ${otherOpenCount > 0 ? `
                     <div class="flex items-center gap-2 mt-3 px-3 py-2 rounded-xl bg-red-50 border border-red-100">
@@ -1000,10 +1046,10 @@
         document.querySelectorAll('.daily-status-btn').forEach(btn => {
             const active = btn.dataset.statusOption === key;
             btn.classList.toggle('border-[var(--accent)]', active);
-            btn.classList.toggle('bg-blue-50', active);
+            btn.classList.toggle('bg-[var(--accent-soft)]', active);
             btn.classList.toggle('text-[var(--accent)]', active);
-            btn.classList.toggle('border-slate-200', !active);
-            btn.classList.toggle('text-slate-500', !active);
+            btn.classList.toggle('border-[var(--card-border)]', !active);
+            btn.classList.toggle('text-[var(--text-secondary)]', !active);
         });
     }
 
@@ -1057,9 +1103,9 @@
         if (u.reschedule_reason) parts.push(`rescheduled: "${u.reschedule_reason}"`);
 
         return `
-            <div class="py-2 border-b border-slate-100 last:border-0">
-                <p class="text-[11px] text-slate-600 leading-relaxed">${parts.join(' · ') || 'Logged an update'}</p>
-                <p class="text-[9px] text-slate-400 mt-0.5">${when}</p>
+            <div class="py-2 border-b border-[var(--card-border)] last:border-0">
+                <p class="text-[11px] text-[var(--text-secondary)] leading-relaxed">${parts.join(' · ') || 'Logged an update'}</p>
+                <p class="text-[9px] text-[var(--text-muted)] mt-0.5">${when}</p>
             </div>
         `;
     }
@@ -1067,7 +1113,7 @@
     async function renderTaskDetail(taskId) {
         showSubScreenChrome('Task Details');
         const app = document.getElementById('app');
-        app.innerHTML = `<p class="text-center text-slate-400 text-[12px] mt-10">Loading…</p>`;
+        app.innerHTML = `<p class="text-center text-[var(--text-muted)] text-[12px] mt-10">Loading…</p>`;
 
         let data;
         try {
@@ -1086,55 +1132,55 @@
 
         const kpiChips = (t.linked_kpis || []).length
             ? t.linked_kpis.map(k => `
-                <div class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-blue-50 mt-1.5">
+                <div class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-[var(--accent-soft)] mt-1.5">
                     <p class="text-[11px] font-black text-[var(--accent)] min-w-0">${k.kpi_title}${k.ai_suggested ? ' 🤖' : ''}</p>
                 </div>
             `).join('')
-            : `<p class="text-[11px] text-slate-400 mt-1.5">Not linked to a KPI yet.</p>`;
+            : `<p class="text-[11px] text-[var(--text-muted)] mt-1.5">Not linked to a KPI yet.</p>`;
 
         app.innerHTML = `
             ${card(`
-                <p class="text-[14px] font-black text-slate-900 leading-snug">${t.title}</p>
-                ${t.description ? `<p class="text-[11px] text-slate-500 mt-1.5 leading-relaxed">${t.description}</p>` : ''}
+                <p class="text-[14px] font-black text-[var(--text-strong)] leading-snug">${t.title}</p>
+                ${t.description ? `<p class="text-[11px] text-[var(--text-secondary)] mt-1.5 leading-relaxed">${t.description}</p>` : ''}
                 <div class="flex flex-wrap gap-1.5 mt-2">
                     <span class="text-[8px] font-black px-1.5 py-0.5 rounded-full ${statusPill.color}">${statusPill.label}</span>
                     <span class="text-[8px] font-black px-1.5 py-0.5 rounded-full ${priorityPill.color}">${priorityPill.label} priority</span>
                     ${dueDateBadge(t.due_date)}
                 </div>
                 <div class="flex items-center gap-2 mt-3">
-                    <button onclick="renderDailyUpdate('${t.id}')" class="flex-1 py-2 rounded-xl bg-[var(--accent)] hover:opacity-90 text-white text-[11px] font-black">Daily Update</button>
-                    <button onclick="renderEditTask('${t.id}')" class="px-3 py-2 rounded-xl bg-white border-2 border-slate-200 text-slate-600 text-[11px] font-black">✎ Edit</button>
+                    <button onclick="renderDailyUpdate('${t.id}')" class="flex-1 py-2 rounded-xl bg-[var(--accent)] hover:opacity-90 text-[#1a1408] text-[11px] font-black">Daily Update</button>
+                    <button onclick="renderEditTask('${t.id}')" class="px-3 py-2 rounded-xl bg-[var(--card-bg)] border-2 border-[var(--card-border)] text-[var(--text-secondary)] text-[11px] font-black">✎ Edit</button>
                     <button onclick="confirmDeleteTask('${t.id}')" class="px-3 py-2 rounded-xl bg-white border-2 border-red-200 text-red-600 text-[11px] font-black">🗑</button>
                 </div>
             `)}
 
             <div class="h-2"></div>
             ${card(`
-                <p class="text-[12px] font-black text-slate-900 mb-2">Quick number update</p>
+                <p class="text-[12px] font-black text-[var(--text-strong)] mb-2">Quick number update</p>
                 <div class="flex items-center gap-2">
                     <input type="number" step="any" placeholder="e.g. 50 or -10" id="taskDeltaInput"
-                        class="flex-1 min-w-0 text-[13px] px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 outline-none focus:border-[var(--accent)] focus:bg-white">
-                    <button onclick="submitTaskProgress('${t.id}')" class="px-5 py-2.5 rounded-xl bg-[var(--accent)] hover:opacity-90 text-white text-[12px] font-black shrink-0">Add</button>
+                        class="flex-1 min-w-0 text-[13px] px-3 py-2.5 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)] focus:bg-[var(--input-bg)]">
+                    <button onclick="submitTaskProgress('${t.id}')" class="px-5 py-2.5 rounded-xl bg-[var(--accent)] hover:opacity-90 text-[#1a1408] text-[12px] font-black shrink-0">Add</button>
                 </div>
-                <p class="text-[9px] text-slate-400 mt-1">Use a minus sign to reduce. For tasks that track a number (target ${formatUnit(t.target, t.unit)}, actual ${formatUnit(t.actual, t.unit)}).</p>
+                <p class="text-[9px] text-[var(--text-muted)] mt-1">Use a minus sign to reduce. For tasks that track a number (target ${formatUnit(t.target, t.unit)}, actual ${formatUnit(t.actual, t.unit)}).</p>
                 <p id="taskProgressFeedback" class="hidden text-[10px] font-bold mt-2"></p>
             `)}
 
             <div class="h-2"></div>
             ${card(`
                 <div class="flex items-center justify-between">
-                    <p class="text-[12px] font-black text-slate-900">KPI alignment</p>
-                    <button onclick="requestKpiSuggestion('${t.id}')" class="text-[10px] font-black text-[var(--accent)] bg-blue-50 px-2.5 py-1 rounded-full">🤖 Suggest with AI</button>
+                    <p class="text-[12px] font-black text-[var(--text-strong)]">KPI alignment</p>
+                    <button onclick="requestKpiSuggestion('${t.id}')" class="text-[10px] font-black text-[var(--accent)] bg-[var(--accent-soft)] px-2.5 py-1 rounded-full">🤖 Suggest with AI</button>
                 </div>
                 ${kpiChips}
                 <p id="kpiSuggestionBox" class="hidden mt-2"></p>
-                <button onclick="renderLinkTaskKpis('${t.id}')" class="w-full mt-2 py-2 rounded-xl bg-white border-2 border-slate-200 text-slate-600 text-[11px] font-black">Edit KPI Links</button>
+                <button onclick="renderLinkTaskKpis('${t.id}')" class="w-full mt-2 py-2 rounded-xl bg-[var(--card-bg)] border-2 border-[var(--card-border)] text-[var(--text-secondary)] text-[11px] font-black">Edit KPI Links</button>
             `)}
 
             <div class="h-2"></div>
             ${card(`
-                <p class="text-[12px] font-black text-slate-900 mb-1">History</p>
-                <div>${window.__taskUpdates.length ? window.__taskUpdates.map(updateHistoryRow).join('') : '<p class="text-[11px] text-slate-400 py-2">No updates logged yet.</p>'}</div>
+                <p class="text-[12px] font-black text-[var(--text-strong)] mb-1">History</p>
+                <div>${window.__taskUpdates.length ? window.__taskUpdates.map(updateHistoryRow).join('') : '<p class="text-[11px] text-[var(--text-muted)] py-2">No updates logged yet.</p>'}</div>
             `)}
         `;
     }
@@ -1178,7 +1224,7 @@
     async function requestKpiSuggestion(taskId) {
         const box = document.getElementById('kpiSuggestionBox');
         box.classList.remove('hidden');
-        box.innerHTML = `<span class="text-[10px] text-slate-400">Thinking…</span>`;
+        box.innerHTML = `<span class="text-[10px] text-[var(--text-muted)]">Thinking…</span>`;
 
         try {
             const data = await api(`/project-tasks/${taskId}/kpi-suggestion`, {
@@ -1186,7 +1232,7 @@
                 body: JSON.stringify({ employee_id: state.employeeId, company_code: state.companyCode }),
             });
             if (!data.suggestion) {
-                box.innerHTML = `<span class="text-[10px] text-slate-500">No confident match found among your KPIs.</span>`;
+                box.innerHTML = `<span class="text-[10px] text-[var(--text-secondary)]">No confident match found among your KPIs.</span>`;
                 return;
             }
             const s = data.suggestion;
@@ -1226,7 +1272,7 @@
 
         showSubScreenChrome('Edit KPI Links');
         const app = document.getElementById('app');
-        app.innerHTML = `<p class="text-center text-slate-400 text-[12px] mt-10">Loading KPIs…</p>`;
+        app.innerHTML = `<p class="text-center text-[var(--text-muted)] text-[12px] mt-10">Loading KPIs…</p>`;
 
         let data;
         try {
@@ -1249,18 +1295,18 @@
                             <input type="checkbox" value="${k.kpi_id}" class="kpi-link-checkbox w-5 h-5 accent-[var(--accent)] shrink-0" ${checked}>
                             <div class="min-w-0">
                                 <span class="px-2 py-0.5 rounded-full ${cat.catPill} text-[8px] font-black">${k.category || '-'}</span>
-                                <p class="text-[13px] font-black text-slate-900 mt-1">${k.kpi_title}</p>
+                                <p class="text-[13px] font-black text-[var(--text-strong)] mt-1">${k.kpi_title}</p>
                             </div>
                         </div>
                     `)}
                 </label>
             `;
-        }).join('<div class="h-1.5"></div>') || `<p class="text-[12px] text-slate-500 text-center py-6">No open KPIs with a matching "${t.unit}" unit right now.</p>`;
+        }).join('<div class="h-1.5"></div>') || `<p class="text-[12px] text-[var(--text-secondary)] text-center py-6">No open KPIs with a matching "${t.unit}" unit right now.</p>`;
 
         app.innerHTML = `
-            <p class="text-[11px] text-slate-500 mb-2 px-1">Task "<b>${t.title}</b>" — tick which KPI(s) to align this to, or leave unticked for none. Doesn't change any KPI's actual — this is for visibility only.</p>
+            <p class="text-[11px] text-[var(--text-secondary)] mb-2 px-1">Task "<b>${t.title}</b>" — tick which KPI(s) to align this to, or leave unticked for none. Doesn't change any KPI's actual — this is for visibility only.</p>
             <div>${rows}</div>
-            <button onclick="saveLinkKpis('${taskId}')" class="w-full mt-4 py-3 rounded-2xl bg-[var(--accent)] hover:opacity-90 text-white text-[13px] font-black">
+            <button onclick="saveLinkKpis('${taskId}')" class="w-full mt-4 py-3 rounded-2xl bg-[var(--accent)] hover:opacity-90 text-[#1a1408] text-[13px] font-black">
                 Save Links
             </button>
             <p id="linkKpisFeedback" class="hidden text-[10px] font-bold text-red-600 mt-2 text-center"></p>
@@ -1291,8 +1337,8 @@
 
     function quarterLabel(state) {
         if (state === 'current') return { text: '✏️ Update here', cls: 'bg-red-100 text-red-700' };
-        if (state === 'ended') return { text: '🔒 Done', cls: 'bg-slate-100 text-slate-500' };
-        return { text: '🔒 Upcoming', cls: 'bg-slate-100 text-slate-400' };
+        if (state === 'ended') return { text: '🔒 Done', cls: 'bg-[var(--track-bg)] text-[var(--text-secondary)]' };
+        return { text: '🔒 Upcoming', cls: 'bg-[var(--track-bg)] text-[var(--text-muted)]' };
     }
 
     function quarterRow(kpiId, q, unit) {
@@ -1304,28 +1350,28 @@
         const updateControl = isCurrent ? `
             <div class="mt-2.5 flex items-center gap-2">
                 <input type="number" step="any" placeholder="e.g. 50 or -10" id="delta-${kpiId}"
-                    class="flex-1 min-w-0 text-[12px] px-3 py-2 rounded-xl border border-slate-200 bg-white outline-none focus:border-[var(--accent)]">
-                <button onclick="submitDelta('${kpiId}','${q.id}')" class="px-4 py-2 rounded-xl bg-[var(--accent)] hover:opacity-90 text-white text-[11px] font-black shrink-0">
+                    class="flex-1 min-w-0 text-[12px] px-3 py-2 rounded-xl border-2 border-[var(--card-border)] bg-[var(--input-bg)] outline-none focus:border-[var(--accent)]">
+                <button onclick="submitDelta('${kpiId}','${q.id}')" class="px-4 py-2 rounded-xl bg-[var(--accent)] hover:opacity-90 text-[#1a1408] text-[11px] font-black shrink-0">
                     Update
                 </button>
             </div>
-            <p class="text-[9px] text-slate-400 mt-1">How much did today add? Use a minus sign to reduce.</p>
+            <p class="text-[9px] text-[var(--text-muted)] mt-1">How much did today add? Use a minus sign to reduce.</p>
             <p id="feedback-${kpiId}" class="hidden text-[10px] font-bold mt-1.5"></p>
         ` : '';
 
         return `
-            <div class="rounded-xl px-3 py-2.5 border ${isCurrent ? 'bg-blue-50 border-[var(--accent)]' : 'bg-slate-50 border-slate-200'}">
+            <div class="rounded-xl px-3 py-2.5 border ${isCurrent ? 'bg-[var(--accent-soft)] border-[var(--accent)]' : 'bg-[var(--card-bg)] border-[var(--card-border)]'}">
                 <div class="flex items-center justify-between gap-2">
-                    <p class="text-[11px] font-black ${isCurrent ? 'text-[var(--accent)]' : 'text-slate-600'}">${q.quarter}</p>
+                    <p class="text-[11px] font-black ${isCurrent ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'}">${q.quarter}</p>
                     <span class="text-[8px] font-black px-1.5 py-0.5 rounded-full ${label.cls}">${label.text}</span>
                 </div>
                 <div class="w-full h-1.5 bg-slate-200 rounded-full mt-2 overflow-hidden">
                     <div class="h-full rounded-full bg-gradient-to-r ${badge.bar}" style="width:${barPct}%"></div>
                 </div>
                 <div class="flex items-center justify-between mt-1.5">
-                    <p class="text-[10px] text-slate-500">Target: <span class="font-bold text-slate-700">${formatUnit(q.target, unit)}</span></p>
-                    <p class="text-[10px] text-slate-500">Actual: <span class="font-bold text-slate-700">${formatUnit(q.actual, unit)}</span></p>
-                    <p class="text-[10px] font-black ${isCurrent ? 'text-[var(--accent)]' : 'text-slate-500'}">${q.achievement_percentage}%</p>
+                    <p class="text-[10px] text-[var(--text-secondary)]">Target: <span class="font-bold text-[var(--text-secondary)]">${formatUnit(q.target, unit)}</span></p>
+                    <p class="text-[10px] text-[var(--text-secondary)]">Actual: <span class="font-bold text-[var(--text-secondary)]">${formatUnit(q.actual, unit)}</span></p>
+                    <p class="text-[10px] font-black ${isCurrent ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'}">${q.achievement_percentage}%</p>
                 </div>
                 ${updateControl}
             </div>
@@ -1335,7 +1381,7 @@
     async function renderMyKpis() {
         showRootChrome('kpi');
         const app = document.getElementById('app');
-        app.innerHTML = `<p class="text-center text-slate-400 text-[12px] mt-10">Loading…</p>`;
+        app.innerHTML = `<p class="text-center text-[var(--text-muted)] text-[12px] mt-10">Loading…</p>`;
 
         let data;
         try {
@@ -1346,7 +1392,7 @@
         }
 
         if (!data.kpis.length) {
-            app.innerHTML = card(`<p class="text-[13px] text-slate-600 text-center py-6">No KPIs found for this financial year.</p>`);
+            app.innerHTML = card(`<p class="text-[13px] text-[var(--text-secondary)] text-center py-6">No KPIs found for this financial year.</p>`);
             return;
         }
 
@@ -1361,7 +1407,7 @@
             if (k.category !== lastCategory) {
                 html += `
                     <div class="flex items-center gap-2 mt-4 mb-1 px-1">
-                        <p class="text-[11px] font-black uppercase tracking-wide text-slate-500">${k.category || 'Other'}</p>
+                        <p class="text-[11px] font-black uppercase tracking-wide text-[var(--text-secondary)]">${k.category || 'Other'}</p>
                     </div>
                 `;
                 lastCategory = k.category;
@@ -1384,26 +1430,26 @@
                                 <span class="w-1.5 h-1.5 rounded-full ${sDef.dot}"></span>${sDef.label}
                             </span>
                         </div>
-                        <p class="text-[14px] font-black text-slate-900 leading-snug">${k.kpi_title}</p>
+                        <p class="text-[14px] font-black text-[var(--text-strong)] leading-snug">${k.kpi_title}</p>
                         <span class="inline-block mt-2 px-2 py-0.5 rounded-full ${aBadge.color} text-[9px] font-black">${aBadge.label}</span>
                     </div>
                     ${progressRing(k.achievement_percentage)}
                 </div>
 
-                <div class="w-full h-1.5 bg-slate-100 rounded-full mt-3 overflow-hidden">
+                <div class="w-full h-1.5 bg-[var(--track-bg)] rounded-full mt-3 overflow-hidden">
                     <div class="h-full rounded-full bg-gradient-to-r ${aBadge.bar}" style="width:${pct}%"></div>
                 </div>
                 <div class="flex items-center justify-between mt-1.5">
-                    <p class="text-[10px] text-slate-500 font-bold">Overall (Full Year)</p>
-                    <p class="text-[11px] text-slate-700 font-black">${formatUnit(k.actual_value, k.unit)} / ${formatUnit(annualTarget, k.unit)}</p>
+                    <p class="text-[10px] text-[var(--text-secondary)] font-bold">Overall (Full Year)</p>
+                    <p class="text-[11px] text-[var(--text-secondary)] font-black">${formatUnit(k.actual_value, k.unit)} / ${formatUnit(annualTarget, k.unit)}</p>
                 </div>
 
-                <div class="mt-3 pt-3 border-t border-dashed border-slate-200">
-                    <p class="text-[9px] uppercase tracking-wide text-slate-400 font-black mb-2">By Quarter</p>
-                    <div class="space-y-1.5">${quarterRows || '<p class="text-[10px] text-slate-400">No quarters set up yet.</p>'}</div>
+                <div class="mt-3 pt-3 border-t border-dashed border-[var(--card-border)]">
+                    <p class="text-[9px] uppercase tracking-wide text-[var(--text-muted)] font-black mb-2">By Quarter</p>
+                    <div class="space-y-1.5">${quarterRows || '<p class="text-[10px] text-[var(--text-muted)]">No quarters set up yet.</p>'}</div>
                 </div>
 
-                <button onclick='renderKpiTaskHistory(${JSON.stringify(k.kpi_id)}, ${JSON.stringify(k.kpi_title)})' class="w-full mt-3 py-2 rounded-xl bg-white border-2 border-slate-200 text-slate-600 text-[10px] font-black">
+                <button onclick='renderKpiTaskHistory(${JSON.stringify(k.kpi_id)}, ${JSON.stringify(k.kpi_title)})' class="w-full mt-3 py-2 rounded-xl bg-[var(--card-bg)] border-2 border-[var(--card-border)] text-[var(--text-secondary)] text-[10px] font-black">
                     📜 Tasks & History
                 </button>
             `) + '<div class="h-2"></div>';
@@ -1452,7 +1498,7 @@
     async function renderKpiTaskHistory(kpiId, kpiTitle) {
         showSubScreenChrome('Tasks & History');
         const app = document.getElementById('app');
-        app.innerHTML = `<p class="text-center text-slate-400 text-[12px] mt-10">Loading…</p>`;
+        app.innerHTML = `<p class="text-center text-[var(--text-muted)] text-[12px] mt-10">Loading…</p>`;
 
         let data;
         try {
@@ -1464,8 +1510,8 @@
 
         if (!data.tasks.length) {
             app.innerHTML = card(`
-                <p class="text-[13px] font-black text-slate-900 mb-1">${kpiTitle}</p>
-                <p class="text-[12px] text-slate-500 leading-relaxed mt-2">No tasks aligned to this KPI yet.</p>
+                <p class="text-[13px] font-black text-[var(--text-strong)] mb-1">${kpiTitle}</p>
+                <p class="text-[12px] text-[var(--text-secondary)] leading-relaxed mt-2">No tasks aligned to this KPI yet.</p>
             `);
             return;
         }
@@ -1474,37 +1520,37 @@
             const pct = t.target > 0 ? Math.max(0, Math.min(100, (t.actual / t.target) * 100)) : 0;
             const badge = achvBadge(pct);
             const historyRows = t.updates.length ? t.updates.map(u => `
-                <div class="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0">
-                    <p class="text-[10px] text-slate-500">${formatDateTime(u.created_at)}</p>
+                <div class="flex items-center justify-between py-1.5 border-b border-[var(--card-border)] last:border-0">
+                    <p class="text-[10px] text-[var(--text-secondary)]">${formatDateTime(u.created_at)}</p>
                     <p class="text-[10px] font-black ${u.delta >= 0 ? 'text-emerald-600' : 'text-red-600'}">${u.delta >= 0 ? '+' : ''}${formatUnit(u.delta, t.unit)}</p>
-                    <p class="text-[10px] text-slate-400">→ ${formatUnit(u.new_actual, t.unit)}</p>
+                    <p class="text-[10px] text-[var(--text-muted)]">→ ${formatUnit(u.new_actual, t.unit)}</p>
                 </div>
-            `).join('') : `<p class="text-[10px] text-slate-400 py-2">No updates logged yet.</p>`;
+            `).join('') : `<p class="text-[10px] text-[var(--text-muted)] py-2">No updates logged yet.</p>`;
 
             return card(`
                 <div class="flex items-center justify-between gap-2">
-                    <p class="text-[13px] font-black text-slate-900 leading-snug min-w-0">${t.title}</p>
+                    <p class="text-[13px] font-black text-[var(--text-strong)] leading-snug min-w-0">${t.title}</p>
                     <span class="text-[8px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${t.status === 'done' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">
                         ${t.status === 'done' ? 'Done' : 'In Progress'}
                     </span>
                 </div>
-                <p class="text-[10px] text-slate-400">📁 ${t.project_name}</p>
-                <div class="w-full h-1.5 bg-slate-100 rounded-full mt-2 overflow-hidden">
+                <p class="text-[10px] text-[var(--text-muted)]">📁 ${t.project_name}</p>
+                <div class="w-full h-1.5 bg-[var(--track-bg)] rounded-full mt-2 overflow-hidden">
                     <div class="h-full rounded-full bg-gradient-to-r ${badge.bar}" style="width:${pct}%"></div>
                 </div>
                 <div class="flex items-center justify-between mt-1.5">
-                    <p class="text-[10px] text-slate-500">Target: <span class="font-bold text-slate-700">${formatUnit(t.target, t.unit)}</span></p>
-                    <p class="text-[10px] text-slate-500">Actual: <span class="font-bold text-slate-700">${formatUnit(t.actual, t.unit)}</span></p>
-                    <p class="text-[10px] font-black text-slate-700">${pct.toFixed(0)}%</p>
+                    <p class="text-[10px] text-[var(--text-secondary)]">Target: <span class="font-bold text-[var(--text-secondary)]">${formatUnit(t.target, t.unit)}</span></p>
+                    <p class="text-[10px] text-[var(--text-secondary)]">Actual: <span class="font-bold text-[var(--text-secondary)]">${formatUnit(t.actual, t.unit)}</span></p>
+                    <p class="text-[10px] font-black text-[var(--text-secondary)]">${pct.toFixed(0)}%</p>
                 </div>
-                <div class="mt-3 pt-3 border-t border-dashed border-slate-200">
-                    <p class="text-[9px] uppercase tracking-wide text-slate-400 font-black mb-1">Update History</p>
+                <div class="mt-3 pt-3 border-t border-dashed border-[var(--card-border)]">
+                    <p class="text-[9px] uppercase tracking-wide text-[var(--text-muted)] font-black mb-1">Update History</p>
                     ${historyRows}
                 </div>
             `) + '<div class="h-2"></div>';
         }).join('');
 
-        app.innerHTML = `<p class="text-[11px] text-slate-500 mb-2 px-1">Tasks aligned to "<b>${data.kpi_title}</b>"</p>` + taskCards;
+        app.innerHTML = `<p class="text-[11px] text-[var(--text-secondary)] mb-2 px-1">Tasks aligned to "<b>${data.kpi_title}</b>"</p>` + taskCards;
     }
 
     /* ================================================================ */
@@ -1516,7 +1562,7 @@
         if (status === 'on_track') return { label: 'On Track', color: 'bg-emerald-100 text-emerald-700' };
         if (status === 'at_risk') return { label: 'At Risk', color: 'bg-amber-100 text-amber-700' };
         if (status === 'critical') return { label: 'Critical', color: 'bg-red-100 text-red-700' };
-        return { label: 'Not enough data yet', color: 'bg-slate-100 text-slate-500' };
+        return { label: 'Not enough data yet', color: 'bg-[var(--track-bg)] text-[var(--text-secondary)]' };
     }
 
     function avatarColor(status) {
@@ -1539,7 +1585,7 @@
     }
 
     async function loadWeeklySummaryData() {
-        document.getElementById('app').innerHTML = `<p class="text-center text-slate-400 text-[12px] mt-10">Loading…</p>`;
+        document.getElementById('app').innerHTML = `<p class="text-center text-[var(--text-muted)] text-[12px] mt-10">Loading…</p>`;
         try {
             __weeklyScoreData = await api(`/tasks/score?employee_id=${state.employeeId}&company_code=${state.companyCode}&period=weekly`);
         } catch (e) {
@@ -1561,9 +1607,9 @@
     function renderWeeklySummaryBody() {
         const app = document.getElementById('app');
         const tabsHtml = `
-            <div class="flex items-center gap-1 border-b-2 border-slate-100 mb-3">
-                <button onclick="switchWeeklySummaryTab('progress')" class="flex-1 pb-2.5 text-[12px] font-bold ${weeklySummarySubTab === 'progress' ? 'text-[var(--accent)] border-b-2 border-[var(--accent)] -mb-[2px]' : 'text-slate-400'}">My Progress</button>
-                ${__hasTeam ? `<button onclick="switchWeeklySummaryTab('team')" class="flex-1 pb-2.5 text-[12px] font-bold ${weeklySummarySubTab === 'team' ? 'text-[var(--accent)] border-b-2 border-[var(--accent)] -mb-[2px]' : 'text-slate-400'}">My Team</button>` : ''}
+            <div class="flex items-center gap-1 border-b-2 border-[var(--card-border)] mb-3">
+                <button onclick="switchWeeklySummaryTab('progress')" class="flex-1 pb-2.5 text-[12px] font-bold ${weeklySummarySubTab === 'progress' ? 'text-[var(--accent)] border-b-2 border-[var(--accent)] -mb-[2px]' : 'text-[var(--text-muted)]'}">My Progress</button>
+                ${__hasTeam ? `<button onclick="switchWeeklySummaryTab('team')" class="flex-1 pb-2.5 text-[12px] font-bold ${weeklySummarySubTab === 'team' ? 'text-[var(--accent)] border-b-2 border-[var(--accent)] -mb-[2px]' : 'text-[var(--text-muted)]'}">My Team</button>` : ''}
             </div>
         `;
 
@@ -1582,9 +1628,9 @@
             return `
                 <div class="flex flex-col items-center gap-1.5 flex-1">
                     <div class="w-full flex items-end justify-center" style="height:56px">
-                        <div class="w-5 rounded-t-md ${d.count > 0 ? 'bg-[var(--accent)]' : 'bg-slate-100'}" style="height:${h}px"></div>
+                        <div class="w-5 rounded-t-md ${d.count > 0 ? 'bg-[var(--accent)]' : 'bg-[var(--track-bg)]'}" style="height:${h}px"></div>
                     </div>
-                    <p class="text-[9px] text-slate-400 font-bold">${d.label}</p>
+                    <p class="text-[9px] text-[var(--text-muted)] font-bold">${d.label}</p>
                 </div>
             `;
         }).join('');
@@ -1593,19 +1639,19 @@
 
     function weeklyProgressTabHtml() {
         const score = __weeklyScoreData;
-        if (!score) return card(`<p class="text-[13px] text-slate-500 text-center py-6">Could not load your weekly score.</p>`);
+        if (!score) return card(`<p class="text-[13px] text-[var(--text-secondary)] text-center py-6">Could not load your weekly score.</p>`);
 
         const band = scoreStatusBand(score.status);
 
         return card(`
-            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Weekly Task Score</p>
+            <p class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wide">Weekly Task Score</p>
             <div class="flex items-center justify-between mt-1">
-                <p class="text-[34px] font-black text-slate-900 leading-none">${score.score !== null ? Math.round(score.score) : '—'}</p>
+                <p class="text-[34px] font-black text-[var(--text-strong)] leading-none">${score.score !== null ? Math.round(score.score) : '—'}</p>
                 <div class="w-11 h-11 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 text-[18px]">↗</div>
             </div>
             <span class="inline-block mt-1.5 px-2 py-0.5 rounded-full ${band.color} text-[9px] font-black">${band.label}</span>
             ${activityBarChart(score.daily_activity || [])}
-        `) + '<div class="h-2"></div>' + `<div id="weeklyAiSummaryCard">${card(`<p class="text-[11px] text-slate-400 text-center py-3">Loading AI summary…</p>`)}</div>`;
+        `) + '<div class="h-2"></div>' + `<div id="weeklyAiSummaryCard">${card(`<p class="text-[11px] text-[var(--text-muted)] text-center py-3">Loading AI summary…</p>`)}</div>`;
     }
 
     async function loadWeeklyAiSummary() {
@@ -1616,8 +1662,8 @@
             el.innerHTML = data.summary
                 ? weeklyAiSummaryBlock(data.summary)
                 : card(`
-                    <p class="text-[11px] text-slate-500 text-center py-2">No AI summary generated yet for this week.</p>
-                    <button onclick="generateWeeklyAiSummary()" class="w-full mt-1 py-2 rounded-xl bg-[var(--accent)] text-white text-[11px] font-black">✨ Generate AI Summary</button>
+                    <p class="text-[11px] text-[var(--text-secondary)] text-center py-2">No AI summary generated yet for this week.</p>
+                    <button onclick="generateWeeklyAiSummary()" class="w-full mt-1 py-2 rounded-xl bg-[var(--accent)] text-[#1a1408] text-[11px] font-black">✨ Generate AI Summary</button>
                 `);
         } catch (e) {
             el.innerHTML = card(`<p class="text-[11px] text-red-500 text-center py-2">Could not load a summary.</p>`);
@@ -1625,13 +1671,13 @@
     }
 
     function weeklyAiSummaryBlock(summary) {
-        const recs = (summary.facts?.recommendations || []).map(r => `<li class="text-[10px] text-slate-600 mt-1">• ${r}</li>`).join('');
+        const recs = (summary.facts?.recommendations || []).map(r => `<li class="text-[10px] text-[var(--text-secondary)] mt-1">• ${r}</li>`).join('');
         return card(`
             <div class="flex items-center gap-2 mb-1.5">
                 <span class="text-[15px]">✨</span>
-                <p class="text-[12px] font-black text-slate-900">AI Weekly Summary</p>
+                <p class="text-[12px] font-black text-[var(--text-strong)]">AI Weekly Summary</p>
             </div>
-            <p class="text-[11px] text-slate-600 leading-relaxed">${summary.narrative}</p>
+            <p class="text-[11px] text-[var(--text-secondary)] leading-relaxed">${summary.narrative}</p>
             ${recs ? `<ul class="mt-2">${recs}</ul>` : ''}
             <button onclick="generateWeeklyAiSummary()" class="mt-2 text-[10px] font-bold text-[var(--accent)]">↻ Regenerate</button>
         `);
@@ -1639,7 +1685,7 @@
 
     async function generateWeeklyAiSummary() {
         const el = document.getElementById('weeklyAiSummaryCard');
-        el.innerHTML = card(`<p class="text-[11px] text-slate-400 text-center py-2">Generating…</p>`);
+        el.innerHTML = card(`<p class="text-[11px] text-[var(--text-muted)] text-center py-2">Generating…</p>`);
         try {
             const data = await api('/summaries/regenerate', {
                 method: 'POST',
@@ -1653,15 +1699,15 @@
 
     function weeklyTeamTabHtml() {
         const members = (__weeklyTeamData && __weeklyTeamData.members) || [];
-        if (!members.length) return card(`<p class="text-[12px] text-slate-500 text-center py-6">No team members found.</p>`);
+        if (!members.length) return card(`<p class="text-[12px] text-[var(--text-secondary)] text-center py-6">No team members found.</p>`);
 
         const rows = members.map(m => `
-            <div class="flex items-center justify-between gap-2 py-2 border-b border-slate-100 last:border-0">
+            <div class="flex items-center justify-between gap-2 py-2 border-b border-[var(--card-border)] last:border-0">
                 <div class="flex items-center gap-2.5 min-w-0">
                     <div class="w-8 h-8 rounded-full ${avatarColor(m.status)} text-white text-[11px] font-black flex items-center justify-center shrink-0">${initials(m.name)}</div>
                     <div class="min-w-0">
                         <p class="text-[12px] font-bold text-slate-800 truncate">${m.name}</p>
-                        <p class="text-[10px] text-slate-400">${m.overdue_count > 0 ? m.overdue_count + ' overdue' : (m.status === 'at_risk' ? 'At risk' : (m.score !== null ? Math.round(m.score) + '/100' : 'No data yet'))}</p>
+                        <p class="text-[10px] text-[var(--text-muted)]">${m.overdue_count > 0 ? m.overdue_count + ' overdue' : (m.status === 'at_risk' ? 'At risk' : (m.score !== null ? Math.round(m.score) + '/100' : 'No data yet'))}</p>
                     </div>
                 </div>
             </div>
@@ -1685,7 +1731,7 @@
 
     function reviewBand(score) {
         if (score >= 90) return { label: 'Excellent', cls: 'text-emerald-800 border-emerald-700' };
-        if (score >= 75) return { label: 'Good', cls: 'text-slate-700 border-slate-400' };
+        if (score >= 75) return { label: 'Good', cls: 'text-[var(--text-secondary)] border-slate-400' };
         if (score >= 50) return { label: 'Needs Attention', cls: 'text-amber-800 border-amber-700' };
         return { label: 'At Risk', cls: 'text-rose-800 border-rose-700' };
     }
@@ -1699,10 +1745,10 @@
     function reviewCard(r) {
         const band = reviewBand(r.score);
         return card(`
-            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">${r.period_label}</p>
-            <p class="text-[28px] font-black text-slate-900 mt-1 leading-none">${Math.round(r.score)}<span class="text-[13px] font-bold text-slate-400">/100</span></p>
+            <p class="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wide">${r.period_label}</p>
+            <p class="text-[28px] font-black text-[var(--text-strong)] mt-1 leading-none">${Math.round(r.score)}<span class="text-[13px] font-bold text-[var(--text-muted)]">/100</span></p>
             <span class="inline-block mt-2 px-2 py-0.5 rounded-full border text-[9px] font-bold ${band.cls}">${band.label}</span>
-            <p class="text-[12px] text-slate-600 leading-relaxed mt-3 pt-3 border-t border-slate-200">${r.narrative}</p>
+            <p class="text-[12px] text-[var(--text-secondary)] leading-relaxed mt-3 pt-3 border-t border-[var(--card-border)]">${r.narrative}</p>
         `);
     }
 
@@ -1712,15 +1758,15 @@
             <button onclick="renderReviewDetail(${i})" class="w-full text-left tap-card">
                 ${card(`
                     <div class="flex items-center justify-between gap-2">
-                        <p class="text-[12px] font-bold text-slate-700">${r.period_label}</p>
-                        <p class="text-[12px] font-black text-slate-500">${Math.round(r.score)}/100</p>
+                        <p class="text-[12px] font-bold text-[var(--text-secondary)]">${r.period_label}</p>
+                        <p class="text-[12px] font-black text-[var(--text-secondary)]">${Math.round(r.score)}/100</p>
                     </div>
                 `, 'hover:border-slate-400')}
             </button>
         `).join('<div class="h-1.5"></div>');
 
         return `
-            <p class="text-[10px] uppercase tracking-wide text-slate-400 font-bold mt-4 mb-1.5 px-1">Previous periods</p>
+            <p class="text-[10px] uppercase tracking-wide text-[var(--text-muted)] font-bold mt-4 mb-1.5 px-1">Previous periods</p>
             <div>${rows}</div>
         `;
     }
@@ -1729,13 +1775,13 @@
         periodType = periodType || 'weekly';
         showSubScreenChrome('Performance Review');
         const app = document.getElementById('app');
-        app.innerHTML = `<p class="text-center text-slate-400 text-[12px] mt-10">Loading…</p>`;
+        app.innerHTML = `<p class="text-center text-[var(--text-muted)] text-[12px] mt-10">Loading…</p>`;
 
         const tabs = `
-            <div class="flex items-center gap-1 border-b-2 border-slate-200 mb-4">
+            <div class="flex items-center gap-1 border-b-2 border-[var(--card-border)] mb-4">
                 ${REVIEW_PERIODS.map(p => `
                     <button onclick="renderPerformanceReview('${p.key}')"
-                        class="flex-1 pb-2.5 text-[12px] font-bold ${p.key === periodType ? 'text-slate-900 border-b-2 border-slate-900 -mb-[2px]' : 'text-slate-400'}">
+                        class="flex-1 pb-2.5 text-[12px] font-bold ${p.key === periodType ? 'text-[var(--text-strong)] border-b-2 border-slate-900 -mb-[2px]' : 'text-[var(--text-muted)]'}">
                         ${p.label}
                     </button>
                 `).join('')}
@@ -1746,7 +1792,7 @@
         try {
             data = await api(`/reviews?employee_id=${state.employeeId}&company_code=${state.companyCode}&period=${periodType}`);
         } catch (e) {
-            app.innerHTML = tabs + card(`<p class="text-[13px] text-slate-600 text-center py-6">Could not load your review.</p>`);
+            app.innerHTML = tabs + card(`<p class="text-[13px] text-[var(--text-secondary)] text-center py-6">Could not load your review.</p>`);
             return;
         }
 
@@ -1754,8 +1800,8 @@
 
         if (!data.latest) {
             app.innerHTML = tabs + card(`
-                <p class="text-[13px] font-bold text-slate-900 mb-1.5">No review yet</p>
-                <p class="text-[12px] text-slate-500 leading-relaxed">${reviewEmptyNote(periodType)}</p>
+                <p class="text-[13px] font-bold text-[var(--text-strong)] mb-1.5">No review yet</p>
+                <p class="text-[12px] text-[var(--text-secondary)] leading-relaxed">${reviewEmptyNote(periodType)}</p>
             `);
             return;
         }
@@ -1782,26 +1828,26 @@
                 <div class="flex items-center gap-3">
                     <div class="w-14 h-14 rounded-full bg-[var(--navy)] text-white text-[18px] font-black flex items-center justify-center shrink-0">${initials(state.employeeName)}</div>
                     <div class="min-w-0">
-                        <p class="text-[15px] font-black text-slate-900 truncate">${state.employeeName}</p>
-                        <p class="text-[11px] text-slate-400">${state.companyCode || ''}</p>
+                        <p class="text-[15px] font-black text-[var(--text-strong)] truncate">${state.employeeName}</p>
+                        <p class="text-[11px] text-[var(--text-muted)]">${state.companyCode || ''}</p>
                     </div>
                 </div>
             `)}
 
             <div class="h-2"></div>
             <button onclick="renderWeeklySummary()" class="w-full text-left tap-card">
-                ${card(`<p class="text-[13px] font-bold text-slate-700">📈 Weekly Summary</p>`, 'hover:border-slate-300')}
+                ${card(`<p class="text-[13px] font-bold text-[var(--text-secondary)]">📈 Weekly Summary</p>`, 'hover:border-slate-300')}
             </button>
 
             <div class="h-2"></div>
             <button onclick="renderPerformanceReview('weekly')" class="w-full text-left tap-card">
-                ${card(`<p class="text-[13px] font-bold text-slate-700">📊 KPI Performance Review</p>`, 'hover:border-slate-300')}
+                ${card(`<p class="text-[13px] font-bold text-[var(--text-secondary)]">📊 KPI Performance Review</p>`, 'hover:border-slate-300')}
             </button>
 
             ${canSwitchCompany ? `
             <div class="h-2"></div>
             <button onclick="renderSwitchCompany()" class="w-full text-left tap-card">
-                ${card(`<p class="text-[13px] font-bold text-slate-700">🔄 Switch Company</p>`, 'hover:border-slate-300')}
+                ${card(`<p class="text-[13px] font-bold text-[var(--text-secondary)]">🔄 Switch Company</p>`, 'hover:border-slate-300')}
             </button>` : ''}
 
             <div class="h-2"></div>
