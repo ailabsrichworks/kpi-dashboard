@@ -434,17 +434,17 @@ class MiniAppTaskController extends Controller
             return response()->json(['employees' => []]);
         }
 
+        // Alphabetical by name, straight from Supabase's own ORDER BY
+        // (matches DashboardController's existing 'short_name.asc' convention)
+        // rather than re-sorting an unordered result in PHP -- both the
+        // Assign To and Notify by email dropdowns draw from this same list.
         $employees = $supabase->get('employees', [
             'id' => 'in.(' . implode(',', $employeeIds) . ')',
             'select' => 'id,short_name,email',
+            'order' => 'short_name.asc',
         ]) ?? [];
 
-        // Alphabetical by name -- both the Assign To and Notify by email
-        // dropdowns draw from this same list, and Supabase returns rows in
-        // no particular order otherwise.
-        usort($employees, fn ($a, $b) => strcasecmp($a['short_name'] ?? '', $b['short_name'] ?? ''));
-
-        return response()->json(['employees' => array_values($employees)]);
+        return response()->json(['employees' => $employees]);
     }
 
     /*

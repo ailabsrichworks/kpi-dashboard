@@ -302,22 +302,26 @@ class MiniAppTaskControllerTest extends TestCase
         $this->assertContains('colleague-2', $ids);
     }
 
-    public function test_assignable_employees_are_sorted_alphabetically_by_name(): void
+    public function test_assignable_employees_are_ordered_alphabetically_by_supabase_itself(): void
     {
+        // The sort is a query-level rule (Supabase's own ORDER BY), not a
+        // PHP-side re-sort of whatever order happened to come back -- same
+        // 'short_name.asc' convention DashboardController already uses.
+        // Http::fake() doesn't simulate PostgREST ordering, so this asserts
+        // the outgoing request actually asks for it, rather than asserting
+        // an order the fake can't produce on its own.
         Http::fake([
             '*/rest/v1/employees*' => Http::response([
-                ['id' => 'emp-pia', 'short_name' => 'PIA', 'email' => 'pia@richworks.com'],
-                ['id' => 'emp-arina', 'short_name' => 'Arina', 'email' => 'arina@richworks.com'],
-                ['id' => 'emp-zaidi', 'short_name' => 'Zaidi', 'email' => 'zaidi@richworks.com'],
-                ['id' => 'emp-azwani', 'short_name' => 'Azwani', 'email' => 'azwani@richworks.com'],
+                ['id' => 'emp-1', 'short_name' => 'Test User', 'email' => 'test@richworks.com'],
             ], 200),
         ]);
 
-        $response = $this->withSession($this->employeeSession('SLT'))->get('/mini-app/api/tasks/assignable');
+        $this->withSession($this->employeeSession('SLT'))->get('/mini-app/api/tasks/assignable')->assertOk();
 
-        $response->assertOk();
-        $names = collect($response->json('employees'))->pluck('short_name')->all();
-        $this->assertSame(['Arina', 'Azwani', 'PIA', 'Zaidi'], $names);
+        Http::assertSent(function ($request) {
+            return str_contains($request->url(), '/rest/v1/employees')
+                && str_contains($request->url(), 'order=short_name.asc');
+        });
     }
 
     public function test_assignable_employees_defaults_to_self_only_for_an_executive_with_no_reports(): void
