@@ -444,7 +444,18 @@
     #sidebar, #sidebar * { font-family: '{{ $fontFamily }}', sans-serif !important; }
     @if($fontZoom != 1)
     #mainContent { zoom: {{ $fontZoom }}; }
-    #sidebar { zoom: {{ $fontZoom }}; }
+    {{-- #sidebar is deliberately excluded from zoom, unlike #mainContent.
+         #sidebar is `position: fixed; height: 100vh` (h-screen) — its 100vh
+         is computed BEFORE zoom, then the whole box is rendered at that
+         scale, so at "Large" (1.15) it renders 15% taller than the actual
+         viewport (the extra bottom portion is unreachable, since a fixed
+         element doesn't scroll with the page) and at "Small" (0.9) it
+         renders 10% short, leaving a gap of bare page background below it.
+         Zoom on a scrollable descendant inside a zoomed ancestor is also
+         known to break touch-scrolling on mobile WebKit, which is why the
+         nav list can look "stuck" a few items in with no way to reach
+         Logout even by scrolling. Typeface (above) still applies to the
+         sidebar; only the size scaling is skipped here. --}}
     @endif
 </style>
 @endif
