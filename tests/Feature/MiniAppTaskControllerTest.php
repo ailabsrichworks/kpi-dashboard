@@ -191,6 +191,108 @@ class MiniAppTaskControllerTest extends TestCase
         $this->assertSame('Colleague', $task['assignee_name']);
     }
 
+    public function test_store_notifies_both_the_creator_and_a_different_assignee(): void
+    {
+        Http::fake([
+            '*/rest/v1/employees*' => Http::response([['id' => 'colleague-1']], 200),
+            '*/rest/v1/telegram_projects*' => Http::response([['id' => 'proj-1']], 200),
+            '*/rest/v1/telegram_project_tasks*' => Http::response([['id' => 'task-1', 'title' => 'Weekly ops sync']], 201),
+            '*/rest/v1/notifications*' => Http::response([['id' => 'notif-1']], 201),
+        ]);
+
+        // SLT may assign to anyone in the company.
+        $this->withSession($this->employeeSession('SLT'))
+            ->post('/mini-app/api/tasks', [
+                'title' => 'Weekly ops sync',
+                'unit' => 'number',
+                'target' => 1,
+                'assignee_employee_id' => 'colleague-1',
+            ])
+            ->assertOk();
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/rest/v1/notifications') && $r['recipient_employee_id'] === 'emp-1');
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/rest/v1/notifications') && $r['recipient_employee_id'] === 'colleague-1');
+    }
+
+    public function test_update_notifies_both_the_actor_and_the_current_assignee(): void
+    {
+        Http::fake([
+            '*/rest/v1/employees*' => Http::response([['id' => 'colleague-1']], 200),
+            '*/rest/v1/telegram_project_tasks*' => function ($request) {
+                if ($request->method() === 'GET') {
+                    return Http::response([[
+                        'id' => 'task-1', 'employee_id' => 'emp-1', 'assignee_employee_id' => 'colleague-1',
+                        'title' => 'Old title', 'unit' => 'number', 'target' => 10, 'actual' => 0,
+                        'status' => 'not_started', 'priority' => 'medium',
+                    ]], 200);
+                }
+
+                return Http::response([['id' => 'task-1']], 200);
+            },
+            '*/rest/v1/notifications*' => Http::response([['id' => 'notif-1']], 201),
+        ]);
+
+        $this->withSession($this->employeeSession('SLT'))
+            ->patch('/mini-app/api/tasks/task-1', [
+                'title' => 'Weekly ops sync',
+                'unit' => 'number',
+                'target' => 10,
+            ])
+            ->assertOk();
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/rest/v1/notifications') && $r['recipient_employee_id'] === 'emp-1');
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/rest/v1/notifications') && $r['recipient_employee_id'] === 'colleague-1');
+    }
+
+    public function test_progress_notifies_both_the_actor_and_the_assignee(): void
+    {
+        Http::fake([
+            '*/rest/v1/telegram_project_tasks*' => function ($request) {
+                if ($request->method() === 'GET') {
+                    return Http::response([[
+                        'id' => 'task-1', 'employee_id' => 'emp-1', 'assignee_employee_id' => 'colleague-1',
+                        'title' => 'Weekly ops sync', 'unit' => 'number', 'target' => 10, 'actual' => 2,
+                        'status' => 'in_progress',
+                    ]], 200);
+                }
+
+                return Http::response([['id' => 'task-1']], 200);
+            },
+            '*/rest/v1/telegram_project_task_updates*' => Http::response([['id' => 'update-1']], 201),
+            '*/rest/v1/notifications*' => Http::response([['id' => 'notif-1']], 201),
+        ]);
+
+        $this->withSession($this->employeeSession())
+            ->post('/mini-app/api/tasks/task-1/progress', ['delta' => 3])
+            ->assertOk();
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/rest/v1/notifications') && $r['recipient_employee_id'] === 'emp-1');
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/rest/v1/notifications') && $r['recipient_employee_id'] === 'colleague-1');
+    }
+
+    public function test_destroy_notifies_both_the_actor_and_the_assignee(): void
+    {
+        Http::fake([
+            '*/rest/v1/telegram_project_tasks*' => function ($request) {
+                if ($request->method() === 'GET') {
+                    return Http::response([[
+                        'id' => 'task-1', 'title' => 'Weekly ops sync', 'assignee_employee_id' => 'colleague-1',
+                    ]], 200);
+                }
+
+                return Http::response([['id' => 'task-1']], 200);
+            },
+            '*/rest/v1/notifications*' => Http::response([['id' => 'notif-1']], 201),
+        ]);
+
+        $this->withSession($this->employeeSession())
+            ->delete('/mini-app/api/tasks/task-1')
+            ->assertOk();
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/rest/v1/notifications') && $r['recipient_employee_id'] === 'emp-1');
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/rest/v1/notifications') && $r['recipient_employee_id'] === 'colleague-1');
+    }
+
     public function test_store_saves_due_time_and_notifies_a_known_employee_via_telegram(): void
     {
         Http::fake([

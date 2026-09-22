@@ -18,9 +18,10 @@ use Illuminate\Support\Facades\Log;
  * new needed on the DB side; KPI linking here is optional, not mandatory.
  *
  * Every create/update/progress/delete pushes a notification via
- * NotificationService — which both logs an in-app notification row and, if
- * the employee has linked their Telegram account, pushes the same message
- * there. No bespoke Telegram-sending code needed for this.
+ * NotificationService to both the actor AND the task's assignee (deduped
+ * when they're the same person) — which both logs an in-app notification
+ * row and, if that employee has linked their Telegram account, pushes the
+ * same message there. No bespoke Telegram-sending code needed for this.
  */
 class MiniAppTaskController extends Controller
 {
@@ -363,7 +364,7 @@ class MiniAppTaskController extends Controller
 
         if ($task) {
             $notifications->notify(
-                [$employeeId],
+                array_unique(array_filter([$employeeId, $assigneeId])),
                 'ttd_task_created',
                 ['id' => $employeeId, 'name' => $this->employeeName()],
                 'New to-do task created',
@@ -763,7 +764,7 @@ class MiniAppTaskController extends Controller
         ]);
 
         $notifications->notify(
-            [$employeeId],
+            array_unique(array_filter([$employeeId, $newAssignee ?: $currentAssignee])),
             'ttd_task_updated',
             ['id' => $employeeId, 'name' => $this->employeeName()],
             'To-do task updated',
@@ -844,7 +845,7 @@ class MiniAppTaskController extends Controller
         ]);
 
         $notifications->notify(
-            [$employeeId],
+            array_unique(array_filter([$employeeId, $task['assignee_employee_id'] ?? null])),
             'ttd_task_progress',
             ['id' => $employeeId, 'name' => $this->employeeName()],
             'To-do progress logged',
@@ -946,7 +947,7 @@ class MiniAppTaskController extends Controller
         $task = $supabase->first('telegram_project_tasks', [
             'id' => 'eq.' . $id,
             'employee_id' => 'eq.' . $employeeId,
-            'select' => 'id,title',
+            'select' => 'id,title,assignee_employee_id',
         ]);
 
         if (empty($task)) {
@@ -960,7 +961,7 @@ class MiniAppTaskController extends Controller
         }
 
         $notifications->notify(
-            [$employeeId],
+            array_unique(array_filter([$employeeId, $task['assignee_employee_id'] ?? null])),
             'ttd_task_deleted',
             ['id' => $employeeId, 'name' => $this->employeeName()],
             'To-do task deleted',
