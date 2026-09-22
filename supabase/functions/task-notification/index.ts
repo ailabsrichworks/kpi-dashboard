@@ -173,15 +173,15 @@ function buildMessage(
     heading,
     '',
     `📌 Title: ${title}`,
-    `📌 Description: ${description}`,
-    `📌 Priority: ${priority}`,
-    `📌 ${dueLabel}: ${due}`,
-    `📌 ${assignedLabel}: ${escapeHtml(assigneeName)}`,
-    `📌 Created by: ${escapeHtml(creatorName)}`,
+    `Description: ${description}`,
+    `Priority: ${priority}`,
+    `${dueLabel}: ${due}`,
+    `${assignedLabel}: ${escapeHtml(assigneeName)}`,
+    `Created by: ${escapeHtml(creatorName)}`,
   ]
 
   if (notifyName && type !== 'DELETE') {
-    lines.push(`📌 Notify: ${escapeHtml(notifyName)}`)
+    lines.push(`Notify: ${escapeHtml(notifyName)}`)
   }
 
   return lines.join('\n')
