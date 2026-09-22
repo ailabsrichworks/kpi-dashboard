@@ -99,6 +99,42 @@ class MiniAppTaskControllerTest extends TestCase
         });
     }
 
+    public function test_update_preserves_an_existing_meeting_time_when_the_form_no_longer_sends_it(): void
+    {
+        // The Edit Task form dropped its "scheduled meeting" toggle (due_time
+        // already covers a time-of-day) -- so a task that already had a
+        // meeting_time set must keep it across an unrelated edit, instead of
+        // being silently nulled out just because the field is no longer part
+        // of the payload.
+        Http::fake([
+            '*/rest/v1/telegram_project_tasks*' => function ($request) {
+                if ($request->method() === 'GET') {
+                    return Http::response([[
+                        'id' => 'task-1', 'employee_id' => 'emp-1', 'assignee_employee_id' => 'emp-1',
+                        'title' => 'Old title', 'unit' => 'number', 'target' => 10, 'actual' => 0,
+                        'status' => 'not_started', 'priority' => 'medium', 'meeting_time' => '09:00',
+                    ]], 200);
+                }
+
+                return Http::response([['id' => 'task-1']], 200);
+            },
+        ]);
+
+        $this->withSession($this->employeeSession())
+            ->patch('/mini-app/api/tasks/task-1', [
+                'title' => 'Weekly ops sync (renamed)',
+                'unit' => 'number',
+                'target' => 10,
+            ])
+            ->assertOk();
+
+        Http::assertSent(function ($request) {
+            return str_contains($request->url(), '/rest/v1/telegram_project_tasks')
+                && $request->method() === 'PATCH'
+                && $request['meeting_time'] === '09:00';
+        });
+    }
+
     public function test_update_rejects_a_reassignment_the_caller_is_not_allowed_to_make(): void
     {
         Http::fake([

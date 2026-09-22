@@ -573,15 +573,6 @@ function taskFormFields(t) {
             </div>
         </div>
 
-        <div class="mt-3">
-            <label class="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" id="taskIsMeetingInput" ${t?.meeting_time ? 'checked' : ''} onchange="onTaskMeetingToggled()" class="w-4 h-4 accent-[#6B3F2A]">
-                <span class="text-[11px] font-bold text-slate-600">This is a scheduled meeting — set a time</span>
-            </label>
-            <input type="time" id="taskMeetingTimeInput" value="${t?.meeting_time || ''}"
-                class="${t?.meeting_time ? '' : 'hidden'} w-full mt-2 text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
-        </div>
-
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
             <div>
                 <p class="text-[10px] font-bold text-slate-600 mb-1">Notify by email <span class="text-slate-400 font-normal">(optional)</span></p>
@@ -660,20 +651,13 @@ async function onTaskUnitChanged() {
     }
 }
 
-function onTaskMeetingToggled() {
-    const checked = document.getElementById('taskIsMeetingInput').checked;
-    document.getElementById('taskMeetingTimeInput').classList.toggle('hidden', !checked);
-}
-
 function taskFormValues() {
-    const isMeeting = document.getElementById('taskIsMeetingInput')?.checked;
     return {
         title: document.getElementById('taskTitleInput').value.trim(),
         description: document.getElementById('taskDescriptionInput').value.trim() || null,
         priority: document.getElementById('taskPriorityInput').value,
         due_date: document.getElementById('taskDueDateInput').value || null,
         due_time: document.getElementById('taskDueTimeInput').value || null,
-        meeting_time: isMeeting ? (document.getElementById('taskMeetingTimeInput').value || null) : null,
         assignee_employee_id: document.getElementById('taskAssigneeInput')?.value || null,
         unit: document.getElementById('taskUnitInput').value,
         target: document.getElementById('taskTargetInput').value,

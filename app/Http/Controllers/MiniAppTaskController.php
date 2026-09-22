@@ -659,7 +659,12 @@ class MiniAppTaskController extends Controller
             'start_date' => $validated['start_date'] ?? $task['start_date'] ?? null,
             'due_date' => $validated['due_date'] ?? $task['due_date'] ?? null,
             'due_time' => $validated['due_time'] ?? null,
-            'meeting_time' => $validated['meeting_time'] ?? null,
+            // Unlike due_time, the Edit Task form no longer has a field for
+            // this (the "scheduled meeting" toggle was removed as redundant
+            // once due_time existed) -- so unlike the "always resend" fields
+            // above, this one falls back to the task's existing value rather
+            // than being nulled out by every unrelated edit.
+            'meeting_time' => $validated['meeting_time'] ?? $task['meeting_time'] ?? null,
             'reminder_at' => $validated['reminder_at'] ?? $task['reminder_at'] ?? null,
             'visibility' => $validated['visibility'] ?? $task['visibility'] ?? 'private',
             'recurrence_rule' => $validated['recurrence_rule'] ?? $task['recurrence_rule'] ?? 'none',
