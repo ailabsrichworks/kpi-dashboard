@@ -548,12 +548,13 @@ function taskFormFields(t) {
         <textarea id="taskDescriptionInput" rows="2" placeholder="Any extra context…"
             class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500 resize-none">${t?.description || ''}</textarea>
 
-        <p class="text-[10px] font-bold text-slate-600 mt-3 mb-1">Priority</p>
-        <select id="taskPriorityInput" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
-            ${Object.entries(PRIORITY_LABELS).map(([key, p]) => `<option value="${key}" ${(t?.priority || 'medium') === key ? 'selected' : ''}>${p.label}</option>`).join('')}
-        </select>
-
-        <div class="grid grid-cols-2 gap-2 mt-3">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
+            <div>
+                <p class="text-[10px] font-bold text-slate-600 mb-1">Priority</p>
+                <select id="taskPriorityInput" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
+                    ${Object.entries(PRIORITY_LABELS).map(([key, p]) => `<option value="${key}" ${(t?.priority || 'medium') === key ? 'selected' : ''}>${p.label}</option>`).join('')}
+                </select>
+            </div>
             <div>
                 <p class="text-[10px] font-bold text-slate-600 mb-1">Due date <span class="text-slate-400 font-normal">(optional)</span></p>
                 <input type="date" id="taskDueDateInput" value="${t?.due_date || ''}"
@@ -563,6 +564,12 @@ function taskFormFields(t) {
                 <p class="text-[10px] font-bold text-slate-600 mb-1">Due time <span class="text-slate-400 font-normal">(optional)</span></p>
                 <input type="time" id="taskDueTimeInput" value="${t?.due_time || ''}"
                     class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
+            </div>
+            <div>
+                <p class="text-[10px] font-bold text-slate-600 mb-1">Assign to</p>
+                <select id="taskAssigneeInput" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
+                    <option value="">Loading…</option>
+                </select>
             </div>
         </div>
 
@@ -575,28 +582,27 @@ function taskFormFields(t) {
                 class="${t?.meeting_time ? '' : 'hidden'} w-full mt-2 text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
         </div>
 
-        <div class="mt-3">
-            <p class="text-[10px] font-bold text-slate-600 mb-1">Notify by email <span class="text-slate-400 font-normal">(optional)</span></p>
-            <input type="email" id="taskNotifyEmailInput" value="${t?.notify_email || ''}" placeholder="e.g. teammate@richworks.com"
-                class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
-            <p class="text-[9px] text-slate-400 mt-1">Emails this task straight to that inbox — handy for looping in someone who doesn't have a Performix account yet. We'll check the address looks real before sending.</p>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
+            <div>
+                <p class="text-[10px] font-bold text-slate-600 mb-1">Notify by email <span class="text-slate-400 font-normal">(optional)</span></p>
+                <input type="email" id="taskNotifyEmailInput" value="${t?.notify_email || ''}" placeholder="e.g. teammate@richworks.com"
+                    class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
+            </div>
+            <div>
+                <p class="text-[10px] font-bold text-slate-600 mb-1">Unit</p>
+                <select id="taskUnitInput" onchange="onTaskUnitChanged()" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
+                    <option value="number" ${t?.unit === 'number' ? 'selected' : ''}>Number</option>
+                    <option value="currency" ${t?.unit === 'currency' ? 'selected' : ''}>Currency (RM)</option>
+                    <option value="percentage" ${t?.unit === 'percentage' ? 'selected' : ''}>Percentage (%)</option>
+                </select>
+            </div>
+            <div>
+                <p class="text-[10px] font-bold text-slate-600 mb-1">Target</p>
+                <input type="number" step="any" min="0" id="taskTargetInput" value="${t?.target ?? ''}" placeholder="e.g. 10"
+                    class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
+            </div>
         </div>
-
-        <p class="text-[10px] font-bold text-slate-600 mt-3 mb-1">Assign to</p>
-        <select id="taskAssigneeInput" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
-            <option value="">Loading…</option>
-        </select>
-
-        <p class="text-[10px] font-bold text-slate-600 mt-3 mb-1">Unit</p>
-        <select id="taskUnitInput" onchange="onTaskUnitChanged()" class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
-            <option value="number" ${t?.unit === 'number' ? 'selected' : ''}>Number</option>
-            <option value="currency" ${t?.unit === 'currency' ? 'selected' : ''}>Currency (RM)</option>
-            <option value="percentage" ${t?.unit === 'percentage' ? 'selected' : ''}>Percentage (%)</option>
-        </select>
-
-        <p class="text-[10px] font-bold text-slate-600 mt-3 mb-1">Target</p>
-        <input type="number" step="any" min="0" id="taskTargetInput" value="${t?.target ?? ''}" placeholder="e.g. 10"
-            class="w-full text-[13px] px-3 py-2.5 rounded-xl border-2 border-[#D9C4A0] bg-white outline-none focus:border-red-500">
+        <p class="text-[9px] text-slate-400 mt-1">Notify by email sends this task straight to that inbox — handy for looping in someone who doesn't have a Performix account yet. We'll check the address looks real before sending.</p>
     `;
 }
 
