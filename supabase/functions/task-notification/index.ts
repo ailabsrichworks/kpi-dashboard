@@ -118,10 +118,10 @@ Deno.serve(async (req) => {
 })
 
 const PRIORITY_LABELS: Record<string, string> = {
-  low: '🟢 Low',
-  medium: '🟡 Medium',
-  high: '🟠 High',
-  critical: '🔴 Critical',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  critical: 'Critical',
 }
 
 // Renders as dd/mm/yyyy | HH:MM:SS, per the format requested for every
@@ -157,14 +157,14 @@ function buildMessage(
 
   const title = escapeHtml(task.title ?? 'Untitled task')
   const description = task.description ? escapeHtml(task.description) : '-'
-  const priority = PRIORITY_LABELS[task.priority ?? ''] ?? '⚪ Not set'
+  const priority = PRIORITY_LABELS[task.priority ?? ''] ?? 'Not set'
   const due = formatDueDateTime(task.due_date, task.due_time) ?? 'Not set'
 
   const heading = type === 'INSERT'
-    ? '🆕 <b>New Task Created</b>'
+    ? '<b>New Task Created</b>'
     : type === 'UPDATE'
-      ? '✏️ <b>Task Updated</b>'
-      : '🗑️ <b>Task Deleted</b>'
+      ? '<b>Task Updated</b>'
+      : '<b>Task Deleted</b>'
 
   const dueLabel = type === 'DELETE' ? 'Was due' : 'Due'
   const assignedLabel = type === 'DELETE' ? 'Was assigned to' : 'Assigned to'
@@ -172,16 +172,16 @@ function buildMessage(
   const lines = [
     heading,
     '',
-    `📌 <b>Title:</b> ${title}`,
-    `📝 <b>Description:</b> ${description}`,
-    `⚡ <b>Priority:</b> ${priority}`,
-    `📅 <b>${dueLabel}:</b> ${due}`,
-    `👤 <b>${assignedLabel}:</b> ${escapeHtml(assigneeName)}`,
-    `✍️ <b>Created by:</b> ${escapeHtml(creatorName)}`,
+    `📌 Title: ${title}`,
+    `📌 Description: ${description}`,
+    `📌 Priority: ${priority}`,
+    `📌 ${dueLabel}: ${due}`,
+    `📌 ${assignedLabel}: ${escapeHtml(assigneeName)}`,
+    `📌 Created by: ${escapeHtml(creatorName)}`,
   ]
 
   if (notifyName && type !== 'DELETE') {
-    lines.push(`📨 <b>Notify:</b> ${escapeHtml(notifyName)}`)
+    lines.push(`📌 Notify: ${escapeHtml(notifyName)}`)
   }
 
   return lines.join('\n')
