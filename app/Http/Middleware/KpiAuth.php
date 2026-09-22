@@ -34,12 +34,29 @@ class KpiAuth
 
         /*
         |--------------------------------------------------------------------------
-        | OPTIONAL AUTO FIX
+        | KEEP session('employee') IN SYNC WITH THE ACTIVE DASHBOARD
         |--------------------------------------------------------------------------
+        | AuthController::setDashboardSession() (login, and switching between a
+        | multi-company user's dashboards — e.g. RGHB vs RCG) only ever writes
+        | the flat session keys (employee_uuid, company_code, role, ...). It
+        | never touches this nested 'employee' array, which every mini-app/task
+        | controller actually reads via session('employee.id')/('employee.
+        | company_code'). Rebuilding this only on "doesn't exist yet" (the old
+        | guard) meant it was populated once, from whichever dashboard was
+        | selected first, and never refreshed — so switching dashboards left
+        | session('employee') silently pointing at the OLD company/identity for
+        | the rest of the session, while every flat key correctly showed the
+        | new one. Concretely: an employee_id from one company paired with a
+        | company_code from another ending up on the same inserted row, and
+        | later lookups filtered by session('employee.id') failing to find
+        | rows that same mismatch had already written. Comparing against the
+        | live employee_uuid (the same convention the settings/theme sync
+        | below already uses) makes a dashboard switch enough to trigger a
+        | fresh rebuild, with no separate reset needed.
         */
 
         if(
-            !session()->has('employee')
+            session('employee.id') !== session('employee_uuid')
         ){
 
             session([
