@@ -1,4 +1,4 @@
-import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
+import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import AppLayout from '../Layouts/AppLayout';
 import LinkageCard, { LinkageEntry } from './Linkages/LinkageCard';
@@ -53,27 +53,15 @@ export default function Linkages({ fy, directReports, myLinkageMap, outgoingWith
     }
 
     return (
-        <AppLayout>
+        <AppLayout pageTitle="Target Linkages" pageSubtitle={`Cascading targets · ${fy}`}>
             <Head title="Target Linkages" />
 
-            <div className="px-4 pb-4 space-y-3">
-                <div className="sticky top-0 z-30 px-4 pt-4 pb-2 bg-[#F5F5F3]">
-                    <div className="relative overflow-hidden rounded-[18px] bg-gradient-to-r from-[#1A0A0A] to-[#7A0019] text-white px-6 py-5 shadow-[0_10px_35px_rgba(122,0,25,0.45)] flex items-center justify-between gap-4">
-                        <div>
-                            <Link href="/dashboard" className="text-[11px] text-[#D4AF37] hover:text-white transition">
-                                ← Dashboard
-                            </Link>
-                            <h1 className="text-2xl font-black tracking-tight mt-1">Target Linkages</h1>
-                            <p className="text-white/70 text-xs mt-1">Cascading targets · {fy}</p>
-                        </div>
-                    </div>
-                </div>
-
+            <div className="px-4 pt-4 pb-4 space-y-3">
                 {flash.success && <div className="bg-emerald-50 text-emerald-700 px-3 py-2 rounded-xl text-xs border border-emerald-200">{flash.success}</div>}
                 {flash.error && <div className="bg-red-50 text-red-700 px-3 py-2 rounded-xl text-xs border border-red-200">{flash.error}</div>}
 
                 <div className="bg-white rounded-2xl border border-[#E5E7EB] border-l-[4px] border-l-[#D4AF37] overflow-hidden">
-                    <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-[#1A0A0A] to-[#7A0019]">
+                    <div className="theme-header-banner flex items-center justify-between px-4 py-3 bg-gradient-to-r from-[#1A0A0A] to-[#7A0019]">
                         <div>
                             <h2 className="text-sm font-black text-white">KPI Target Linkages</h2>
                             <p className="text-[10px] text-white/70 mt-0.5">Cascading targets · {fy}</p>
