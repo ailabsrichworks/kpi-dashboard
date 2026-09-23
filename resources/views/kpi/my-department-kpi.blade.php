@@ -22,32 +22,6 @@
 <main id="mainContent" class="ml-[230px] min-h-screen transition-all duration-300 bg-[#f4f7fb]">
 <div class="p-6 space-y-5">
 
-    {{-- HEADER --}}
-    <div class="rounded-[20px] theme-header-banner theme-page-banner bg-gradient-to-r from-[#1A0A0A] to-[#7A0019] text-white p-7 shadow-xl">
-        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
-            <div>
-                <h1 class="text-3xl font-black tracking-tight">My Department KPI</h1>
-                <p class="text-white/60 text-xs mt-2 font-medium">
-                    {{ $user['department_code'] ?? '-' }} · {{ $user['role'] ?? '-' }} · {{ $fy }}
-                </p>
-            </div>
-            <div class="flex flex-wrap gap-3 items-center">
-                <div class="bg-white/10 rounded-2xl px-5 py-3 text-center min-w-[80px]">
-                    <p class="text-[9px] text-white/60 uppercase font-black tracking-wider">Staff</p>
-                    <h3 class="text-2xl font-black mt-1">{{ count($employees ?? []) }}</h3>
-                </div>
-                <div class="bg-white/10 rounded-2xl px-5 py-3 text-center min-w-[80px]">
-                    <p class="text-[9px] text-white/60 uppercase font-black tracking-wider">Total KPI</p>
-                    <h3 class="text-2xl font-black mt-1">{{ count($kpis ?? []) }}</h3>
-                </div>
-                <div class="bg-white/10 rounded-2xl px-5 py-3 text-center min-w-[80px]">
-                    <p class="text-[9px] text-white/60 uppercase font-black tracking-wider">FY</p>
-                    <h3 class="text-2xl font-black mt-1">{{ $fy }}</h3>
-                </div>
-            </div>
-        </div>
-    </div>
-
     {{-- EXECUTIVE GUIDANCE BANNER --}}
     @if(($user['role'] ?? '') === 'EXECUTIVE' && count($kpis) > 0)
     <div class="bg-blue-50 border border-blue-200 rounded-xl px-5 py-4 flex gap-3 items-start">
