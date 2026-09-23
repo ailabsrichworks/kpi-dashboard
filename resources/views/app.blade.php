@@ -343,6 +343,17 @@
         #sidebar .sidebar-system a:not(.sidebar-active-item):hover {
             opacity: 1;
         }
+        /* Kept in sync with partials/sidebar.blade.php's own close-button rule. */
+        #sidebar .sidebar-close-btn {
+            color: var(--sidebar-accent) !important;
+            background: color-mix(in srgb, var(--sidebar-accent) 18%, transparent) !important;
+            border-color: color-mix(in srgb, var(--sidebar-accent) 55%, transparent) !important;
+        }
+        #sidebar .sidebar-close-btn:hover {
+            color: var(--sidebar-bg) !important;
+            background: var(--sidebar-accent) !important;
+            border-color: var(--sidebar-accent) !important;
+        }
     </style>
 
     {{-- Unconditional base font for the Platform (multi-company) pages, which

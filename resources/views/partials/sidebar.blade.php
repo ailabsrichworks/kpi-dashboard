@@ -500,6 +500,19 @@
     #sidebar .sidebar-system a:not(.sidebar-active-item):hover {
         opacity: 1;
     }
+    /* Close button always follows the same sidebar theme (default gold, or
+       the employee's own custom colour) instead of a fixed colour that can
+       blend into a custom dark/light background and become invisible. */
+    #sidebar .sidebar-close-btn {
+        color: var(--sidebar-accent) !important;
+        background: color-mix(in srgb, var(--sidebar-accent) 18%, transparent) !important;
+        border-color: color-mix(in srgb, var(--sidebar-accent) 55%, transparent) !important;
+    }
+    #sidebar .sidebar-close-btn:hover {
+        color: var(--sidebar-bg) !important;
+        background: var(--sidebar-accent) !important;
+        border-color: var(--sidebar-accent) !important;
+    }
 </style>
 
 {{-- Global top bar — shown on every authenticated page, fixed above the
@@ -618,9 +631,8 @@
         id="sidebarCloseBtn"
         type="button"
         @click.stop="$store.sidebar.collapsed = !$store.sidebar.collapsed"
-        class="absolute top-4 right-3 z-[9999] w-7 h-7 flex items-center justify-center
-        text-[#A4C3B2] bg-white/10 border border-white/20 rounded-full
-        hover:bg-white/20 hover:text-white transition text-sm"
+        class="sidebar-close-btn absolute top-4 right-3 z-[9999] w-7 h-7 flex items-center justify-center
+        border rounded-full transition text-sm"
         aria-label="Close Sidebar"
     >
         ×
