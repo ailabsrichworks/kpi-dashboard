@@ -150,27 +150,13 @@
         }
     @endphp
 
-{{-- ═══════ HEADER (sticky, with live score ring) ═════════════════════════ --}}
+{{-- ═══════ HEADER (sticky) ═══════════════════════════════════════════════ --}}
 <div class="sticky top-0 z-30 px-4 pt-4 pb-2 bg-[#F5F5F3]">
     <div class="relative overflow-hidden rounded-[20px] theme-header-banner theme-page-banner bg-gradient-to-r from-[#1A0A0A] via-[#3d0511] to-[#7A0019] text-white px-7 py-6 shadow-[0_10px_35px_rgba(122,0,25,0.45)] flex flex-row items-center gap-4">
         <div class="absolute top-0 left-0 right-0 h-[2px] theme-header-hairline bg-gradient-to-r from-[#D4AF37] via-[#D4AF37] to-[#D4AF37]/10"></div>
         <div class="pointer-events-none absolute -top-14 -right-14 w-64 h-64 rounded-full bg-[#D4AF37]/10 blur-3xl"></div>
         <div class="pointer-events-none absolute -bottom-20 left-1/3 w-64 h-64 rounded-full bg-white/10 blur-3xl"></div>
         <div class="pointer-events-none absolute inset-0 opacity-[0.05]" style="background-image:radial-gradient(circle,#fff 1px,transparent 1px);background-size:20px 20px;"></div>
-
-        <!-- LIVE SCORE RING -->
-        <div class="relative w-[52px] h-[52px] rounded-full shrink-0 p-[3px]" style="background: conic-gradient(var(--user-theme-accent, #D4AF37) {{ $individualPerformanceWidth * 3.6 }}deg, rgba(255,255,255,.18) 0deg);">
-            <div class="w-full h-full rounded-full bg-[#2A0910] flex flex-col items-center justify-center">
-                <span class="text-xs font-black leading-none">{{ number_format($individualPerformanceDisplay,0) }}%</span>
-                <span class="text-[6px] text-[#D4AF37] font-black uppercase tracking-wider mt-0.5">Score</span>
-            </div>
-        </div>
-
-        <a href="/dashboard" class="relative text-[11px] text-[#D4AF37] hover:text-white transition shrink-0">← Dashboard</a>
-
-        <span class="relative hidden sm:inline-flex items-center gap-1.5 text-[10px] font-black px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-white/90 shrink-0">
-            {{ $individualPerformanceLabel }} Performance
-        </span>
 
         <div class="relative flex-1"></div>
 
