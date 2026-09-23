@@ -368,8 +368,23 @@
             return;
         }
 
-        if (dashboards.length === 1 || (state.employeeId && dashboards.some(d => d.employee_id === state.employeeId))) {
-            if (!state.employeeId) selectDashboard(dashboards[0], false);
+        if (dashboards.length === 1) {
+            // Only one valid dashboard exists for this account -- always make
+            // sure the cached employee_id actually matches it. Previously
+            // this only ran when state.employeeId was empty, so a STALE
+            // cached id (e.g. left over from a different account, or an
+            // employee record that changed) was never corrected: every
+            // later API call would send that mismatched id, get a 401/403
+            // from resolveContext(), and surface only as a generic "Could
+            // not load your dashboard." with no clue why.
+            if (state.employeeId !== dashboards[0].employee_id) {
+                selectDashboard(dashboards[0], false);
+            }
+            routeToScreen();
+            return;
+        }
+
+        if (state.employeeId && dashboards.some(d => d.employee_id === state.employeeId)) {
             routeToScreen();
             return;
         }
