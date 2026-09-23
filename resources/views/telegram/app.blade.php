@@ -384,11 +384,10 @@
             return;
         }
 
-        if (state.employeeId && dashboards.some(d => d.employee_id === state.employeeId)) {
-            routeToScreen();
-            return;
-        }
-
+        // More than one company on this account -- always let them pick
+        // which one to enter, rather than silently reusing whatever was
+        // cached from a previous session. Which company they mean to open
+        // should never be assumed for a multi-company account.
         renderChooseDashboard(dashboards);
     }
 
