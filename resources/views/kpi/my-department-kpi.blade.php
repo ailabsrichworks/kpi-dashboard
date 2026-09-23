@@ -26,23 +26,22 @@
     <div class="rounded-[20px] theme-header-banner theme-page-banner bg-gradient-to-r from-[#1A0A0A] to-[#7A0019] text-white p-7 shadow-xl">
         <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
             <div>
-                <a href="/dashboard" class="text-xs text-blue-200 hover:text-white font-semibold">← Dashboard</a>
-                <h1 class="text-3xl font-black mt-3 tracking-tight">My Department KPI</h1>
+                <h1 class="text-3xl font-black tracking-tight">My Department KPI</h1>
                 <p class="text-white/60 text-xs mt-2 font-medium">
                     {{ $user['department_code'] ?? '-' }} · {{ $user['role'] ?? '-' }} · {{ $fy }}
                 </p>
             </div>
             <div class="flex flex-wrap gap-3 items-center">
                 <div class="bg-white/10 rounded-2xl px-5 py-3 text-center min-w-[80px]">
-                    <p class="text-[9px] text-blue-200 uppercase font-black tracking-wider">Staff</p>
+                    <p class="text-[9px] text-white/60 uppercase font-black tracking-wider">Staff</p>
                     <h3 class="text-2xl font-black mt-1">{{ count($employees ?? []) }}</h3>
                 </div>
                 <div class="bg-white/10 rounded-2xl px-5 py-3 text-center min-w-[80px]">
-                    <p class="text-[9px] text-blue-200 uppercase font-black tracking-wider">Total KPI</p>
+                    <p class="text-[9px] text-white/60 uppercase font-black tracking-wider">Total KPI</p>
                     <h3 class="text-2xl font-black mt-1">{{ count($kpis ?? []) }}</h3>
                 </div>
                 <div class="bg-white/10 rounded-2xl px-5 py-3 text-center min-w-[80px]">
-                    <p class="text-[9px] text-blue-200 uppercase font-black tracking-wider">FY</p>
+                    <p class="text-[9px] text-white/60 uppercase font-black tracking-wider">FY</p>
                     <h3 class="text-2xl font-black mt-1">{{ $fy }}</h3>
                 </div>
             </div>
