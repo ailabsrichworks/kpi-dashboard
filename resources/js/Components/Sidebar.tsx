@@ -84,9 +84,17 @@ export default function Sidebar() {
                     className="sidebar-brand-tile w-10 h-10 rounded-xl border-2 flex items-center justify-center shrink-0 overflow-hidden p-1"
                     style={{ backgroundColor: sidebarBg, borderColor: sidebarAccent }}
                 >
-                    <span className={`sidebar-logo w-full h-full text-white font-bold text-base flex items-center justify-center ${collapsed ? 'hidden' : ''}`}>
-                        {companyInitial}
-                    </span>
+                    {layout.logoUrl ? (
+                        <img
+                            src={layout.logoUrl}
+                            alt={layout.companyDisplayName || 'Company logo'}
+                            className={`sidebar-logo w-full h-full object-contain ${collapsed ? 'hidden' : ''}`}
+                        />
+                    ) : (
+                        <span className={`sidebar-logo w-full h-full text-white font-bold text-base flex items-center justify-center ${collapsed ? 'hidden' : ''}`}>
+                            {companyInitial}
+                        </span>
+                    )}
                     <span className={`sidebar-icon-only text-white font-bold text-lg ${collapsed ? '' : 'hidden'}`}>☰</span>
                 </div>
 

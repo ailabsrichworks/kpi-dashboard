@@ -99,6 +99,17 @@ class HandleInertiaRequests extends Middleware
                 'themeSidebarBg' => session('theme_sidebar_bg') ?: '#111111',
                 'themeSidebarAccent' => session('theme_sidebar_accent') ?: (session('theme_accent') ?: '#D4AF37'),
                 'themeSidebarText' => session('theme_sidebar_text') ?: '#FFFFFF',
+                // Sidebar brand-tile logo — mirrors partials/sidebar.blade.php's
+                // own CompanyLogoService::resolve() call exactly (same
+                // company_logo_url session key KpiAuth syncs, same brand-tile
+                // background fallback), so every Inertia/React page using
+                // Sidebar.tsx shows the same logo as every Blade page instead
+                // of just a letter initial.
+                'logoUrl' => \App\Services\CompanyLogoService::resolve(
+                    session('company_code'),
+                    session('company_logo_url'),
+                    session('theme_sidebar_bg') ?: '#C8102E'
+                ),
             ],
         ];
     }

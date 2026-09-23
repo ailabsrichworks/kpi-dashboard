@@ -22,6 +22,7 @@ export interface LayoutProps {
     themeSidebarBg: string;
     themeSidebarAccent: string;
     themeSidebarText: string;
+    logoUrl: string | null;
 }
 
 export interface FlashProps {
