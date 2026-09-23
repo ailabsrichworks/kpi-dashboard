@@ -1,5 +1,5 @@
 import { Link, router, usePage } from '@inertiajs/react';
-import { KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { KeyboardEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { useSidebar } from '../Layouts/SidebarContext';
 import { SharedPageProps } from '../types';
 
@@ -27,11 +27,12 @@ function todayInKualaLumpur(): string {
     }).format(new Date());
 }
 
-export default function TopBar() {
+export default function TopBar({ pageTitle, pageSubtitle }: { pageTitle?: string; pageSubtitle?: ReactNode }) {
     const { collapsed } = useSidebar();
     const { props } = usePage<SharedPageProps>();
     const { layout } = props;
-    const title = useDocumentTitle();
+    const documentTitle = useDocumentTitle();
+    const title = pageTitle ?? documentTitle;
 
     const [profileOpen, setProfileOpen] = useState(false);
     const profileRef = useRef<HTMLDivElement>(null);
@@ -91,8 +92,12 @@ export default function TopBar() {
                 <div className="leading-tight min-w-0 justify-self-start">
                     <p className="text-sm font-black text-slate-800 truncate">{title}</p>
                     <p className="text-[10px] text-slate-400 truncate">
-                        {layout.companyCode}
-                        {layout.departmentCode ? ` · ${layout.departmentCode}` : ''} · {todayInKualaLumpur()}
+                        {pageSubtitle ?? (
+                            <>
+                                {layout.companyCode}
+                                {layout.departmentCode ? ` · ${layout.departmentCode}` : ''} · {todayInKualaLumpur()}
+                            </>
+                        )}
                     </p>
                 </div>
 

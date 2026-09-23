@@ -110,51 +110,39 @@ export default function SltDashboard({
     };
 
     return (
-        <AppLayout>
+        <AppLayout pageTitle={`SLT Dashboard | ${quarter} ${currentFinancialYear}`} pageSubtitle={`${today} · Who has completed their quarterly appraisal, and how the team scored`}>
             <Head title="SLT Dashboard" />
 
             <div className="px-4 pb-4 space-y-3">
-                <div className="sticky top-0 z-30 px-4 pt-4 pb-2 bg-[#F5F5F3]">
-                    <div className="relative overflow-hidden rounded-[18px] theme-header-banner theme-page-banner bg-gradient-to-r from-[#1A0A0A] to-[#7A0019] text-white px-6 py-5 shadow-[0_10px_35px_rgba(122,0,25,0.45)] flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                        <div className="absolute top-0 left-0 right-0 h-[2px] theme-header-hairline bg-gradient-to-r from-[#D4AF37] via-[#D4AF37] to-[#D4AF37]/10" />
-                        <div className="relative">
-                            <h1 className="text-xl font-black tracking-tight leading-tight">
-                                SLT Dashboard | {quarter} {currentFinancialYear}
-                            </h1>
-                            <p className="text-[11px] text-white/60 mt-1">{today} · Who has completed their quarterly appraisal, and how the team scored</p>
-                        </div>
-
-                        <div className="relative flex flex-wrap items-center gap-2">
-                            <div className="flex flex-col">
-                                <label className="text-[9px] text-white/60 uppercase tracking-wide mb-0.5">Quarter</label>
-                                <select
-                                    value={quarter}
-                                    onChange={(e) => reload({ quarter: e.target.value })}
-                                    className="text-xs font-bold rounded-lg px-2.5 py-1.5 text-[#1a1a1a] bg-white border border-white/20"
-                                >
-                                    {QUARTERS.map((q) => (
-                                        <option key={q} value={q}>
-                                            {q}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="flex flex-col">
-                                <label className="text-[9px] text-white/60 uppercase tracking-wide mb-0.5">Department</label>
-                                <select
-                                    value={deptFilter}
-                                    onChange={(e) => reload({ department: e.target.value })}
-                                    className="text-xs font-bold rounded-lg px-2.5 py-1.5 text-[#1a1a1a] bg-white border border-white/20"
-                                >
-                                    <option value="ALL">All Departments</option>
-                                    {departments.map((d) => (
-                                        <option key={d.code} value={d.code}>
-                                            {d.name ?? d.code}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
+                <div className="pt-4 flex flex-wrap items-center justify-end gap-2">
+                    <div className="flex flex-col">
+                        <label className="text-[9px] text-slate-400 uppercase tracking-wide mb-0.5">Quarter</label>
+                        <select
+                            value={quarter}
+                            onChange={(e) => reload({ quarter: e.target.value })}
+                            className="text-xs font-bold rounded-lg px-2.5 py-1.5 text-slate-800 bg-white border border-[#E5E7EB]"
+                        >
+                            {QUARTERS.map((q) => (
+                                <option key={q} value={q}>
+                                    {q}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="flex flex-col">
+                        <label className="text-[9px] text-slate-400 uppercase tracking-wide mb-0.5">Department</label>
+                        <select
+                            value={deptFilter}
+                            onChange={(e) => reload({ department: e.target.value })}
+                            className="text-xs font-bold rounded-lg px-2.5 py-1.5 text-slate-800 bg-white border border-[#E5E7EB]"
+                        >
+                            <option value="ALL">All Departments</option>
+                            {departments.map((d) => (
+                                <option key={d.code} value={d.code}>
+                                    {d.name ?? d.code}
+                                </option>
+                            ))}
+                        </select>
                     </div>
                 </div>
 

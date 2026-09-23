@@ -19,7 +19,17 @@ function MainContent({ children }: { children: ReactNode }) {
     );
 }
 
-export default function AppLayout({ children }: { children: ReactNode }) {
+export default function AppLayout({
+    children,
+    pageTitle,
+    pageSubtitle,
+}: {
+    children: ReactNode;
+    /** Overrides the top bar's title — otherwise derived from document.title. */
+    pageTitle?: string;
+    /** Overrides the top bar's "company · department · date" line. */
+    pageSubtitle?: ReactNode;
+}) {
     const { props } = usePage<SharedPageProps>();
     const { layout } = props;
 
@@ -42,7 +52,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <SidebarProvider>
             <div className="min-h-screen" style={{ ...themeVars, backgroundColor: 'var(--user-theme-bg)' }}>
                 <AniraChatWidget />
-                <TopBar />
+                <TopBar pageTitle={pageTitle} pageSubtitle={pageSubtitle} />
                 <Sidebar />
                 <MainContent>{children}</MainContent>
             </div>
