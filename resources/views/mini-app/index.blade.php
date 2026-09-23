@@ -1152,13 +1152,13 @@ function calendarBoard() {
         const hiddenCount = dayTasks.length - visible.length;
 
         cells += `
-            <button onclick="renderCalendarDay('${dateStr}')" class="min-h-[88px] text-left p-1.5 border border-slate-100 hover:bg-slate-50 transition-colors flex flex-col gap-1">
+            <div onclick="renderCalendarDay('${dateStr}')" role="button" tabindex="0" class="min-h-[88px] text-left p-1.5 border border-slate-100 hover:bg-slate-50 transition-colors flex flex-col gap-1 cursor-pointer">
                 <span class="text-[11px] font-bold ${isToday ? 'w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center' : 'text-slate-600'}">${d}</span>
                 <div class="space-y-0.5">
                     ${visible.map(t => calendarEventBar(t)).join('')}
                     ${hiddenCount > 0 ? `<p class="text-[8px] font-bold text-slate-400 px-1.5">+${hiddenCount} more</p>` : ''}
                 </div>
-            </button>
+            </div>
         `;
     }
 
