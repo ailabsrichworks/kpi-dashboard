@@ -371,9 +371,25 @@
     /* Dark text-on-white role (maroon/brown "heading" shades) -> darkened Accent */
     [class*="text-[#7A0019]"],
     [class*="text-[#6B3F2A]"],
-    [class*="text-[#8B5E4A]"] { color: color-mix(in srgb, var(--user-theme-accent) 70%, black) !important; }
+    [class*="text-[#8B5E4A]"],
+    [class*="text-[#4a2a1a]"] { color: color-mix(in srgb, var(--user-theme-accent) 70%, black) !important; }
     [class*="border-[#6B3F2A]"] { border-color: color-mix(in srgb, var(--user-theme-accent) 40%, transparent) !important; }
     [class*="ring-[#6B3F2A]"]   { --tw-ring-color: color-mix(in srgb, var(--user-theme-accent) 40%, transparent) !important; }
+
+    /* kpi/index.blade.php's "Submit Completion" button — swapped in by JS
+       (toggleCompletionProof()) in place of the default indigo Save button
+       once the quarter's status is set to "completed". Gradient/shadow-tint
+       Tailwind utilities (from-/to-/shadow-COLOR) aren't caught by the
+       bg-[#6B3F2A] substring rules above (different utility prefix
+       entirely), so this brand-maroon "final action" button was the one
+       piece of this page still ignoring the user's own Accent choice. */
+    [class*="from-[#6B3F2A]"][class*="to-[#5a3323]"] {
+        background: linear-gradient(135deg, var(--user-theme-accent), color-mix(in srgb, var(--user-theme-accent) 55%, black)) !important;
+    }
+    [class*="from-[#6B3F2A]"][class*="to-[#5a3323]"]:hover {
+        background: linear-gradient(135deg, color-mix(in srgb, var(--user-theme-accent) 88%, black), color-mix(in srgb, var(--user-theme-accent) 45%, black)) !important;
+    }
+    [class*="shadow-[#6B3F2A]"] { --tw-shadow-color: color-mix(in srgb, var(--user-theme-accent) 20%, transparent) !important; }
 
     /* Muted label sitting on a dark banner -> Text (matches theme-header-text-muted) */
     [class*="text-[#A4C3B2]"] { color: color-mix(in srgb, var(--user-theme-text) 65%, transparent) !important; }
