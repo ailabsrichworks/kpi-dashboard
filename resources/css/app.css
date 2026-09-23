@@ -26,3 +26,20 @@
         font-family: var(--font-sans);
     }
 }
+
+/* Sidebar close button (Components/Sidebar.tsx) — follows the employee's own
+   sidebar theme (default gold, or their custom colour) via the per-request
+   custom properties the component sets inline, so it can never blend into a
+   custom background the way a fixed colour could. Kept in sync with the
+   equivalent rule in partials/sidebar.blade.php / app.blade.php for the
+   legacy/Inertia-root rendering path. */
+#sidebar .sidebar-close-btn {
+    color: var(--sidebar-close-accent);
+    background-color: color-mix(in srgb, var(--sidebar-close-accent) 18%, transparent);
+    border-color: color-mix(in srgb, var(--sidebar-close-accent) 55%, transparent);
+}
+#sidebar .sidebar-close-btn:hover {
+    color: var(--sidebar-close-bg);
+    background-color: var(--sidebar-close-accent);
+    border-color: var(--sidebar-close-accent);
+}

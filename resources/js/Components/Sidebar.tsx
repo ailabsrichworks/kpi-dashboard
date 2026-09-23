@@ -34,6 +34,16 @@ export default function Sidebar() {
         borderLeftColor: sidebarAccent,
     };
     const inactiveLinkStyle: CSSProperties = { color: sidebarText, opacity: 0.85 };
+    // Close button follows the same sidebar theme (default gold, or the
+    // employee's own custom colour) instead of a fixed colour that can
+    // blend into a custom dark/light background and become invisible --
+    // kept in sync with partials/sidebar.blade.php's own .sidebar-close-btn
+    // rule. Fed as custom properties (rather than plain color/background)
+    // so the :hover swap in app.css can still react to them.
+    const closeBtnStyle = {
+        '--sidebar-close-accent': sidebarAccent,
+        '--sidebar-close-bg': sidebarBg,
+    } as CSSProperties;
 
     const handleLogout = () => {
         if (confirm('You are about to logout. Continue?')) {
@@ -55,9 +65,9 @@ export default function Sidebar() {
             <button
                 type="button"
                 onClick={() => toggle()}
-                className={`absolute top-4 right-3 z-[9999] w-7 h-7 flex items-center justify-center
-                text-[#A4C3B2] bg-white/10 border border-white/20 rounded-full
-                hover:bg-white/20 hover:text-white transition text-sm ${collapsed ? 'hidden' : ''}`}
+                className={`sidebar-close-btn absolute top-4 right-3 z-[9999] w-7 h-7 flex items-center justify-center
+                border rounded-full transition text-sm ${collapsed ? 'hidden' : ''}`}
+                style={closeBtnStyle}
                 aria-label="Close Sidebar"
             >
                 ×
