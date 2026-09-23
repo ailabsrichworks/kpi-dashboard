@@ -19,13 +19,6 @@
 <main id="mainContent" class="ml-[230px] min-h-screen transition-all duration-300">
 <div class="p-6 space-y-6">
 
-    <!-- HEADER -->
-    <div class="rounded-3xl theme-header-banner theme-page-banner bg-gradient-to-r from-[#1A0A0A] to-[#7A0019] text-white p-6 shadow-xl">
-        <div class="min-w-0">
-            <a href="{{ route('dashboard') }}" class="text-sm text-blue-100 hover:text-white">← Dashboard</a>
-        </div>
-    </div>
-
     <!-- APPROVAL FLOW GUIDE -->
     @php
         $approverName = $approver['short_name'] ?? null;
