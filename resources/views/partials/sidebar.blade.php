@@ -715,7 +715,7 @@
                         'icon' => 'dashboard',
                     ],
                     [
-                        'label' => 'Performix',
+                        'label' => 'Things To Do',
                         'href'  => route('mini-app'),
                         'match' => 'mini-app*',
                         'icon'  => 'task',

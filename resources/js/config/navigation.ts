@@ -45,7 +45,7 @@ export const navSections: NavSection[] = [
         title: 'Overview',
         items: [
             { label: 'Main Dashboard', href: '/dashboard', match: 'dashboard*', icon: 'dashboard' },
-            { label: 'Performix', href: '/mini-app', match: 'mini-app*', icon: 'task', legacy: true },
+            { label: 'Things To Do', href: '/mini-app', match: 'mini-app*', icon: 'task', legacy: true },
             { label: 'Notifications', href: '/notifications', match: 'notifications*', icon: 'bell', badge: 'unreadNotifications' },
             { label: 'Job Description', href: '/job-description', match: 'job-description*', icon: 'jobdesc', legacy: true },
             { label: 'SLT Dashboard', href: '/slt-dashboard', match: 'slt-dashboard*', icon: 'analytics', sltOnly: true },
