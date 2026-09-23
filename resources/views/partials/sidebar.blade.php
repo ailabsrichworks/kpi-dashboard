@@ -469,7 +469,12 @@
     $sidebarAccent = session('theme_sidebar_accent') ?: session('theme_accent');
     $sidebarText   = session('theme_sidebar_text');
 @endphp
-@if($sidebarBg || $sidebarAccent || $sidebarText)
+{{-- Unconditional on purpose — every page with a sidebar gets this same
+     block applied, whether the employee has a custom theme or not (falling
+     back to the defaults below). Previously gated behind
+     @if($sidebarBg || $sidebarAccent || $sidebarText), which meant a
+     session read glitch could silently skip the override entirely with no
+     fallback in its place; always rendering removes that possibility. --}}
 <style>
     :root {
         --sidebar-bg:     {{ $sidebarBg     ?: '#111111' }};
@@ -496,7 +501,6 @@
         opacity: 1;
     }
 </style>
-@endif
 
 {{-- Global top bar — shown on every authenticated page, fixed above the
      page's own header banner (which now sits directly beneath it, forming

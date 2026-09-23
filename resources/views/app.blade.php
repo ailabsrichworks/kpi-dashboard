@@ -315,7 +315,9 @@
         $sidebarAccent = session('theme_sidebar_accent') ?: session('theme_accent');
         $sidebarText   = session('theme_sidebar_text');
     @endphp
-    @if($sidebarBg || $sidebarAccent || $sidebarText)
+    {{-- Unconditional on purpose -- kept in sync with partials/sidebar.blade.php's
+         own removal of this same @if guard, so a session read glitch can never
+         silently skip the override on either rendering path. --}}
     <style>
         :root {
             --sidebar-bg:     {{ $sidebarBg     ?: '#111111' }};
@@ -342,7 +344,6 @@
             opacity: 1;
         }
     </style>
-    @endif
 
     {{-- Unconditional base font for the Platform (multi-company) pages, which
          had no explicit font at all before this — just whatever sans-serif
