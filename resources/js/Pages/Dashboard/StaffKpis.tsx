@@ -68,7 +68,7 @@ export default function StaffKpis({ staff, kpis, departmentName, currentFinancia
     const orderedCategories = groupByOrderedCategory(kpis, (k) => k.category ?? '');
 
     return (
-        <AppLayout>
+        <AppLayout pageTitle={staff.short_name ?? staff.full_name ?? 'Staff'}>
             <Head title={`${staff.short_name ?? staff.full_name ?? 'Staff'} — KPI Overview`} />
 
             <div className="px-4 pt-4 pb-10">

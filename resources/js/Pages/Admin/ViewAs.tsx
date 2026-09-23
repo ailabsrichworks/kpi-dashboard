@@ -41,7 +41,7 @@ export default function ViewAs({ employees, deptNames, search }: ViewAsPageProps
     }
 
     return (
-        <AppLayout>
+        <AppLayout pageTitle="View As (Employee KPI)">
             <Head title="View As · Admin" />
 
             <main className="p-6 max-w-4xl mx-auto space-y-4">

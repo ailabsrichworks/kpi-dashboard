@@ -96,7 +96,7 @@ export default function Notifications({ notifications }: NotificationsPageProps)
     }
 
     return (
-        <AppLayout>
+        <AppLayout pageTitle="Notifications">
             <Head title="Notifications" />
 
             <main className="px-4 pb-4">

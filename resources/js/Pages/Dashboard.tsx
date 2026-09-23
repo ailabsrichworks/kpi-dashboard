@@ -133,7 +133,7 @@ export default function Dashboard(props: DashboardPageProps) {
     const showCompanySection = companyDeptRanking.length > 0 || deptRows.length > 0;
 
     return (
-        <AppLayout>
+        <AppLayout pageTitle="Main Dashboard">
             <Head title="Main Dashboard" />
 
             <div className="sticky top-0 z-30 px-4 pt-4 pb-2 bg-[#F5F5F3]">

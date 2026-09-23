@@ -81,7 +81,7 @@ export default function Settings({ user, companyLogoUrl }: SettingsPageProps) {
     const isBts = (user.department_code ?? '').toUpperCase().trim() === 'BTS';
 
     return (
-        <AppLayout>
+        <AppLayout pageTitle="Account Settings">
             <Head title="Account Settings" />
 
             <div className="p-4 space-y-4">

@@ -49,7 +49,7 @@ export default function Profile({ user, manager, department }: ProfilePageProps)
     ];
 
     return (
-        <AppLayout>
+        <AppLayout pageTitle="My Profile">
             <Head title="My Profile" />
 
             <div className="sticky top-0 z-30 px-4 pt-4 pb-2 bg-[#F5F5F3]">
