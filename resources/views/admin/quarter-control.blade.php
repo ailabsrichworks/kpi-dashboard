@@ -20,8 +20,6 @@
 <main id="mainContent" class="ml-[230px] min-h-screen">
 <div class="p-6 max-w-4xl mx-auto space-y-4">
 
-    <a href="/profile" class="text-[10px] text-slate-500 hover:text-slate-800">← Profile</a>
-
     <div>
         <h1 class="text-xl font-black text-slate-900">Quarter Control</h1>
         <p class="text-[12px] text-slate-500 mt-1">
