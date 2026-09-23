@@ -27,7 +27,16 @@ function todayInKualaLumpur(): string {
     }).format(new Date());
 }
 
-export default function TopBar({ pageTitle, pageSubtitle }: { pageTitle?: string; pageSubtitle?: ReactNode }) {
+export default function TopBar({
+    pageTitle,
+    pageSubtitle,
+    pageActions,
+}: {
+    pageTitle?: string;
+    pageSubtitle?: ReactNode;
+    /** Extra controls (filters, etc.) rendered right next to the search box. */
+    pageActions?: ReactNode;
+}) {
     const { collapsed } = useSidebar();
     const { props } = usePage<SharedPageProps>();
     const { layout } = props;
@@ -101,8 +110,8 @@ export default function TopBar({ pageTitle, pageSubtitle }: { pageTitle?: string
                     </p>
                 </div>
 
-                <div className="w-full max-w-md justify-self-center">
-                    <div className="relative">
+                <div className="w-full max-w-2xl justify-self-center flex items-center gap-2">
+                    <div className="relative flex-1 min-w-0">
                         <svg className="w-3.5 h-3.5 text-slate-300 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
                         </svg>
@@ -113,6 +122,7 @@ export default function TopBar({ pageTitle, pageSubtitle }: { pageTitle?: string
                             className="w-full bg-slate-50 border border-slate-200 rounded-full pl-9 pr-4 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40"
                         />
                     </div>
+                    {pageActions && <div className="flex items-center gap-2 shrink-0">{pageActions}</div>}
                 </div>
 
                 <div className="flex items-center gap-1.5 justify-self-end">

@@ -109,43 +109,45 @@ export default function SltDashboard({
         completed: completedCount,
     };
 
+    const filterActions = (
+        <>
+            <div className="flex flex-col">
+                <label className="text-[8px] text-slate-400 uppercase tracking-wide mb-0.5">Quarter</label>
+                <select
+                    value={quarter}
+                    onChange={(e) => reload({ quarter: e.target.value })}
+                    className="text-xs font-bold rounded-lg px-2 py-1 text-slate-800 bg-white border border-[#E5E7EB]"
+                >
+                    {QUARTERS.map((q) => (
+                        <option key={q} value={q}>
+                            {q}
+                        </option>
+                    ))}
+                </select>
+            </div>
+            <div className="flex flex-col">
+                <label className="text-[8px] text-slate-400 uppercase tracking-wide mb-0.5">Department</label>
+                <select
+                    value={deptFilter}
+                    onChange={(e) => reload({ department: e.target.value })}
+                    className="text-xs font-bold rounded-lg px-2 py-1 text-slate-800 bg-white border border-[#E5E7EB]"
+                >
+                    <option value="ALL">All Departments</option>
+                    {departments.map((d) => (
+                        <option key={d.code} value={d.code}>
+                            {d.name ?? d.code}
+                        </option>
+                    ))}
+                </select>
+            </div>
+        </>
+    );
+
     return (
-        <AppLayout pageTitle={`SLT Dashboard | ${quarter} ${currentFinancialYear}`} pageSubtitle={`${today} · Who has completed their quarterly appraisal, and how the team scored`}>
+        <AppLayout pageTitle={`SLT Dashboard | ${quarter} ${currentFinancialYear}`} pageSubtitle={today} pageActions={filterActions}>
             <Head title="SLT Dashboard" />
 
-            <div className="px-4 pb-4 space-y-3">
-                <div className="pt-4 flex flex-wrap items-center justify-end gap-2">
-                    <div className="flex flex-col">
-                        <label className="text-[9px] text-slate-400 uppercase tracking-wide mb-0.5">Quarter</label>
-                        <select
-                            value={quarter}
-                            onChange={(e) => reload({ quarter: e.target.value })}
-                            className="text-xs font-bold rounded-lg px-2.5 py-1.5 text-slate-800 bg-white border border-[#E5E7EB]"
-                        >
-                            {QUARTERS.map((q) => (
-                                <option key={q} value={q}>
-                                    {q}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="flex flex-col">
-                        <label className="text-[9px] text-slate-400 uppercase tracking-wide mb-0.5">Department</label>
-                        <select
-                            value={deptFilter}
-                            onChange={(e) => reload({ department: e.target.value })}
-                            className="text-xs font-bold rounded-lg px-2.5 py-1.5 text-slate-800 bg-white border border-[#E5E7EB]"
-                        >
-                            <option value="ALL">All Departments</option>
-                            {departments.map((d) => (
-                                <option key={d.code} value={d.code}>
-                                    {d.name ?? d.code}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                </div>
-
+            <div className="px-4 pt-4 pb-4 space-y-3">
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
                     <div className="bg-white rounded-2xl shadow-[0_8px_30px_rgba(15,23,42,.07)] border border-[#E5E7EB] border-t-[3px] border-t-[#D4AF37] p-4">
                         <div className="flex items-center gap-2 mb-3">

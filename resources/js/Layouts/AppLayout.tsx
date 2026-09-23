@@ -23,12 +23,15 @@ export default function AppLayout({
     children,
     pageTitle,
     pageSubtitle,
+    pageActions,
 }: {
     children: ReactNode;
     /** Overrides the top bar's title — otherwise derived from document.title. */
     pageTitle?: string;
     /** Overrides the top bar's "company · department · date" line. */
     pageSubtitle?: ReactNode;
+    /** Extra controls (filters, etc.) rendered right next to the search box. */
+    pageActions?: ReactNode;
 }) {
     const { props } = usePage<SharedPageProps>();
     const { layout } = props;
@@ -52,7 +55,7 @@ export default function AppLayout({
         <SidebarProvider>
             <div className="min-h-screen" style={{ ...themeVars, backgroundColor: 'var(--user-theme-bg)' }}>
                 <AniraChatWidget />
-                <TopBar pageTitle={pageTitle} pageSubtitle={pageSubtitle} />
+                <TopBar pageTitle={pageTitle} pageSubtitle={pageSubtitle} pageActions={pageActions} />
                 <Sidebar />
                 <MainContent>{children}</MainContent>
             </div>
