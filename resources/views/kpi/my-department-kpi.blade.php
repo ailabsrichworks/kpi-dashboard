@@ -230,11 +230,27 @@
                     <option value="completed">Completed</option>
                 </select>
             </div>
-            <div class="bg-slate-900 text-white rounded-2xl p-4 flex items-center justify-between">
-                <p class="text-xs text-blue-200 font-semibold">Visible KPI</p>
+            <div class="theme-soft-btn border rounded-2xl p-4 flex items-center justify-between">
+                <p class="text-xs font-black uppercase tracking-wide opacity-80">Visible KPI</p>
                 <p id="visibleCount" class="text-2xl font-black">{{ count($kpis ?? []) }}</p>
             </div>
         </div>
+    </div>
+
+    {{-- EMPTY STATE (no KPIs at all in this department) --}}
+    @if(count($kpis ?? []) === 0)
+    <div class="glass rounded-[20px] border border-white/70 p-10 text-center shadow-sm">
+        <div class="w-14 h-14 rounded-2xl theme-soft-btn flex items-center justify-center text-2xl mx-auto">📋</div>
+        <h3 class="text-sm font-black text-slate-700 mt-4">No KPIs yet</h3>
+        <p class="text-xs text-slate-400 mt-1.5 max-w-sm mx-auto">No KPIs have been set up for this department for {{ $fy }} yet.</p>
+    </div>
+    @endif
+
+    {{-- NO RESULTS (everything filtered out) --}}
+    <div id="noResultsMessage" class="hidden glass rounded-[20px] border border-white/70 p-10 text-center shadow-sm">
+        <div class="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-2xl mx-auto">🔍</div>
+        <h3 class="text-sm font-black text-slate-700 mt-4">No KPIs match your filters</h3>
+        <p class="text-xs text-slate-400 mt-1.5">Try clearing the search, category, or status filter.</p>
     </div>
 
     {{-- STAFF LIST --}}
@@ -603,6 +619,8 @@ function filterRows(){
             if(hasVis) sec.classList.remove('hidden');
         });
     }
+
+    document.getElementById('noResultsMessage')?.classList.toggle('hidden', visible !== 0 || document.querySelectorAll('.kpi-card').length === 0);
 }
 
 searchInput.addEventListener('input', filterRows);
