@@ -81,7 +81,8 @@ class ProfileController extends Controller
         $user = $this->currentUser($supabase);
 
         return Inertia::render('Settings', [
-            'user' => $user,
+            'user'          => $user,
+            'companyLogoUrl' => session('company_logo_url'),
         ]);
     }
 
@@ -133,6 +134,60 @@ class ProfileController extends Controller
         session($payload);
 
         return response()->json(['success' => true]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | COMPANY LOGO (sidebar brand tile)
+    |--------------------------------------------------------------------------
+    | Unlike the theme colours above, this is COMPANY-wide, not per-employee —
+    | it's stored on the shared `companies` row, keyed by company_code, and
+    | every employee in that company sees the same one via
+    | CompanyLogoService/KpiAuth's session sync. Restricted to SLT since a
+    | change here is visible to everyone in the company, not just the person
+    | uploading it.
+    */
+
+    public function updateCompanyLogo(Request $request, SupabaseService $supabase)
+    {
+        $user = $this->currentUser($supabase);
+
+        $role = strtoupper(trim($user['role'] ?? ''));
+        if ($role !== 'SLT') {
+            abort(403, 'Only SLT can change the company logo — it applies to everyone in the company.');
+        }
+
+        $validated = $request->validate([
+            'logo' => 'required|file|mimes:png,jpg,jpeg,webp,svg|max:2048',
+        ]);
+
+        $companyCode = session('company_code');
+        $file        = $request->file('logo');
+        $path        = $companyCode . '/logo-' . uniqid() . '.' . $file->getClientOriginalExtension();
+        $contents    = file_get_contents($file->getRealPath());
+
+        try {
+            $logoUrl = $supabase->uploadToStorage('company-logos', $path, $contents, $file->getMimeType());
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => 'Upload failed. Please try again.'], 500);
+        }
+
+        $ok = $supabase->safePatch('companies', ['code' => 'eq.' . $companyCode], ['logo_url' => $logoUrl]);
+
+        if (!$ok) {
+            return response()->json(['success' => false, 'message' => 'Could not save the new logo. Please try again.'], 500);
+        }
+
+        // Reflect immediately for this session, same as updateTheme() above.
+        // Other employees' already-open sessions pick it up on their own next
+        // sync — see KpiAuth's bounded re-check, not an instant push.
+        session([
+            'company_logo_url'        => $logoUrl,
+            'company_logo_synced_for' => $companyCode,
+            'company_logo_synced_at'  => now()->toIso8601String(),
+        ]);
+
+        return response()->json(['success' => true, 'logo_url' => $logoUrl]);
     }
 
     public function updateSalutation(Request $request, SupabaseService $supabase)

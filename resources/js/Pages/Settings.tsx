@@ -19,6 +19,7 @@ import {
 } from '../config/themePalettes';
 
 interface SettingsUser {
+    role?: string | null;
     salutation?: string | null;
     email?: string | null;
     department_code?: string | null;
@@ -39,6 +40,7 @@ interface SettingsUser {
 
 interface SettingsPageProps {
     user: SettingsUser;
+    companyLogoUrl?: string | null;
 }
 
 type TabKey = 'profile' | 'telegram' | 'email' | 'password' | 'appearance';
@@ -60,7 +62,7 @@ const PREVIEW_LINKS = [
     { label: 'Profile', href: '/profile' },
 ];
 
-export default function Settings({ user }: SettingsPageProps) {
+export default function Settings({ user, companyLogoUrl }: SettingsPageProps) {
     const { flash } = usePage<SharedPageProps>().props;
 
     const [activeTab, setActiveTab] = useState<TabKey>(() => {
@@ -180,6 +182,7 @@ export default function Settings({ user }: SettingsPageProps) {
                         {activeTab === 'appearance' && (
                             <AppearanceTab
                                 user={user}
+                                companyLogoUrl={companyLogoUrl}
                                 hasCustomTheme={hasCustomTheme}
                                 hasCustomSidebarTheme={hasCustomSidebarTheme}
                                 hasAnyCustomTheme={hasAnyCustomTheme}
@@ -546,12 +549,14 @@ function PasswordTab() {
 
 function AppearanceTab({
     user,
+    companyLogoUrl,
     hasCustomTheme,
     hasCustomSidebarTheme,
     hasAnyCustomTheme,
     hasCustomFont,
 }: {
     user: SettingsUser;
+    companyLogoUrl?: string | null;
     hasCustomTheme: boolean;
     hasCustomSidebarTheme: boolean;
     hasAnyCustomTheme: boolean;
@@ -732,6 +737,12 @@ function AppearanceTab({
                                     />
                                 ))}
                             </div>
+
+                            {user.role === 'SLT' && (
+                                <div className="pt-4 mt-1 border-t border-slate-100">
+                                    <CompanyLogoUploader companyLogoUrl={companyLogoUrl} />
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <div>
@@ -1109,5 +1120,83 @@ function ColorSwatch({ label, hint, value, onChange }: { label: string; hint?: s
                 <span className="block text-[10px] font-mono text-slate-400 uppercase">{value}</span>
             </span>
         </label>
+    );
+}
+
+function CompanyLogoUploader({ companyLogoUrl }: { companyLogoUrl?: string | null }) {
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [preview, setPreview] = useState<string | null>(companyLogoUrl ?? null);
+    const [uploading, setUploading] = useState(false);
+    const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+
+    function pickFile() {
+        fileInputRef.current?.click();
+    }
+
+    async function onFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const localPreview = URL.createObjectURL(file);
+        setPreview(localPreview);
+        setUploading(true);
+        setMsg(null);
+
+        try {
+            const formData = new FormData();
+            formData.append('logo', file);
+
+            const res = await fetch('/settings/company-logo', {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken() },
+                body: formData,
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                setPreview(data.logo_url);
+                setMsg({ text: 'Logo updated ✓ Applying everywhere…', ok: true });
+                setTimeout(() => window.location.reload(), 900);
+            } else {
+                setMsg({ text: data.message || 'Could not upload the logo.', ok: false });
+            }
+        } catch {
+            setMsg({ text: 'Network error.', ok: false });
+        } finally {
+            setUploading(false);
+            e.target.value = '';
+        }
+    }
+
+    return (
+        <div>
+            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Company logo</p>
+            <p className="text-[10px] text-slate-500 mb-3 max-w-md">
+                Shown in the sidebar brand tile for everyone in the company, on every page. Changing it here replaces it everywhere the logo appears — no
+                developer needed.
+            </p>
+            <div className="flex items-center gap-4 flex-wrap">
+                <div className="w-16 h-16 rounded-xl bg-[#111111] border-2 border-[#D4AF37] flex items-center justify-center shrink-0 overflow-hidden p-1.5">
+                    {preview ? (
+                        <img src={preview} alt="Company logo" className="w-full h-full object-contain" />
+                    ) : (
+                        <span className="text-white text-[10px] font-bold text-center leading-tight">No logo</span>
+                    )}
+                </div>
+                <div>
+                    <button
+                        type="button"
+                        onClick={pickFile}
+                        disabled={uploading}
+                        className="text-[11px] font-black px-3 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-700 transition disabled:opacity-50"
+                    >
+                        {uploading ? 'Uploading…' : 'Upload new logo'}
+                    </button>
+                    <p className="text-[9px] text-slate-400 mt-1.5">PNG, JPG, WEBP or SVG — up to 2MB.</p>
+                    {msg && <p className={`text-[10.5px] font-bold mt-1.5 ${msg.ok ? 'text-emerald-600' : 'text-red-600'}`}>{msg.text}</p>}
+                </div>
+                <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={onFileChosen} className="hidden" />
+            </div>
+        </div>
     );
 }

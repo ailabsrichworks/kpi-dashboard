@@ -140,8 +140,17 @@ class KpiAuth
 
         $currentCompanyCode = session('company_code');
 
-        if (session('company_logo_synced_for') !== $currentCompanyCode) {
-            $logoUrl = null;
+        // Bounded re-check (not just "company changed") — an SLT uploading a
+        // new logo via ProfileController::updateCompanyLogo() only reflects
+        // instantly in their OWN session; every other employee's session was
+        // already marked synced for this same company_code and would
+        // otherwise never refetch until they logged out. Re-checking every 5
+        // minutes caps how stale that can get without re-querying every request.
+        $syncedAt      = session('company_logo_synced_at');
+        $syncIsStale   = !$syncedAt || now()->diffInSeconds(\Carbon\Carbon::parse($syncedAt)) >= 300;
+
+        if (session('company_logo_synced_for') !== $currentCompanyCode || $syncIsStale) {
+            $logoUrl = session('company_logo_url');
             try {
                 $company = app(SupabaseService::class)->first('companies', [
                     'code'   => 'eq.' . $currentCompanyCode,
@@ -149,17 +158,16 @@ class KpiAuth
                 ]);
                 $logoUrl = $company['logo_url'] ?? null;
             } catch (\Throwable) {
-                // Unlike the theme sync above, a failure here is marked
-                // synced anyway (with no logo_url) rather than retried —
-                // this column doesn't exist on every deployment yet, and
-                // CompanyLogoService's public/images fallback covers that
-                // case fine on its own, so retrying every request forever
-                // against a column that will never appear would just be
-                // wasted latency, not a real chance at self-healing.
+                // Unlike the theme sync above, a failure here keeps the
+                // previous value and is marked synced anyway (rather than
+                // retried every request) — this column doesn't exist on every
+                // deployment yet, and CompanyLogoService's public/images
+                // fallback covers that case fine on its own.
             }
 
             session([
                 'company_logo_synced_for' => $currentCompanyCode,
+                'company_logo_synced_at'  => now()->toIso8601String(),
                 'company_logo_url'        => $logoUrl,
             ]);
         }

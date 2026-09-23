@@ -559,6 +559,7 @@ Route::middleware(['kpi.auth'])->group(function () {
     Route::post('/settings/password', [\App\Http\Controllers\ProfileController::class, 'updatePassword'])->name('settings.password.update');
     Route::post('/settings/theme', [\App\Http\Controllers\ProfileController::class, 'updateTheme'])->name('settings.theme.update');
     Route::post('/settings/salutation', [\App\Http\Controllers\ProfileController::class, 'updateSalutation'])->name('settings.salutation.update');
+    Route::post('/settings/company-logo', [\App\Http\Controllers\ProfileController::class, 'updateCompanyLogo'])->name('settings.company_logo.update');
 
     /*
     |--------------------------------------------------------------------------
