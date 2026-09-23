@@ -29,28 +29,7 @@
 
 <main id="mainContent" class="ml-[230px] min-h-screen">
 
-{{-- Header --}}
-<div class="sticky top-0 z-30 px-4 pt-4 pb-2 bg-[#f0f2f7] no-print">
-    <div class="rounded-[18px] theme-header-banner theme-page-banner bg-gradient-to-r from-[#1A0A0A] to-[#7A0019] text-white px-6 py-4 shadow-xl flex items-center justify-between">
-        <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-            </div>
-            <div>
-                <h1 class="text-base font-black">Attendance Import</h1>
-                <p class="text-white/65 text-[10px] mt-0.5">Import month by month from Google Sheet · Only staff with data are included</p>
-            </div>
-        </div>
-        @if(isset($results))
-        <button onclick="window.print()" class="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl font-bold text-xs border border-white/20 flex items-center gap-1.5 transition">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-            Print
-        </button>
-        @endif
-    </div>
-</div>
-
-<div class="px-4 py-4 max-w-full">
+<div class="px-4 pt-4 py-4 max-w-full">
 
 @php
     $mNames     = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -159,6 +138,13 @@
     $totalInsufficient = collect($results)->sum('insufficient_count');
     $monthLabel        = \Carbon\Carbon::create(null, $month)->format('F') . ' ' . $year;
 @endphp
+
+<div class="flex justify-end mb-3 no-print">
+    <button onclick="window.print()" class="bg-white hover:bg-slate-50 text-slate-600 px-4 py-2 rounded-xl font-bold text-xs border border-[#6B9080]/25 flex items-center gap-1.5 transition">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        Print
+    </button>
+</div>
 
 {{-- Summary cards --}}
 <div class="grid grid-cols-5 gap-3 mb-4 no-print">

@@ -3,36 +3,10 @@ import AppLayout from '../Layouts/AppLayout';
 
 export default function Help() {
     return (
-        <AppLayout>
+        <AppLayout pageTitle="Help & Guide" pageSubtitle="Understand what every score, colour, and status means">
             <Head title="Help & Guide" />
 
-            <div className="sticky top-0 z-30 px-4 pt-4 pb-2 bg-[#F5F5F3]">
-                <div className="relative overflow-hidden rounded-[18px] theme-header-banner theme-page-banner bg-gradient-to-r from-[#1A0A0A] to-[#7A0019] text-white px-6 py-5 shadow-[0_10px_35px_rgba(122,0,25,0.45)] flex flex-row items-center justify-between gap-4">
-                    <div className="absolute top-0 left-0 right-0 h-[2px] theme-header-hairline bg-gradient-to-r from-[#D4AF37] via-[#D4AF37] to-[#D4AF37]/10" />
-                    <div className="pointer-events-none absolute -top-10 -right-10 w-48 h-48 rounded-full bg-[#D4AF37]/10 blur-3xl" />
-                    <div className="pointer-events-none absolute -bottom-16 left-1/3 w-56 h-56 rounded-full bg-white/10 blur-3xl" />
-
-                    <div className="relative flex items-center gap-4">
-                        <div className="w-11 h-11 rounded-2xl bg-white/15 border border-white/20 flex items-center justify-center shrink-0">
-                            <svg className="w-5 h-5 text-[#D4AF37]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                        </div>
-                        <div>
-                            {/* /kpi is still a plain Blade view(), not an Inertia page --
-                                a real <a> tag, not Inertia's <Link>. See NavItem['legacy']
-                                in config/navigation.ts. */}
-                            <a href="/kpi" className="text-[11px] text-[#D4AF37] hover:text-white transition">
-                                ← KPI List
-                            </a>
-                            <h1 className="text-2xl font-black tracking-tight mt-1">Help &amp; Guide</h1>
-                            <p className="text-white/70 text-xs mt-1">Understand what every score, colour, and status means</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div className="px-4 pb-6 space-y-4">
+            <div className="px-4 pt-4 pb-6 space-y-4">
                 {/* SCORE BANDS */}
                 <div className="bg-white rounded-[20px] border border-[#E5E7EB] border-t-[3px] border-t-[#D4AF37] shadow-sm p-5">
                     <div className="flex items-center gap-2 mb-4">

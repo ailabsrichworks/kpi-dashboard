@@ -22,30 +22,6 @@
 <main id="mainContent" class="ml-[230px] min-h-screen transition-all duration-300 bg-[#f0f2f7]">
 <div class="p-6 space-y-5">
 
-    {{-- ── HEADER ─────────────────────────────────────────────────────── --}}
-    <div class="rounded-[18px] theme-header-banner theme-page-banner bg-gradient-to-r from-[#1A0A0A] to-[#7A0019] text-white px-8 py-7 shadow-xl">
-        <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
-            <div>
-                <a href="{{ route('kpi.my-department-kpi') }}" class="text-xs text-[#A4C3B2] hover:text-white font-semibold">← My Department KPI</a>
-                <h1 class="text-3xl font-black mt-3 tracking-tight">Titan KPI Dashboard</h1>
-                <p class="text-white/60 text-xs mt-1 font-medium">Financial Performance · RCG · {{ $fy }}</p>
-            </div>
-            <div class="flex flex-wrap gap-3 items-center">
-                <div class="bg-white/10 rounded-2xl px-5 py-3 text-center min-w-[80px]">
-                    <p class="text-[9px] text-[#A4C3B2] uppercase font-black tracking-wider">Staff</p>
-                    <h3 class="text-2xl font-black mt-1">{{ count($allStaff) }}</h3>
-                </div>
-                <div class="bg-white/10 rounded-2xl px-5 py-3 text-center min-w-[80px]">
-                    <p class="text-[9px] text-[#A4C3B2] uppercase font-black tracking-wider">KPIs</p>
-                    <h3 class="text-2xl font-black mt-1">2</h3>
-                </div>
-            </div>
-        </div>
-
-        {{-- Guide for executive --}}
-    </div>
-
-
     {{-- ── COLLAPSE ALL / EXPAND ALL ──────────────────────────────────── --}}
     @if(count($viewStaff) > 1)
     <div class="flex items-center gap-2 no-print">

@@ -112,38 +112,32 @@ export default function ActivityLog({ user, logs, typeFilter, fy }: ActivityLogP
     const nonZeroStats = STAT_CARDS.filter(([type]) => (typeCounts[type] ?? 0) > 0);
     const grouped = groupConsecutiveByDate(logs);
 
+    const pageActions = (
+        <>
+            <div className="text-right shrink-0">
+                <p className="text-[9px] text-slate-400 uppercase tracking-wide">Total Events</p>
+                <p className="text-lg font-black text-slate-800 leading-none">{logs.length}</p>
+            </div>
+            <select
+                value={viewMode}
+                onChange={(e) => setViewMode(e.target.value as 'timeline' | 'report')}
+                className="bg-[#D4AF37] hover:bg-[#c19c2f] text-[#1a1a1a] px-3 py-2 rounded-xl shadow font-black text-[11px] transition cursor-pointer border-none"
+            >
+                <option value="timeline">🕒 Timeline View</option>
+                <option value="report">📄 Report View</option>
+            </select>
+        </>
+    );
+
     return (
-        <AppLayout>
+        <AppLayout
+            pageTitle="User Activity Log"
+            pageSubtitle={`${user.short_name ?? user.full_name ?? '-'} · ${user.role} · ${user.department_code} · ${fy}`}
+            pageActions={pageActions}
+        >
             <Head title="User Activity Log" />
 
             <div className="p-4 space-y-4">
-                {/* HEADER */}
-                <div className="rounded-[18px] theme-header-banner theme-page-banner bg-gradient-to-r from-[#1A0A0A] to-[#7A0019] text-white px-5 py-3.5 shadow-xl flex items-center justify-between gap-4">
-                    <div>
-                        <Link href="/dashboard" className="text-[10px] text-blue-100 hover:text-white">
-                            ← Dashboard
-                        </Link>
-                        <h1 className="text-xl font-bold mt-1">User Activity Log</h1>
-                        <p className="text-white/70 text-[10px] mt-0.5">
-                            {user.short_name ?? user.full_name ?? '-'} · {user.role} · {user.department_code} · {fy}
-                        </p>
-                    </div>
-                    <div className="text-right flex items-center gap-3">
-                        <div>
-                            <p className="text-[10px] text-blue-200">Total Events</p>
-                            <p className="text-2xl font-black">{logs.length}</p>
-                        </div>
-                        <select
-                            value={viewMode}
-                            onChange={(e) => setViewMode(e.target.value as 'timeline' | 'report')}
-                            className="bg-[#D4AF37] hover:bg-[#c19c2f] text-[#1a1a1a] px-3 py-2 rounded-xl shadow font-black text-[11px] transition cursor-pointer border-none"
-                        >
-                            <option value="timeline">🕒 Timeline View</option>
-                            <option value="report">📄 Report View</option>
-                        </select>
-                    </div>
-                </div>
-
                 {/* FILTER BAR */}
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-3">
                     <div className="flex flex-wrap gap-2 items-center">

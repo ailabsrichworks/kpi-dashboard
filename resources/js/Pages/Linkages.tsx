@@ -61,21 +61,17 @@ export default function Linkages({ fy, directReports, myLinkageMap, outgoingWith
                 {flash.error && <div className="bg-red-50 text-red-700 px-3 py-2 rounded-xl text-xs border border-red-200">{flash.error}</div>}
 
                 <div className="bg-white rounded-2xl border border-[#E5E7EB] border-l-[4px] border-l-[#D4AF37] overflow-hidden">
-                    <div className="theme-header-banner flex items-center justify-between px-4 py-3 bg-gradient-to-r from-[#1A0A0A] to-[#7A0019]">
-                        <div>
-                            <h2 className="text-sm font-black text-white">KPI Target Linkages</h2>
-                            <p className="text-[10px] text-white/70 mt-0.5">Cascading targets · {fy}</p>
-                        </div>
-                        {canAssignTarget && (
+                    {canAssignTarget && (
+                        <div className="flex items-center justify-end px-4 py-3 border-b border-[#E5E7EB]">
                             <button
                                 type="button"
                                 onClick={() => setShowForm((v) => !v)}
-                                className="px-3 py-1.5 bg-white/15 hover:bg-white/25 text-white rounded-xl text-xs font-black transition border border-white/20"
+                                className="px-3 py-1.5 bg-[#D4AF37] hover:bg-[#c19c2f] text-[#1a1a1a] rounded-xl text-xs font-black transition"
                             >
                                 + Assign Target
                             </button>
-                        )}
-                    </div>
+                        </div>
+                    )}
 
                     {canAssignTarget && showForm && (
                         <div className="border-b border-[#E5E7EB] bg-slate-50 px-4 py-3">
