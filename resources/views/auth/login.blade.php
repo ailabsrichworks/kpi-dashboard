@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RCG KPI Dashboard | Login</title>
+    <title>Richworks KPI Dashboard | Login</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -28,7 +28,7 @@
 
                 <div class="flex flex-col items-center text-center mb-6">
                     <h1 class="text-lg font-black text-slate-900 leading-tight">
-                        RCG KPI Dashboard
+                        Richworks KPI Dashboard
                     </h1>
                     <p class="text-[10px] font-bold text-[#A6906F] uppercase tracking-[0.16em] mt-1">
                         Performance System

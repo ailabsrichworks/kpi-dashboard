@@ -51,7 +51,7 @@ export default function Login() {
                         <div className="px-8 pt-8 pb-6">
                             <div className="flex flex-col items-center text-center mb-6">
                                 <h1 className="text-lg font-black text-slate-900 leading-tight">
-                                    RCG KPI Dashboard
+                                    Richworks KPI Dashboard
                                 </h1>
                                 <p className="text-[10px] font-bold text-[#A6906F] uppercase tracking-[0.16em] mt-1">
                                     Performance System

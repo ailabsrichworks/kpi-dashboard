@@ -51,7 +51,7 @@ export default function PlatformLogin() {
                     <div className="bg-white rounded-2xl overflow-hidden shadow-[0_25px_70px_rgba(0,0,0,.18)] border-t-[3px] border-t-[#C9B896]">
                         <div className="px-8 pt-8 pb-6">
                             <div className="flex flex-col items-center text-center mb-6">
-                                <h1 className="text-lg font-black text-slate-900 leading-tight">RCG KPI Dashboard</h1>
+                                <h1 className="text-lg font-black text-slate-900 leading-tight">Richworks KPI Dashboard</h1>
                                 <p className="text-[10px] font-bold text-[#A6906F] uppercase tracking-[0.16em] mt-1">Performance System</p>
                             </div>
 
