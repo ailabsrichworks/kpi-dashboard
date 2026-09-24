@@ -17,7 +17,7 @@ use App\Http\Controllers\AiController;
 */
 
 Route::get('/', function () {
-    return redirect()->route('login');
+    return redirect()->route('platform.login');
 });
 
 // Telegram Mini App shell — opened inside Telegram's WebView, no Laravel session
@@ -27,16 +27,23 @@ Route::view('/telegram/app', 'telegram.app', [
     'botUsername' => env('TELEGRAM_BOT_USERNAME', ''),
 ])->name('telegram.app');
 
-// This IS the working login for this company's real production data
-// (confirmed live, 2026-08-18): `users` genuinely has `password_hash`/
-// `is_active`, `employees` genuinely exists, and Supabase Auth (auth.users)
-// has zero accounts in this project -- so /platform/login can never
-// succeed here. An earlier redirect to /platform/login, based on the
-// opposite (unverified) assumption, made this real, working form
-// unreachable. See CLAUDE.md's "Login system correction" for how this was
-// confirmed before re-enabling it.
-Route::get('/login', [AuthController::class, 'showLogin'])
-    ->name('login');
+// Correction, 2026-09-24, for THIS project (wznctobguxemkcgmtriz /
+// andalusia.performix.ai): the comment this replaced was copied from a
+// different, older Supabase project where the legacy `users`/`employees`
+// schema was the real, live one. Confirmed directly against this project's
+// own database that the opposite is true here — `employees` doesn't exist
+// at all, `users` is the Platform's own table (`auth_user_id`/`role`, no
+// `password_hash`/`is_active`), and Platform accounts (Supabase Auth) are
+// real and working. Rendering this legacy form let people submit real
+// credentials into a login path whose own query
+// (`AuthController::submitLogin()`'s `is_active` filter) throws
+// "column users.is_active does not exist" against this schema — a 500 on
+// every real login attempt. Redirecting instead of rendering, rather than
+// deleting the route, keeps `submitLogin()`'s legacy code path intact for
+// whichever project's CLAUDE.md this comment doesn't apply to.
+Route::get('/login', function () {
+    return redirect()->route('platform.login');
+})->name('login');
 
 Route::post('/login', [AuthController::class, 'submitLogin'])
     ->name('login.submit');
