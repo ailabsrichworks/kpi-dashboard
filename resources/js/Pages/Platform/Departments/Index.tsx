@@ -125,7 +125,7 @@ function InviteDepartmentUserForm({ companyId, departmentId, roles }: { companyI
     const { data, setData, post, processing, reset } = useForm({
         name: '',
         email: '',
-        role: 'department_user',
+        role: 'employee' as 'employee' | 'executive',
         role_id: roles[0]?.id ?? '',
     });
 
@@ -189,12 +189,12 @@ function InviteDepartmentUserForm({ companyId, departmentId, roles }: { companyI
             </select>
             <select
                 value={data.role}
-                onChange={(e) => setData('role', e.target.value)}
+                onChange={(e) => setData('role', e.target.value as 'employee' | 'executive')}
                 className="rounded-lg border border-slate-300 px-2 py-1.5 text-xs"
                 title="Access level — what they can do in this admin console"
             >
-                <option value="department_user">Department User</option>
-                <option value="department_admin">Department Admin</option>
+                <option value="employee">Employee</option>
+                <option value="executive">Executive</option>
             </select>
             <button type="submit" disabled={processing || roles.length === 0} className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">
                 Send invite
@@ -312,8 +312,8 @@ export default function DepartmentsIndex({ company, departments, members, roles,
                                                 <span className="text-slate-600">
                                                     {row.users.name} <span className="text-slate-400">· {row.users.email}</span>
                                                 </span>
-                                                <Badge tone={row.role === 'department_admin' ? 'brand' : 'neutral'}>
-                                                    {row.role === 'department_admin' ? 'Admin' : 'Member'}
+                                                <Badge tone={row.role === 'executive' ? 'brand' : 'neutral'}>
+                                                    {row.role === 'executive' ? 'Executive' : 'Employee'}
                                                 </Badge>
                                                 {status === 'suspended' && <Badge tone="danger">Suspended</Badge>}
                                                 <SuspendMemberToggle companyId={company.id} userId={row.user_id} status={status} />
