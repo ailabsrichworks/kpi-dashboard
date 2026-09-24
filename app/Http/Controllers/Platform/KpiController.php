@@ -52,11 +52,22 @@ class KpiController extends Controller
         // Only fetched for KPIs that could possibly have one — 'company'
         // visibility (the default) never checks this table at read time, so
         // there is nothing here to show for the common case.
+        //
+        // `users!kpi_access_grants_user_id_foreign` (not a bare `users(...)`)
+        // is required: `kpi_access_grants` has TWO foreign keys into `users`
+        // (`user_id` and `granted_by`), so an unqualified embed is ambiguous.
+        // PostgREST returns 300 Multiple Choices with an error payload in
+        // that case — and Laravel's HTTP client doesn't treat 300 as a
+        // failure (`failed()` only checks 4xx/5xx), so `->throw()` silently
+        // let that error object through as if it were the real `grants`
+        // array. Confirmed live: every load of this page for a company with
+        // at least one KPI returned that PGRST201 error object as `grants`
+        // instead of the actual per-KPI access-grant rows.
         $grants = empty($kpiIds)
             ? []
             : $supabase->get('kpi_access_grants', [
                 'kpi_id' => 'in.(' . implode(',', $kpiIds) . ')',
-                'select' => 'id,kpi_id,user_id,department_id,users(name,email),departments(name)',
+                'select' => 'id,kpi_id,user_id,department_id,users!kpi_access_grants_user_id_foreign(name,email),departments(name)',
             ]);
 
         $departments = $supabase->get('departments', [

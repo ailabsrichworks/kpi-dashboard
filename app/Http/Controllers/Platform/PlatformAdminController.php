@@ -35,8 +35,16 @@ class PlatformAdminController extends Controller
             'limit' => 200,
         ]);
 
+        // `users!platform_admin_assignments_user_id_foreign` (not a bare
+        // `users(...)`) is required: `platform_admin_assignments` has TWO
+        // foreign keys into `users` (`user_id` and `granted_by`), so an
+        // unqualified embed is ambiguous and PostgREST returns 300 Multiple
+        // Choices with an error payload instead of the real rows — and
+        // Laravel's HTTP client doesn't treat 300 as a failure, so that error
+        // object silently became the `assignments` prop. Same bug, same fix,
+        // as `KpiController::index()`'s `kpi_access_grants` query.
         $assignments = $supabase->get('platform_admin_assignments', [
-            'select' => 'id,user_id,company_id,created_at,users(name,email),companies(name,code)',
+            'select' => 'id,user_id,company_id,created_at,users!platform_admin_assignments_user_id_foreign(name,email),companies(name,code)',
             'order' => 'created_at.desc',
         ]);
 
