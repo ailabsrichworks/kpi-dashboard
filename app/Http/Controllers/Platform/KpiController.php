@@ -226,6 +226,7 @@ class KpiController extends Controller
             'description' => 'nullable|string',
             'target' => 'nullable|numeric',
             'unit' => 'nullable|string|max:50',
+            'weight' => 'nullable|numeric|min:0|max:100',
             'frequency' => 'required|in:daily,weekly,monthly,quarterly,custom',
             'visibility' => 'nullable|in:company,department,restricted',
         ]);
@@ -250,6 +251,7 @@ class KpiController extends Controller
                 'description' => $request->description,
                 'target' => $request->target,
                 'unit' => $request->unit,
+                'weight' => $request->weight,
                 'frequency' => $request->frequency,
                 'visibility' => $request->input('visibility', 'company'),
             ], false);
@@ -297,6 +299,7 @@ class KpiController extends Controller
             'description' => 'nullable|string',
             'target' => 'nullable|numeric',
             'unit' => 'nullable|string|max:50',
+            'weight' => 'nullable|numeric|min:0|max:100',
             'frequency' => 'required|in:daily,weekly,monthly,quarterly,custom',
             'visibility' => 'nullable|in:company,department,restricted',
         ]);
@@ -307,7 +310,7 @@ class KpiController extends Controller
         $before = $supabase->first('kpis', [
             'id' => 'eq.' . $kpi,
             'company_id' => 'eq.' . $company,
-            'select' => 'id,name,description,target,unit,frequency,visibility,category_id',
+            'select' => 'id,name,description,target,unit,weight,frequency,visibility,category_id',
         ]);
 
         if (!$before) {
@@ -320,6 +323,7 @@ class KpiController extends Controller
             'description' => $request->description,
             'target' => $request->target,
             'unit' => $request->unit,
+            'weight' => $request->weight,
             'frequency' => $request->frequency,
             'visibility' => $request->input('visibility', $before['visibility']),
         ];

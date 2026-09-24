@@ -21,6 +21,7 @@ interface Kpi {
     description: string | null;
     target: number | null;
     unit: string | null;
+    weight: number | null;
     frequency: string;
     status: string;
     visibility: 'company' | 'department' | 'restricted';
@@ -171,7 +172,7 @@ function KpiFormFields({
     setData,
     categories,
 }: {
-    data: { category_id: string; name: string; description: string; target: string; unit: string; frequency: string; visibility: string };
+    data: { category_id: string; name: string; description: string; target: string; unit: string; weight: string; frequency: string; visibility: string };
     setData: (key: string, value: string) => void;
     categories: Category[];
 }) {
@@ -231,6 +232,22 @@ function KpiFormFields({
                     placeholder="%, $, calls…"
                 />
             </div>
+            <div>
+                <label className="text-xs font-medium text-slate-600 mb-1 inline-flex items-center gap-1">
+                    Weight
+                    <InfoTooltip text="How much this KPI counts toward the overall weighted score, as a share of 100 across all of this company's KPIs. Leave blank if weighting isn't used yet." />
+                </label>
+                <input
+                    value={data.weight}
+                    onChange={(e) => setData('weight', e.target.value)}
+                    type="number"
+                    step="any"
+                    min="0"
+                    max="100"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    placeholder="e.g. 20"
+                />
+            </div>
             <div className="col-span-2">
                 <label className="text-xs font-medium text-slate-600 mb-1 inline-flex items-center gap-1">
                     Who can see this?
@@ -254,6 +271,7 @@ function CreateKpiPanel({ companyId, categories }: { companyId: string; categori
         description: '',
         target: '',
         unit: '',
+        weight: '',
         frequency: 'monthly',
         visibility: 'company',
     });
@@ -298,6 +316,7 @@ function EditKpiForm({ companyId, kpi, categories, onDone }: { companyId: string
         description: kpi.description ?? '',
         target: kpi.target !== null ? String(kpi.target) : '',
         unit: kpi.unit ?? '',
+        weight: kpi.weight !== null ? String(kpi.weight) : '',
         frequency: kpi.frequency,
         visibility: kpi.visibility,
     });
@@ -409,6 +428,7 @@ function KpiRow({ kpi, company, categories, grants, departments, members }: { kp
                                 {kpi.unit ?? ''}
                             </span>
                         )}
+                        {kpi.weight !== null && <Badge tone="neutral">Weight: {kpi.weight}</Badge>}
                         <Badge tone={VISIBILITY_TONE[kpi.visibility]}>{VISIBILITY_LABEL[kpi.visibility]}</Badge>
                     </div>
                 </div>
