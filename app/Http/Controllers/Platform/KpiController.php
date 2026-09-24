@@ -229,10 +229,15 @@ class KpiController extends Controller
             'weight' => 'nullable|numeric|min:0|max:100',
             'frequency' => 'required|in:daily,weekly,monthly,quarterly,custom',
             'visibility' => 'nullable|in:company,department,restricted',
+            'assigned_user_id' => 'nullable|uuid',
         ]);
 
         /** @var SupabaseUserService $supabase */
         $supabase = $request->attributes->get('platformSupabase');
+
+        if ($request->assigned_user_id) {
+            $this->ensureCompanyMemberExists($supabase, $company, $request->assigned_user_id);
+        }
 
         try {
             // return=minimal (3rd arg false): `kpis_select`'s policy calls
@@ -254,6 +259,7 @@ class KpiController extends Controller
                 'weight' => $request->weight,
                 'frequency' => $request->frequency,
                 'visibility' => $request->input('visibility', 'company'),
+                'assigned_user_id' => $request->assigned_user_id ?: null,
             ], false);
         } catch (\Throwable $e) {
             return back()->withInput()->with('error', 'Could not create KPI: ' . $e->getMessage());
@@ -302,15 +308,20 @@ class KpiController extends Controller
             'weight' => 'nullable|numeric|min:0|max:100',
             'frequency' => 'required|in:daily,weekly,monthly,quarterly,custom',
             'visibility' => 'nullable|in:company,department,restricted',
+            'assigned_user_id' => 'nullable|uuid',
         ]);
 
         /** @var SupabaseUserService $supabase */
         $supabase = $request->attributes->get('platformSupabase');
 
+        if ($request->assigned_user_id) {
+            $this->ensureCompanyMemberExists($supabase, $company, $request->assigned_user_id);
+        }
+
         $before = $supabase->first('kpis', [
             'id' => 'eq.' . $kpi,
             'company_id' => 'eq.' . $company,
-            'select' => 'id,name,description,target,unit,weight,frequency,visibility,category_id',
+            'select' => 'id,name,description,target,unit,weight,frequency,visibility,category_id,assigned_user_id',
         ]);
 
         if (!$before) {
@@ -326,6 +337,7 @@ class KpiController extends Controller
             'weight' => $request->weight,
             'frequency' => $request->frequency,
             'visibility' => $request->input('visibility', $before['visibility']),
+            'assigned_user_id' => $request->assigned_user_id ?: null,
         ];
 
         try {
@@ -427,5 +439,27 @@ class KpiController extends Controller
         }
 
         return back()->with('success', 'Access revoked.');
+    }
+
+    /**
+     * kpis.assigned_user_id references the global `users` table, which has
+     * no company-membership constraint of its own — without this check, a
+     * Company Admin could (accidentally, via a stale form, or via a raw API
+     * call) assign a KPI to a user who isn't even a member of this company.
+     * restrict_kpi_owner_weight_update() also re-checks this at write time
+     * as the real boundary; this is only for a clean redirect at the point
+     * of assignment instead of a confusing failure later when that person
+     * tries to allocate weight on a KPI that silently refuses them.
+     */
+    private function ensureCompanyMemberExists(SupabaseUserService $supabase, string $company, string $userId): void
+    {
+        $member = $supabase->first('company_users', [
+            'company_id' => 'eq.' . $company,
+            'user_id' => 'eq.' . $userId,
+            'status' => 'eq.active',
+            'select' => 'user_id',
+        ]);
+
+        abort_unless($member, 422, 'The assigned user is not an active member of this company.');
     }
 }

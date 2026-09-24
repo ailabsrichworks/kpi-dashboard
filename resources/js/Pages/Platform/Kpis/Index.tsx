@@ -22,6 +22,7 @@ interface Kpi {
     target: number | null;
     unit: string | null;
     weight: number | null;
+    assigned_user_id: string | null;
     frequency: string;
     status: string;
     visibility: 'company' | 'department' | 'restricted';
@@ -171,10 +172,12 @@ function KpiFormFields({
     data,
     setData,
     categories,
+    members,
 }: {
-    data: { category_id: string; name: string; description: string; target: string; unit: string; weight: string; frequency: string; visibility: string };
+    data: { category_id: string; name: string; description: string; target: string; unit: string; weight: string; assigned_user_id: string; frequency: string; visibility: string };
     setData: (key: string, value: string) => void;
     categories: Category[];
+    members: Member[];
 }) {
     return (
         <>
@@ -250,6 +253,20 @@ function KpiFormFields({
             </div>
             <div className="col-span-2">
                 <label className="text-xs font-medium text-slate-600 mb-1 inline-flex items-center gap-1">
+                    Assign to
+                    <InfoTooltip text="Optional. Makes this one person's KPI on their own Weightage page, where they allocate its weight themselves (new allocations save directly; changing an existing weight needs your approval)." />
+                </label>
+                <select value={data.assigned_user_id} onChange={(e) => setData('assigned_user_id', e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                    <option value="">Not assigned to anyone</option>
+                    {members.map((m) => (
+                        <option key={m.user_id} value={m.user_id}>
+                            {m.users.name} ({m.users.email})
+                        </option>
+                    ))}
+                </select>
+            </div>
+            <div className="col-span-2">
+                <label className="text-xs font-medium text-slate-600 mb-1 inline-flex items-center gap-1">
                     Who can see this?
                     <InfoTooltip text="Company-wide: any signed-in member. Submitting departments: only the departments that report against it, plus admins. Restricted: nobody, until you grant access explicitly below." />
                 </label>
@@ -263,7 +280,7 @@ function KpiFormFields({
     );
 }
 
-function CreateKpiPanel({ companyId, categories }: { companyId: string; categories: Category[] }) {
+function CreateKpiPanel({ companyId, categories, members }: { companyId: string; categories: Category[]; members: Member[] }) {
     const [open, setOpen] = useState(false);
     const { data, setData, post, processing, reset } = useForm({
         category_id: '',
@@ -272,6 +289,7 @@ function CreateKpiPanel({ companyId, categories }: { companyId: string; categori
         target: '',
         unit: '',
         weight: '',
+        assigned_user_id: '',
         frequency: 'monthly',
         visibility: 'company',
     });
@@ -296,7 +314,7 @@ function CreateKpiPanel({ companyId, categories }: { companyId: string; categori
 
     return (
         <form onSubmit={submit} className="grid grid-cols-2 gap-3 mb-5 bg-slate-50 rounded-xl p-4">
-            <KpiFormFields data={data} setData={setData} categories={categories} />
+            <KpiFormFields data={data} setData={setData} categories={categories} members={members} />
             <div className="col-span-2 flex items-center gap-2">
                 <PrimaryButton type="submit" disabled={processing}>
                     Create KPI
@@ -309,7 +327,7 @@ function CreateKpiPanel({ companyId, categories }: { companyId: string; categori
     );
 }
 
-function EditKpiForm({ companyId, kpi, categories, onDone }: { companyId: string; kpi: Kpi; categories: Category[]; onDone: () => void }) {
+function EditKpiForm({ companyId, kpi, categories, members, onDone }: { companyId: string; kpi: Kpi; categories: Category[]; members: Member[]; onDone: () => void }) {
     const { data, setData, patch, processing } = useForm({
         category_id: kpi.kpi_categories ? categories.find((c) => c.name === kpi.kpi_categories?.name)?.id ?? '' : '',
         name: kpi.name,
@@ -317,6 +335,7 @@ function EditKpiForm({ companyId, kpi, categories, onDone }: { companyId: string
         target: kpi.target !== null ? String(kpi.target) : '',
         unit: kpi.unit ?? '',
         weight: kpi.weight !== null ? String(kpi.weight) : '',
+        assigned_user_id: kpi.assigned_user_id ?? '',
         frequency: kpi.frequency,
         visibility: kpi.visibility,
     });
@@ -328,7 +347,7 @@ function EditKpiForm({ companyId, kpi, categories, onDone }: { companyId: string
 
     return (
         <form onSubmit={submit} className="grid grid-cols-2 gap-3 mt-3 mb-2 bg-slate-50 rounded-xl p-4">
-            <KpiFormFields data={data} setData={setData} categories={categories} />
+            <KpiFormFields data={data} setData={setData} categories={categories} members={members} />
             <div className="col-span-2 flex items-center gap-2">
                 <PrimaryButton type="submit" disabled={processing}>
                     Save changes
@@ -429,6 +448,11 @@ function KpiRow({ kpi, company, categories, grants, departments, members }: { kp
                             </span>
                         )}
                         {kpi.weight !== null && <Badge tone="neutral">Weight: {kpi.weight}</Badge>}
+                        {kpi.assigned_user_id && (
+                            <Badge tone="brand">
+                                Assigned: {members.find((m) => m.user_id === kpi.assigned_user_id)?.users.name ?? 'Unknown'}
+                            </Badge>
+                        )}
                         <Badge tone={VISIBILITY_TONE[kpi.visibility]}>{VISIBILITY_LABEL[kpi.visibility]}</Badge>
                     </div>
                 </div>
@@ -439,7 +463,7 @@ function KpiRow({ kpi, company, categories, grants, departments, members }: { kp
                     <Badge tone={kpi.status === 'active' ? 'success' : 'neutral'}>{kpi.status}</Badge>
                 </div>
             </div>
-            {editing && <EditKpiForm companyId={company.id} kpi={kpi} categories={categories} onDone={() => setEditing(false)} />}
+            {editing && <EditKpiForm companyId={company.id} kpi={kpi} categories={categories} members={members} onDone={() => setEditing(false)} />}
             <KpiVisibilityGrants kpi={kpi} companyId={company.id} grants={grants} departments={departments} members={members} />
         </li>
     );
@@ -454,7 +478,7 @@ export default function KpisIndex({ company, categories, kpis, templates, templa
         >
             <Card>
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
-                    <CreateKpiPanel companyId={company.id} categories={categories} />
+                    <CreateKpiPanel companyId={company.id} categories={categories} members={members} />
                 </div>
                 <ApplyTemplateForm companyId={company.id} templates={templates} templateItems={templateItems} />
                 <CreateCategoryForm companyId={company.id} />

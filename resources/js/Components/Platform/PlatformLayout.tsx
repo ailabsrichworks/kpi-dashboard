@@ -181,6 +181,13 @@ function SidebarContent({ platformUser, company, currentUrl }: { platformUser: P
                             KPIs
                         </NavLink>
                         <NavLink
+                            href={`/platform/companies/${contextCompany.id}/weightage`}
+                            icon={<ChecklistIcon className="w-[18px] h-[18px]" />}
+                            currentUrl={currentUrl}
+                        >
+                            Weightage
+                        </NavLink>
+                        <NavLink
                             href={`/platform/companies/${contextCompany.id}/tasks`}
                             icon={<ChecklistIcon className="w-[18px] h-[18px]" />}
                             currentUrl={currentUrl}

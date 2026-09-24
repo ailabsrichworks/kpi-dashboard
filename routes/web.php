@@ -243,6 +243,21 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::delete('/companies/{company}/kpis/{kpi}/grants/{grant}', [\App\Http\Controllers\Platform\KpiController::class, 'destroyGrant'])
         ->name('platform.kpis.grants.destroy');
 
+    Route::get('/companies/{company}/weightage', [\App\Http\Controllers\Platform\WeightageController::class, 'index'])
+        ->name('platform.weightage.index');
+
+    Route::post('/companies/{company}/weightage/allocate', [\App\Http\Controllers\Platform\WeightageController::class, 'allocate'])
+        ->name('platform.weightage.allocate');
+
+    Route::post('/companies/{company}/kpis/{kpi}/weight-change-requests', [\App\Http\Controllers\Platform\WeightageController::class, 'requestChange'])
+        ->name('platform.weightage.request-change');
+
+    Route::post('/companies/{company}/weight-change-requests/{weightChangeRequest}/approve', [\App\Http\Controllers\Platform\WeightageController::class, 'approve'])
+        ->name('platform.weightage.approve');
+
+    Route::post('/companies/{company}/weight-change-requests/{weightChangeRequest}/reject', [\App\Http\Controllers\Platform\WeightageController::class, 'reject'])
+        ->name('platform.weightage.reject');
+
     Route::get('/companies/{company}/tasks', [\App\Http\Controllers\Platform\TaskController::class, 'index'])
         ->name('platform.tasks.index');
 
