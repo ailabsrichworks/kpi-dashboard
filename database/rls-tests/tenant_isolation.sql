@@ -375,6 +375,19 @@ begin
 
   execute 'reset role';
 
+  -- Table-owner privilege (the "reset role" above) bypasses RLS itself,
+  -- but not the restrict_company_admin_to_branding() BEFORE UPDATE trigger
+  -- (2026_09_24_060000_allow_company_admin_branding_updates) -- that
+  -- trigger is a plain PL/pgSQL function keyed off auth.uid(), which reads
+  -- request.jwt.claims regardless of Postgres role, and that GUC is still
+  -- left over from the v_auth_a baseline check just above (set_config's
+  -- is_local=true only resets at end of TRANSACTION, not at "reset role").
+  -- Left as v_auth_a (a plain company_admin), the trigger would correctly
+  -- refuse this status change exactly as it would in production -- so set
+  -- it to the Center super admin here, which is who actually performs a
+  -- real suspend in the app (CompanyController::suspend()).
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_center)::text, true);
+
   update companies set status = 'suspended' where id = v_company_a;
 
   perform set_config('request.jwt.claims', json_build_object('sub', v_auth_a)::text, true);
@@ -417,7 +430,14 @@ begin
   -- straight to 'archived' (mirroring CompanyController::archive()'s
   -- allowed-from list, which includes 'suspended') must not accidentally
   -- restore access on the way through.
+  --
+  -- Same stale-request.jwt.claims issue as scenario 11's suspend UPDATE
+  -- above -- re-set it to the Center super admin right before this status
+  -- change too, so restrict_company_admin_to_branding()'s trigger lets it
+  -- through instead of refusing a plain company_admin's status edit.
   -- ---------------------------------------------------------------------
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_center)::text, true);
+
   update companies set status = 'archived' where id = v_company_a;
 
   perform set_config('request.jwt.claims', json_build_object('sub', v_auth_a)::text, true);
