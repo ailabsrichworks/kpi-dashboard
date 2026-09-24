@@ -115,13 +115,24 @@ function NavSectionLabel({ children }: { children: ReactNode }) {
 }
 
 function SidebarContent({ platformUser, company, currentUrl }: { platformUser: PlatformUser | null; company?: CompanyRef | null; currentUrl: string }) {
+    // `companies` on a membership comes from an RLS-scoped embed, so it
+    // resolves to null for a company the caller's own membership row still
+    // references but can no longer read the parent row for (e.g. it's since
+    // been suspended/archived — company_users own-row visibility outlives
+    // that, per Phase 5's documented suspension-enforcement design). Picking
+    // company_memberships[0] blindly could land on exactly that dead
+    // membership while a perfectly live one sits later in the (unordered)
+    // array — prefer the first membership that actually resolved a company,
+    // falling back to [0] only if every membership is unresolvable.
+    const bestMembership =
+        platformUser?.company_memberships.find((m) => m.companies) ?? platformUser?.company_memberships[0];
     const contextCompany =
         company ??
-        (platformUser && !platformUser.is_super_admin && platformUser.company_memberships[0]
+        (platformUser && !platformUser.is_super_admin && bestMembership
             ? {
-                  id: platformUser.company_memberships[0].company_id,
-                  name: platformUser.company_memberships[0].companies?.name ?? 'Your company',
-                  code: platformUser.company_memberships[0].companies?.code ?? '',
+                  id: bestMembership.company_id,
+                  name: bestMembership.companies?.name ?? 'Your company',
+                  code: bestMembership.companies?.code ?? '',
               }
             : null);
 
