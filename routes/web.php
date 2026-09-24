@@ -162,6 +162,9 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::post('/companies/{company}/unarchive', [\App\Http\Controllers\Platform\CompanyController::class, 'unarchive'])
         ->name('platform.companies.unarchive');
 
+    Route::get('/companies/{company}/settings', [\App\Http\Controllers\Platform\CompanyController::class, 'settings'])
+        ->name('platform.companies.settings');
+
     Route::post('/companies/{company}/branding', [\App\Http\Controllers\Platform\CompanyController::class, 'updateBranding'])
         ->name('platform.companies.branding');
 

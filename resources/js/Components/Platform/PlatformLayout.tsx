@@ -5,6 +5,7 @@ import {
     BuildingIcon,
     ChecklistIcon,
     ClipboardCheckIcon,
+    CogIcon,
     DocumentDuplicateIcon,
     HomeIcon,
     LogoutIcon,
@@ -200,6 +201,15 @@ function SidebarContent({ platformUser, company, currentUrl }: { platformUser: P
                                 currentUrl={currentUrl}
                             >
                                 Audit log
+                            </NavLink>
+                        )}
+                        {isAdminHere && (
+                            <NavLink
+                                href={`/platform/companies/${contextCompany.id}/settings`}
+                                icon={<CogIcon className="w-[18px] h-[18px]" />}
+                                currentUrl={currentUrl}
+                            >
+                                Settings
                             </NavLink>
                         )}
                     </>

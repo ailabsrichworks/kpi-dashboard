@@ -15,13 +15,17 @@ use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
 
 /**
- * Richworks Super Admin only. Every read/write here goes through the
- * caller's own `SupabaseUserService` (their real Supabase Auth token) — never
- * service_role — so it is RLS, not this controller, that actually enforces
- * "only a Super Admin may do this." `store()`/`storeAdmin()` will simply fail
- * with a 403 from Postgres if the caller somehow isn't one. `ensureSuperAdmin()`
- * (from PlatformAuthorization) is defense-in-depth, not a substitute for the
- * database-level checks.
+ * Richworks Super Admin only, with two deliberate exceptions:
+ * `settings()`/`updateBranding()`, which are Company-Admin-reachable — a
+ * company managing its own display name/colors is "administer this specific
+ * company", the same boundary `ensureCompanyAdmin()` already draws for
+ * departments/KPIs, not a Center-level action. Every read/write here goes
+ * through the caller's own `SupabaseUserService` (their real Supabase Auth
+ * token) — never service_role — so it is RLS, not this controller, that
+ * actually enforces who may do what. `store()`/`storeAdmin()` will simply
+ * fail with a 403 from Postgres if the caller somehow isn't a Super Admin.
+ * `ensureSuperAdmin()`/`ensureCompanyAdmin()` (from PlatformAuthorization)
+ * are defense-in-depth, not a substitute for the database-level checks.
  */
 class CompanyController extends Controller
 {
@@ -413,6 +417,33 @@ class CompanyController extends Controller
     }
 
     /**
+     * The company's own Settings page — branding only for now (Blueprint
+     * §17 decision: no separate organization_settings table for v1).
+     * Company-Admin-reachable (not Super-Admin-only, unlike every other
+     * method in this controller): a company managing its own display name
+     * and colors is squarely inside "administer this specific company", the
+     * same boundary `ensureCompanyAdmin()` already draws for departments/KPIs.
+     */
+    public function settings(Request $request, string $company)
+    {
+        $this->ensureCompanyAdmin($request, $company);
+
+        /** @var SupabaseUserService $supabase */
+        $supabase = $request->attributes->get('platformSupabase');
+
+        $companyRow = $supabase->first('companies', [
+            'id' => 'eq.' . $company,
+            'select' => 'id,name,code,display_name,primary_color,secondary_color',
+        ]);
+
+        abort_if(!$companyRow, 404);
+
+        return Inertia::render('Platform/Companies/Settings', [
+            'company' => $companyRow,
+        ]);
+    }
+
+    /**
      * Branding-only company config (Blueprint §17 decision: no separate
      * organization_settings table for v1). display_name is what the
      * Platform's own chrome would show in place of the legal `name` once
@@ -421,7 +452,7 @@ class CompanyController extends Controller
      */
     public function updateBranding(Request $request, string $company)
     {
-        $this->ensureSuperAdmin($request);
+        $this->ensureCompanyAdmin($request, $company);
 
         $request->validate([
             'display_name' => 'nullable|string|max:255',
