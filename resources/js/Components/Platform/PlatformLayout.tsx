@@ -2,12 +2,15 @@ import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ReactNode, useState } from 'react';
 import {
     AdjustmentsIcon,
+    BellIcon,
     BuildingIcon,
     ChecklistIcon,
     ClipboardCheckIcon,
     CogIcon,
     DocumentDuplicateIcon,
+    DocumentIcon,
     HomeIcon,
+    LinkIcon,
     LogoutIcon,
     MenuIcon,
     RocketIcon,
@@ -66,6 +69,7 @@ interface PlatformLayoutProps {
 
 interface SharedProps {
     platformUser: PlatformUser | null;
+    platformUnreadNotificationCount: number;
     flash: { error?: string | null; success?: string | null };
     [key: string]: unknown;
 }
@@ -194,6 +198,20 @@ function SidebarContent({ platformUser, company, currentUrl }: { platformUser: P
                         >
                             Tasks
                         </NavLink>
+                        <NavLink
+                            href={`/platform/companies/${contextCompany.id}/target-linkages`}
+                            icon={<LinkIcon className="w-[18px] h-[18px]" />}
+                            currentUrl={currentUrl}
+                        >
+                            Target Linkages
+                        </NavLink>
+                        <NavLink
+                            href={`/platform/companies/${contextCompany.id}/job-description`}
+                            icon={<DocumentIcon className="w-[18px] h-[18px]" />}
+                            currentUrl={currentUrl}
+                        >
+                            Job Description
+                        </NavLink>
                         {isAdminHere && (
                             <NavLink
                                 href={`/platform/companies/${contextCompany.id}/onboarding`}
@@ -277,8 +295,21 @@ function FlashBanner({ tone, children }: { tone: 'success' | 'error'; children: 
     return <div className={`mb-5 rounded-xl border px-4 py-3 text-sm ${styles}`}>{children}</div>;
 }
 
+function NotificationBell({ count }: { count: number }) {
+    return (
+        <Link href="/platform/notifications" className="relative flex-none text-slate-500 hover:text-slate-700" aria-label="Notifications">
+            <BellIcon className="w-5 h-5" />
+            {count > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                    {count > 9 ? '9+' : count}
+                </span>
+            )}
+        </Link>
+    );
+}
+
 export default function PlatformLayout({ title, description, company, actions, maxWidth = 'max-w-5xl', children }: PlatformLayoutProps) {
-    const { platformUser, flash } = usePage<SharedProps>().props;
+    const { platformUser, platformUnreadNotificationCount, flash } = usePage<SharedProps>().props;
     const currentUrl = usePage().url;
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
@@ -327,7 +358,10 @@ export default function PlatformLayout({ title, description, company, actions, m
                                     {description && <p className="text-xs text-slate-500 mt-0.5">{description}</p>}
                                 </div>
                             </div>
-                            {actions && <div className="flex-none flex items-center gap-3">{actions}</div>}
+                            <div className="flex-none flex items-center gap-3">
+                                <NotificationBell count={platformUnreadNotificationCount ?? 0} />
+                                {actions}
+                            </div>
                         </div>
                     </header>
 

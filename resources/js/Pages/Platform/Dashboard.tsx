@@ -2,6 +2,8 @@ import { Link } from '@inertiajs/react';
 import PlatformLayout from '@/Components/Platform/PlatformLayout';
 import { BuildingIcon, ClipboardCheckIcon, RocketIcon, TargetIcon, UsersIcon } from '@/Components/Platform/Icons';
 import { Card, EmptyState, StatCard, StatusBadge } from '@/Components/Platform/ui';
+import MyPerformanceCard, { MyPerformance } from './Dashboard/MyPerformanceCard';
+import DepartmentOverview, { DepartmentOverviewRow } from './Dashboard/DepartmentOverview';
 
 interface Company {
     id: string;
@@ -13,6 +15,8 @@ interface Company {
     kpi_count: number;
     submission_count: number;
     avg_achievement_pct: number | null;
+    my_performance: MyPerformance | null;
+    department_overview: DepartmentOverviewRow[];
 }
 
 interface PlatformUser {
@@ -101,6 +105,18 @@ export default function PlatformDashboard({ me, visibleCompanies }: DashboardPag
                                         icon={<RocketIcon className="w-3.5 h-3.5" />}
                                     />
                                 </div>
+
+                                {company.my_performance && company.my_performance.kpi_count > 0 && (
+                                    <div className="mt-4">
+                                        <MyPerformanceCard companyId={company.id} performance={company.my_performance} />
+                                    </div>
+                                )}
+
+                                {company.department_overview.length > 0 && (
+                                    <div className="mt-4">
+                                        <DepartmentOverview rows={company.department_overview} />
+                                    </div>
+                                )}
                             </li>
                         ))}
                     </ul>

@@ -10,10 +10,11 @@ interface ComingSoonPageProps {
     company: Company;
     title: string;
     body: string;
+    footnote?: string;
     [key: string]: unknown;
 }
 
-export default function ComingSoon({ company, title, body }: ComingSoonPageProps) {
+export default function ComingSoon({ company, title, body, footnote }: ComingSoonPageProps) {
     return (
         <PlatformLayout title={title} company={company} maxWidth="max-w-2xl">
             <Card>
@@ -21,7 +22,9 @@ export default function ComingSoon({ company, title, body }: ComingSoonPageProps
                     <Badge tone="warning">Not built yet</Badge>
                 </div>
                 <p className="text-sm text-slate-600 leading-relaxed">{body}</p>
-                <p className="mt-4 text-xs text-slate-400">This step is optional — it never blocks Review or Activate.</p>
+                <p className="mt-4 text-xs text-slate-400">
+                    {footnote ?? 'This step is optional — it never blocks Review or Activate.'}
+                </p>
             </Card>
         </PlatformLayout>
     );

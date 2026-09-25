@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Platform;
 
 use App\Http\Controllers\Controller;
 use App\Services\SupabaseUserService;
+use App\Services\WeightedScoreService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -63,8 +64,23 @@ class DashboardController extends Controller
         }
         $summariesByCompany = collect($summaries)->keyBy('company_id');
 
-        $companiesWithStats = collect($companies)->map(function ($company) use ($summariesByCompany) {
+        // Same defensive shape as `company_kpi_summary` above: these two are
+        // "nice to have" dashboard widgets, not core to the page — a hiccup
+        // fetching either must never turn the whole company list into a 500.
+        try {
+            $myScoreByCompany = $this->myScoreByCompany($supabase, $platformUser['id']);
+        } catch (\Throwable) {
+            $myScoreByCompany = [];
+        }
+
+        $companiesWithStats = collect($companies)->map(function ($company) use ($summariesByCompany, $myScoreByCompany, $supabase) {
             $summary = $summariesByCompany->get($company['id']);
+
+            try {
+                $departmentOverview = $this->departmentOverview($supabase, $company['id']);
+            } catch (\Throwable) {
+                $departmentOverview = [];
+            }
 
             return $company + [
                 'department_count' => $summary['department_count'] ?? 0,
@@ -72,6 +88,8 @@ class DashboardController extends Controller
                 'kpi_count' => $summary['kpi_count'] ?? 0,
                 'submission_count' => $summary['submission_count'] ?? 0,
                 'avg_achievement_pct' => $summary['avg_achievement_pct'] ?? null,
+                'my_performance' => $myScoreByCompany[$company['id']] ?? null,
+                'department_overview' => $departmentOverview,
             ];
         })->values();
 
@@ -79,6 +97,100 @@ class DashboardController extends Controller
             'me' => $platformUser,
             'visibleCompanies' => $companiesWithStats,
         ]);
+    }
+
+    /**
+     * "My Performance" (the legacy DashboardController::index()'s
+     * $individualPerformance/$myOnTrack/$myAtRisk/"Needs Attention" widgets,
+     * see WeightedScoreService's own docblock for the formula) — keyed by
+     * company_id since a caller can belong to more than one company and
+     * Platform/Dashboard.tsx renders one card per company. Only companies
+     * with at least one KPI actually assigned to this caller get an entry;
+     * Dashboard.tsx renders the existing plain company card for the rest —
+     * an admin/member with nothing assigned sees no regression from before
+     * this widget existed.
+     *
+     * @return array<string, array{overall_score: float|null, kpi_count: int, on_track: int, at_risk: int, needs_attention: array}>
+     */
+    private function myScoreByCompany(SupabaseUserService $supabase, string $userId): array
+    {
+        $myKpis = $supabase->get('kpis', [
+            'assigned_user_id' => 'eq.' . $userId,
+            'select' => 'id,company_id,name,target,weight',
+        ]);
+
+        if (empty($myKpis)) {
+            return [];
+        }
+
+        $kpiIds = array_column($myKpis, 'id');
+
+        // Latest-per-KPI, computed in PHP: PostgREST has no "distinct on"
+        // without a view, and this is the same "pick the first per group"
+        // pattern KpiController::index() already uses for grants/etc.
+        $submissions = $supabase->get('kpi_submissions', [
+            'kpi_id' => 'in.(' . implode(',', $kpiIds) . ')',
+            'select' => 'kpi_id,value,submission_date',
+            'order' => 'submission_date.desc',
+        ]);
+
+        $latestByKpiId = [];
+        foreach ($submissions as $submission) {
+            $latestByKpiId[$submission['kpi_id']] ??= $submission;
+        }
+
+        $byCompany = collect($myKpis)->groupBy('company_id');
+
+        $scoreService = app(WeightedScoreService::class);
+
+        return $byCompany->map(fn ($kpis) => $scoreService->summarize($kpis->all(), $latestByKpiId))->all();
+    }
+
+    /**
+     * "Company Overview" lite (legacy CompanyOverview.tsx's department
+     * ranking bar, minus the manager-only doughnut/quarterly-trend cards
+     * that need per-period tracking the Platform doesn't have yet — see this
+     * feature's own plan doc). Average achievement per department, computed
+     * from whatever `kpi_submissions` rows RLS actually returns for this
+     * caller (a plain employee only ever sees their own department's, same
+     * as everywhere else in the Platform — this never widens visibility, it
+     * only summarizes what was already visible).
+     *
+     * @return array<int, array{department: string, avg_achievement_pct: float|null, submission_count: int}>
+     */
+    private function departmentOverview(SupabaseUserService $supabase, string $companyId): array
+    {
+        $departments = $supabase->get('departments', [
+            'company_id' => 'eq.' . $companyId,
+            'select' => 'id,name',
+        ]);
+
+        if (empty($departments)) {
+            return [];
+        }
+
+        $submissions = $supabase->get('kpi_submissions', [
+            'company_id' => 'eq.' . $companyId,
+            'select' => 'department_id,value,kpis(target)',
+        ]);
+
+        $byDepartment = collect($submissions)->groupBy('department_id');
+
+        return collect($departments)->map(function ($department) use ($byDepartment) {
+            $rows = $byDepartment->get($department['id'], collect())->filter(
+                fn ($row) => ($row['kpis']['target'] ?? null) !== null && $row['kpis']['target'] != 0
+            );
+
+            $avg = $rows->isNotEmpty()
+                ? round($rows->avg(fn ($row) => ($row['value'] / $row['kpis']['target']) * 100), 2)
+                : null;
+
+            return [
+                'department' => $department['name'],
+                'avg_achievement_pct' => $avg,
+                'submission_count' => $rows->count(),
+            ];
+        })->values()->all();
     }
 
     /**

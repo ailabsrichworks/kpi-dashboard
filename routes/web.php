@@ -277,6 +277,21 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::post('/companies/{company}/weight-change-requests/{weightChangeRequest}/reject', [\App\Http\Controllers\Platform\WeightageController::class, 'reject'])
         ->name('platform.weightage.reject');
 
+    Route::get('/notifications', [\App\Http\Controllers\Platform\NotificationController::class, 'index'])
+        ->name('platform.notifications.index');
+
+    Route::post('/notifications/{notification}/read', [\App\Http\Controllers\Platform\NotificationController::class, 'markRead'])
+        ->name('platform.notifications.read');
+
+    Route::post('/notifications/read-all', [\App\Http\Controllers\Platform\NotificationController::class, 'markAllRead'])
+        ->name('platform.notifications.read-all');
+
+    Route::get('/companies/{company}/target-linkages', [\App\Http\Controllers\Platform\PlaceholderController::class, 'targetLinkages'])
+        ->name('platform.target-linkages');
+
+    Route::get('/companies/{company}/job-description', [\App\Http\Controllers\Platform\PlaceholderController::class, 'jobDescription'])
+        ->name('platform.job-description');
+
     Route::get('/companies/{company}/tasks', [\App\Http\Controllers\Platform\TaskController::class, 'index'])
         ->name('platform.tasks.index');
 

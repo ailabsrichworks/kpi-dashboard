@@ -54,6 +54,11 @@ declare
   v_auth_a3 uuid := gen_random_uuid();
   v_user_a3 uuid;
   v_kpi_restricted uuid;
+  v_company_c uuid;
+  v_auth_c_admin uuid := gen_random_uuid();
+  v_auth_c_member uuid := gen_random_uuid();
+  v_user_c_admin uuid;
+  v_user_c_member uuid;
 begin
   -- ---------------------------------------------------------------------
   -- Fixtures (run as the connecting superuser/owner -- RLS doesn't apply
@@ -454,6 +459,66 @@ begin
 
   execute 'reset role';
   raise notice 'PASS (13): archived locks a company out exactly like suspended';
+
+  -- ---------------------------------------------------------------------
+  -- Scenario 14: notifications_insert (2026_09_25_000000_add_notifications_insert_policy).
+  -- A fresh, self-contained company/pair of users -- deliberately not
+  -- reusing Company A (archived by scenario 13) or Company B (only ever
+  -- has one user), since this scenario needs an active company admin AND
+  -- an active plain member to actually exercise both branches of `with
+  -- check (auth_can_administer_company(company_id) or user_id =
+  -- auth_current_user_id())`.
+  -- ---------------------------------------------------------------------
+  insert into companies (name, code) values ('RLS Test Co C', 'RLSTEST_C') returning id into v_company_c;
+
+  insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
+    values
+      (v_auth_c_admin, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'rls-test-c-admin@example.invalid', crypt('rls-test-password', gen_salt('bf')), now(), now(), now(), '{}', '{}'),
+      (v_auth_c_member, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'rls-test-c-member@example.invalid', crypt('rls-test-password', gen_salt('bf')), now(), now(), now(), '{}', '{}');
+
+  insert into users (auth_user_id, name, email, role) values (v_auth_c_admin, 'RLS Test C Admin', 'rls-test-c-admin@example.invalid', 'member')
+    on conflict (auth_user_id) do update set name = excluded.name, email = excluded.email, role = excluded.role
+    returning id into v_user_c_admin;
+  insert into users (auth_user_id, name, email, role) values (v_auth_c_member, 'RLS Test C Member', 'rls-test-c-member@example.invalid', 'member')
+    on conflict (auth_user_id) do update set name = excluded.name, email = excluded.email, role = excluded.role
+    returning id into v_user_c_member;
+
+  insert into company_users (company_id, user_id, role) values (v_company_c, v_user_c_admin, 'company_admin');
+  insert into company_users (company_id, user_id, role) values (v_company_c, v_user_c_member, 'employee');
+
+  -- 14a: a company admin can notify a fellow member.
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_c_admin)::text, true);
+  execute 'set local role authenticated';
+
+  insert into notifications (company_id, user_id, title, message)
+    values (v_company_c, v_user_c_member, 'Test', 'Admin-sent notification');
+
+  execute 'reset role';
+
+  select count(*) into v_count from notifications where user_id = v_user_c_member and company_id = v_company_c;
+  if v_count <> 1 then raise exception 'FAIL (14a): a company admin could not notify a fellow member'; end if;
+
+  -- 14b: a plain member can notify themselves.
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_c_member)::text, true);
+  execute 'set local role authenticated';
+
+  insert into notifications (company_id, user_id, title, message)
+    values (v_company_c, v_user_c_member, 'Test', 'Self-notification');
+
+  select count(*) into v_count from notifications where user_id = v_user_c_member and company_id = v_company_c;
+  if v_count <> 2 then raise exception 'FAIL (14b): a plain member could not notify themselves'; end if;
+
+  -- 14c: a plain member cannot notify someone else (not an admin, not self).
+  begin
+    insert into notifications (company_id, user_id, title, message)
+      values (v_company_c, v_user_c_admin, 'Test', 'Should be refused');
+    raise exception 'FAIL (14c): a plain member notified someone else -- should have been refused by RLS';
+  exception
+    when insufficient_privilege then null; -- expected: RLS refused the insert
+  end;
+
+  execute 'reset role';
+  raise notice 'PASS (14): notifications_insert lets an admin notify their company, and anyone notify themselves, nothing more';
 
   raise notice '=== ALL RLS ISOLATION SCENARIOS COMPLETED ===';
 

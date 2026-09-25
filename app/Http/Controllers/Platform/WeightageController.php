@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Platform;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Platform\Concerns\LogsAdminActions;
 use App\Http\Controllers\Platform\Concerns\PlatformAuthorization;
+use App\Services\PlatformNotificationService;
 use App\Services\SupabaseUserService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -214,7 +215,7 @@ class WeightageController extends Controller
             'id' => 'eq.' . $weightChangeRequest,
             'company_id' => 'eq.' . $company,
             'status' => 'eq.pending',
-            'select' => 'id,kpi_id,new_weight',
+            'select' => 'id,kpi_id,new_weight,requested_by,kpis(name)',
         ]);
 
         if (!$pending) {
@@ -232,6 +233,14 @@ class WeightageController extends Controller
         } catch (\Throwable $e) {
             return back()->with('error', 'Could not approve request: ' . $e->getMessage());
         }
+
+        app(PlatformNotificationService::class)->notify(
+            $supabase,
+            $company,
+            $pending['requested_by'],
+            'Weight change approved',
+            'Your request to change "' . ($pending['kpis']['name'] ?? 'a KPI') . '" to ' . $pending['new_weight'] . '% was approved.',
+        );
 
         try {
             $this->logCompanyAction($request, 'approve_kpi_weight_change', $company, null, [
@@ -259,7 +268,7 @@ class WeightageController extends Controller
             'id' => 'eq.' . $weightChangeRequest,
             'company_id' => 'eq.' . $company,
             'status' => 'eq.pending',
-            'select' => 'id',
+            'select' => 'id,requested_by,kpis(name)',
         ]);
 
         if (!$pending) {
@@ -276,6 +285,14 @@ class WeightageController extends Controller
         } catch (\Throwable $e) {
             return back()->with('error', 'Could not reject request: ' . $e->getMessage());
         }
+
+        app(PlatformNotificationService::class)->notify(
+            $supabase,
+            $company,
+            $pending['requested_by'],
+            'Weight change rejected',
+            'Your request to change "' . ($pending['kpis']['name'] ?? 'a KPI') . '" was rejected.' . ($request->decision_note ? ' Note: ' . $request->decision_note : ''),
+        );
 
         try {
             $this->logCompanyAction($request, 'reject_kpi_weight_change', $company, null, [], 'kpi_weight_change_request', $weightChangeRequest);
