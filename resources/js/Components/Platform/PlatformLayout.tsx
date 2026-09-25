@@ -93,11 +93,13 @@ function NavLink({
     icon,
     children,
     currentUrl,
+    badge,
 }: {
     href: string;
     icon: ReactNode;
     children: ReactNode;
     currentUrl: string;
+    badge?: number;
 }) {
     const active = currentUrl === href || (href !== '/platform/dashboard' && currentUrl.startsWith(href));
 
@@ -109,7 +111,12 @@ function NavLink({
             }`}
         >
             <span className="flex-none">{icon}</span>
-            {children}
+            <span className="flex-1">{children}</span>
+            {!!badge && (
+                <span className="flex-none rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                    {badge > 99 ? '99+' : badge}
+                </span>
+            )}
         </Link>
     );
 }
@@ -118,7 +125,17 @@ function NavSectionLabel({ children }: { children: ReactNode }) {
     return <p className="px-3 mt-5 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{children}</p>;
 }
 
-function SidebarContent({ platformUser, company, currentUrl }: { platformUser: PlatformUser | null; company?: CompanyRef | null; currentUrl: string }) {
+function SidebarContent({
+    platformUser,
+    company,
+    currentUrl,
+    unreadNotificationCount,
+}: {
+    platformUser: PlatformUser | null;
+    company?: CompanyRef | null;
+    currentUrl: string;
+    unreadNotificationCount: number;
+}) {
     // `companies` on a membership comes from an RLS-scoped embed, so it
     // resolves to null for a company the caller's own membership row still
     // references but can no longer read the parent row for (e.g. it's since
@@ -164,6 +181,14 @@ function SidebarContent({ platformUser, company, currentUrl }: { platformUser: P
                 <NavLink href="/platform/anira" icon={<SparklesIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
                     Ask ANIRA
                 </NavLink>
+                <NavLink
+                    href="/platform/notifications"
+                    icon={<BellIcon className="w-[18px] h-[18px]" />}
+                    currentUrl={currentUrl}
+                    badge={unreadNotificationCount}
+                >
+                    Notifications
+                </NavLink>
 
                 {contextCompany && isMemberHere && (
                     <>
@@ -203,7 +228,7 @@ function SidebarContent({ platformUser, company, currentUrl }: { platformUser: P
                             icon={<ChecklistIcon className="w-[18px] h-[18px]" />}
                             currentUrl={currentUrl}
                         >
-                            Tasks
+                            Things To Do
                         </NavLink>
                         <NavLink
                             href={`/platform/companies/${contextCompany.id}/target-linkages`}
@@ -326,7 +351,7 @@ export default function PlatformLayout({ title, description, company, actions, m
 
             <div className="min-h-screen bg-slate-50 lg:flex">
                 <aside className="hidden lg:flex lg:w-64 lg:flex-none lg:flex-col bg-brand-900">
-                    <SidebarContent platformUser={platformUser} company={company} currentUrl={currentUrl} />
+                    <SidebarContent platformUser={platformUser} company={company} currentUrl={currentUrl} unreadNotificationCount={platformUnreadNotificationCount ?? 0} />
                 </aside>
 
                 {mobileNavOpen && (
@@ -338,7 +363,7 @@ export default function PlatformLayout({ title, description, company, actions, m
                                     <XMarkIcon className="w-5 h-5" />
                                 </button>
                             </div>
-                            <SidebarContent platformUser={platformUser} company={company} currentUrl={currentUrl} />
+                            <SidebarContent platformUser={platformUser} company={company} currentUrl={currentUrl} unreadNotificationCount={platformUnreadNotificationCount ?? 0} />
                         </aside>
                     </div>
                 )}

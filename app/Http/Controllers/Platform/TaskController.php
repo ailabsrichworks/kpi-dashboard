@@ -102,7 +102,7 @@ class TaskController extends Controller
         $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'status' => 'nullable|in:open,in_progress,done,cancelled',
+            'status' => 'nullable|in:open,in_progress,blocked,done,cancelled',
             'priority' => 'nullable|in:low,medium,high',
             'due_date' => 'nullable|date',
             'meeting_time' => 'nullable|date_format:H:i',
@@ -174,7 +174,7 @@ class TaskController extends Controller
         $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'status' => 'required|in:open,in_progress,done,cancelled',
+            'status' => 'required|in:open,in_progress,blocked,done,cancelled',
             'priority' => 'required|in:low,medium,high',
             'due_date' => 'nullable|date',
             'meeting_time' => 'nullable|date_format:H:i',

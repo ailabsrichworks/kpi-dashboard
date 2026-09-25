@@ -19,7 +19,7 @@ interface Task {
     id: string;
     title: string;
     description: string | null;
-    status: 'open' | 'in_progress' | 'done' | 'cancelled';
+    status: 'open' | 'in_progress' | 'blocked' | 'done' | 'cancelled';
     priority: 'low' | 'medium' | 'high';
     due_date: string | null;
     // A meeting is a task with a specific time-of-day rather than just a
@@ -62,6 +62,7 @@ interface TasksPageProps {
 const STATUS_COLUMNS: { key: Task['status']; label: string; dot: string }[] = [
     { key: 'open', label: 'To Do', dot: 'bg-slate-400' },
     { key: 'in_progress', label: 'In Progress', dot: 'bg-sky-500' },
+    { key: 'blocked', label: 'Blocked', dot: 'bg-amber-500' },
     { key: 'done', label: 'Done', dot: 'bg-emerald-500' },
     { key: 'cancelled', label: 'Cancelled', dot: 'bg-red-400' },
 ];
@@ -291,6 +292,7 @@ function EditTaskForm({ companyId, task, onDone }: { companyId: string; task: Ta
                 <select value={data.status} onChange={(e) => setData('status', e.target.value as Task['status'])} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
                     <option value="open">To Do</option>
                     <option value="in_progress">In progress</option>
+                    <option value="blocked">Blocked</option>
                     <option value="done">Done</option>
                     <option value="cancelled">Cancelled</option>
                 </select>
