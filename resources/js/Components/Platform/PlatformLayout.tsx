@@ -88,6 +88,12 @@ function isCompanyMember(user: PlatformUser | null, companyId: string): boolean 
     return user.company_memberships.some((m) => m.company_id === companyId);
 }
 
+/** Mirrors PlatformAuthorization::ensureCompanyWideViewer() exactly. */
+function isCompanyWideViewer(user: PlatformUser | null, companyId: string): boolean {
+    if (canAdminister(user, companyId)) return true;
+    return !!user?.company_memberships.some((m) => m.company_id === companyId && m.role === 'slt');
+}
+
 function NavLink({
     href,
     icon,
@@ -159,6 +165,7 @@ function SidebarContent({
 
     const isAdminHere = contextCompany ? canAdminister(platformUser, contextCompany.id) : false;
     const isMemberHere = contextCompany ? isCompanyMember(platformUser, contextCompany.id) : false;
+    const isSltViewerHere = contextCompany ? isCompanyWideViewer(platformUser, contextCompany.id) : false;
 
     return (
         <div className="flex h-full flex-col">
@@ -200,6 +207,15 @@ function SidebarContent({
                                 currentUrl={currentUrl}
                             >
                                 Departments &amp; People
+                            </NavLink>
+                        )}
+                        {isSltViewerHere && (
+                            <NavLink
+                                href={`/platform/companies/${contextCompany.id}/slt-dashboard`}
+                                icon={<RocketIcon className="w-[18px] h-[18px]" />}
+                                currentUrl={currentUrl}
+                            >
+                                SLT Dashboard
                             </NavLink>
                         )}
                         <NavLink

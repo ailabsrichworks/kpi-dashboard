@@ -301,6 +301,9 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::post('/companies/{company}/quarterly/change-requests/{changeRequest}/reject', [\App\Http\Controllers\Platform\QuarterlyController::class, 'rejectActualChange'])
         ->name('platform.quarterly.reject-change');
 
+    Route::get('/companies/{company}/slt-dashboard', [\App\Http\Controllers\Platform\SltDashboardController::class, 'index'])
+        ->name('platform.slt-dashboard');
+
     Route::get('/notifications', [\App\Http\Controllers\Platform\NotificationController::class, 'index'])
         ->name('platform.notifications.index');
 
