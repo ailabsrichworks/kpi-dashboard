@@ -9,6 +9,8 @@ export interface MyPerformance {
     on_track: number;
     at_risk: number;
     needs_attention: Array<{ name: string; achievement: number }>;
+    total_weight: number;
+    category_counts: Array<{ category: string; count: number }>;
 }
 
 /**
@@ -25,7 +27,10 @@ export default function MyPerformanceCard({ companyId, performance }: { companyI
     const style = score !== null ? scoreStyle(score) : null;
 
     return (
-        <Card title="My performance" description={`${performance.kpi_count} KPI assigned to you in this company`}>
+        <Card
+            title="My performance"
+            description={`${performance.kpi_count} KPI assigned to you in this company · ${performance.total_weight.toFixed(0)}% total weightage`}
+        >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                 <div className="rounded-xl bg-slate-50 p-4">
                     <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Overall score</p>

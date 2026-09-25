@@ -22,6 +22,7 @@ class WeightedScoreServiceTest extends TestCase
 
         // (100*60 + 50*40) / 100 = 80
         $this->assertSame(80.0, $result['overall_score']);
+        $this->assertSame(100.0, $result['total_weight']);
         $this->assertSame(2, $result['kpi_count']);
         $this->assertSame(1, $result['on_track']);
         $this->assertSame(1, $result['at_risk']);

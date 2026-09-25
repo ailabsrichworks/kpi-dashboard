@@ -28,6 +28,7 @@ class WeightedScoreService
      *     on_track: int,
      *     at_risk: int,
      *     needs_attention: array<int, array{name: string, achievement: float}>,
+     *     total_weight: float,
      * }
      */
     public function summarize(array $kpis, array $latestSubmissionByKpiId): array
@@ -74,6 +75,7 @@ class WeightedScoreService
             'on_track' => $onTrack,
             'at_risk' => $atRisk,
             'needs_attention' => array_slice($ranked, 0, 3),
+            'total_weight' => round($weightTotal, 2),
         ];
     }
 

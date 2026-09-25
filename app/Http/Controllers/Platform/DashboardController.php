@@ -96,7 +96,20 @@ class DashboardController extends Controller
         return Inertia::render('Platform/Dashboard', [
             'me' => $platformUser,
             'visibleCompanies' => $companiesWithStats,
+            'greeting' => $this->timeOfDayGreeting(),
         ]);
+    }
+
+    /**
+     * Same "Good Morning/Afternoon/Evening" split dashboard.blade.php uses,
+     * on the same timezone (Richworks/Performix's own working hours) rather
+     * than the visitor's browser clock.
+     */
+    private function timeOfDayGreeting(): string
+    {
+        $hour = now()->timezone('Asia/Kuala_Lumpur')->hour;
+
+        return $hour < 12 ? 'Good Morning' : ($hour < 18 ? 'Good Afternoon' : 'Good Evening');
     }
 
     /**
@@ -110,13 +123,13 @@ class DashboardController extends Controller
      * an admin/member with nothing assigned sees no regression from before
      * this widget existed.
      *
-     * @return array<string, array{overall_score: float|null, kpi_count: int, on_track: int, at_risk: int, needs_attention: array}>
+     * @return array<string, array{overall_score: float|null, kpi_count: int, on_track: int, at_risk: int, needs_attention: array, total_weight: float, category_counts: array}>
      */
     private function myScoreByCompany(SupabaseUserService $supabase, string $userId): array
     {
         $myKpis = $supabase->get('kpis', [
             'assigned_user_id' => 'eq.' . $userId,
-            'select' => 'id,company_id,name,target,weight',
+            'select' => 'id,company_id,name,target,weight,kpi_categories(name)',
         ]);
 
         if (empty($myKpis)) {
@@ -143,7 +156,19 @@ class DashboardController extends Controller
 
         $scoreService = app(WeightedScoreService::class);
 
-        return $byCompany->map(fn ($kpis) => $scoreService->summarize($kpis->all(), $latestByKpiId))->all();
+        return $byCompany->map(function ($kpis) use ($scoreService, $latestByKpiId) {
+            $summary = $scoreService->summarize($kpis->all(), $latestByKpiId);
+
+            // "My KPIs" preview (dashboard.blade.php's category-badge strip)
+            // — grouped from the same fetched rows, not a second query.
+            $summary['category_counts'] = $kpis
+                ->groupBy(fn ($kpi) => $kpi['kpi_categories']['name'] ?? 'General')
+                ->map(fn ($group, $category) => ['category' => $category, 'count' => $group->count()])
+                ->values()
+                ->all();
+
+            return $summary;
+        })->all();
     }
 
     /**
