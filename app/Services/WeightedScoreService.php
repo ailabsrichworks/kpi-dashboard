@@ -60,7 +60,7 @@ class WeightedScoreService
 
             if ($quarters->isNotEmpty()) {
                 $achievement = $this->quarterRollupAchievement($quarters);
-                $this->accumulateQuarterlyBreakdown($quarters, $weight, $quarterProgress, $quarterCompleted, $quarterTotal);
+                $this->accumulateQuarterlyBreakdown($quarters, $quarterProgress, $quarterCompleted, $quarterTotal);
 
                 if ($quarters->count() === 4 && $quarters->every(fn ($q) => ($q['status'] ?? null) === 'completed')) {
                     $completedAnnual++;
@@ -100,7 +100,9 @@ class WeightedScoreService
             $quarterly[$label] = [
                 'completed' => $quarterCompleted[$label],
                 'total' => $quarterTotal[$label],
-                'progress' => round(min(100, $quarterProgress[$label]), 1),
+                'progress' => $quarterTotal[$label] > 0
+                    ? round(min(100, $quarterProgress[$label] / $quarterTotal[$label]), 1)
+                    : 0.0,
             ];
         }
 
@@ -141,8 +143,19 @@ class WeightedScoreService
      * myCompletedByQ/myTotalByQ, reimplemented here so every KPI's
      * contribution is computed once, in the same pass as its overall
      * achievement, rather than a second loop over the same data.
+     *
+     * Deliberately independent of `weight` — a real bug found during this
+     * feature's own end-to-end verification: gating a quarter's contribution
+     * on `weight` (as an earlier version of this method did, mirroring how
+     * `overall_score` uses it) silently showed 0% progress for any quarterly
+     * KPI with no weight set, even though `weight` is optional everywhere
+     * else on the Platform and has nothing to do with how much of ITS OWN
+     * target that KPI has reached this quarter. `$progress`/`$total` here
+     * accumulate a plain sum/count instead, averaged by the caller — weight
+     * still (correctly) only gates a KPI's contribution to the portfolio-wide
+     * `overall_score` above, not this per-quarter self-progress figure.
      */
-    private function accumulateQuarterlyBreakdown(Collection $quarters, ?float $weight, array &$progress, array &$completed, array &$total): void
+    private function accumulateQuarterlyBreakdown(Collection $quarters, array &$progress, array &$completed, array &$total): void
     {
         foreach (self::QUARTERS as $label) {
             $quarter = $quarters->get($label);
@@ -156,14 +169,14 @@ class WeightedScoreService
                 $completed[$label]++;
             }
 
-            if ($weight === null) {
-                continue;
-            }
-
-            $achievement = $this->achievement($quarter['target'] ?? null, $quarter['actual'] ?? null);
-            if ($achievement !== null) {
-                $progress[$label] += $achievement * $weight / 100;
-            }
+            // A quarter with no target set yet can't be assessed -- treated
+            // as 0% (pulls the average down, same "unreported counts as 0"
+            // rule quarterRollupAchievement() already documents) rather than
+            // being skipped, which would otherwise inflate the average by
+            // shrinking its own denominator.
+            $target = (float) ($quarter['target'] ?? 0);
+            $actual = (float) ($quarter['actual'] ?? 0);
+            $progress[$label] += $target > 0 ? min(100, ($actual / $target) * 100) : 0.0;
         }
     }
 

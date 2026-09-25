@@ -123,6 +123,29 @@ class WeightedScoreServiceTest extends TestCase
         $this->assertSame(2, $result['quarterly']['Q1']['total']);
     }
 
+    public function test_quarterly_progress_is_shown_even_when_the_kpi_has_no_weight_set(): void
+    {
+        // Real bug found during this feature's end-to-end verification:
+        // per-quarter progress used to be scaled by `weight`, so a quarterly
+        // KPI with no weight (the default -- weight is optional everywhere
+        // on the Platform) silently always showed 0% progress even with a
+        // real actual reported. `weight` should only gate the portfolio-wide
+        // overall_score, never a KPI's own quarter progress.
+        $kpis = [
+            ['id' => 'a', 'name' => 'Unweighted quarterly KPI', 'target' => null, 'weight' => null],
+        ];
+        $quarters = [
+            'a' => [
+                ['quarter' => 'Q1', 'target' => 100, 'actual' => 60, 'status' => 'on_track'],
+            ],
+        ];
+
+        $result = (new WeightedScoreService())->summarize($kpis, [], $quarters);
+
+        $this->assertSame(60.0, $result['quarterly']['Q1']['progress']);
+        $this->assertNull($result['overall_score']); // weight is still required for the weighted score itself
+    }
+
     public function test_a_quarter_kpi_with_zero_total_target_is_treated_as_no_achievement_yet(): void
     {
         $kpis = [
