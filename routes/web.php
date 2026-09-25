@@ -16,8 +16,26 @@ use App\Http\Controllers\AiController;
 |--------------------------------------------------------------------------
 */
 
-Route::get('/', function () {
-    return redirect()->route('login');
+// This repo is deployed as TWO separate Railway services with two separate
+// Supabase databases behind two separate domains -- richworks.performix.ai
+// (the original single-tenant app; its production database genuinely has
+// `employees`/`users.password_hash`, and Supabase Auth's `auth.users` has
+// zero rows there, so /platform/login can never work) and
+// andalusia.performix.ai (a brand-new Platform-only database; it has no
+// `employees` table at all, so the legacy /login form 500s instead).
+// Both services build from this same `main` branch, so hardcoding either
+// redirect here breaks the OTHER service's login page the next time either
+// side "fixes" it back -- confirmed happening twice in one day (commits
+// a539ccb and 96237d8). LOGIN_MODE is an explicit per-service Railway env
+// var (set in each service's own dashboard, never committed) that decides
+// which login page this specific deployment actually has: `platform` for
+// andalusia.performix.ai, anything else (including unset, for backward
+// compatibility with the richworks service's existing config) falls back
+// to the legacy behavior.
+$loginMode = env('LOGIN_MODE', 'legacy');
+
+Route::get('/', function () use ($loginMode) {
+    return redirect()->route($loginMode === 'platform' ? 'platform.login' : 'login');
 });
 
 // Telegram Mini App shell — opened inside Telegram's WebView, no Laravel session
@@ -27,19 +45,27 @@ Route::view('/telegram/app', 'telegram.app', [
     'botUsername' => env('TELEGRAM_BOT_USERNAME', ''),
 ])->name('telegram.app');
 
-// This IS the working login for this company's real production data
-// (confirmed live, 2026-08-18): `users` genuinely has `password_hash`/
-// `is_active`, `employees` genuinely exists, and Supabase Auth (auth.users)
-// has zero accounts in this project -- so /platform/login can never
-// succeed here. An earlier redirect to /platform/login, based on the
-// opposite (unverified) assumption, made this real, working form
-// unreachable. See CLAUDE.md's "Login system correction" for how this was
-// confirmed before re-enabling it.
-Route::get('/login', [AuthController::class, 'showLogin'])
-    ->name('login');
+if ($loginMode === 'platform') {
+    // No legacy schema exists on this deployment's database at all -- keep
+    // the `login` route NAME resolvable (dozens of legacy controllers call
+    // route('login') as their unauthenticated-redirect target; those code
+    // paths are otherwise unreachable here, but a missing route name would
+    // still be a hard error if any of them somehow got hit) without ever
+    // rendering the legacy form, which would just 500 on this database.
+    Route::get('/login', fn () => redirect()->route('platform.login'))->name('login');
+} else {
+    // This IS the working login for this service's real production data
+    // (confirmed live, 2026-08-18): `users` genuinely has `password_hash`/
+    // `is_active`, `employees` genuinely exists, and Supabase Auth
+    // (auth.users) has zero accounts in this project's database -- so
+    // /platform/login can never succeed here. See CLAUDE.md's "Login
+    // system correction" for how this was confirmed.
+    Route::get('/login', [AuthController::class, 'showLogin'])
+        ->name('login');
 
-Route::post('/login', [AuthController::class, 'submitLogin'])
-    ->name('login.submit');
+    Route::post('/login', [AuthController::class, 'submitLogin'])
+        ->name('login.submit');
+}
 
 // Lets the front-end recover from a stale CSRF token (see partials/sidebar.blade.php's
 // fetch patch) without a full page reload -- deliberately outside kpi.auth so it still
