@@ -27,6 +27,7 @@ interface Kpi {
     status: string;
     visibility: 'company' | 'department' | 'restricted';
     kpi_categories: { name: string } | null;
+    quarter_targets: Partial<Record<'Q1' | 'Q2' | 'Q3' | 'Q4', number | string>>;
 }
 
 interface Template {
@@ -168,16 +169,22 @@ function CreateCategoryForm({ companyId }: { companyId: string }) {
     );
 }
 
+const QUARTERS: Array<'Q1' | 'Q2' | 'Q3' | 'Q4'> = ['Q1', 'Q2', 'Q3', 'Q4'];
+
 function KpiFormFields({
     data,
     setData,
     categories,
     members,
+    quarterTargets,
+    setQuarterTarget,
 }: {
     data: { category_id: string; name: string; description: string; target: string; unit: string; weight: string; assigned_user_id: string; frequency: string; visibility: string };
     setData: (key: string, value: string) => void;
     categories: Category[];
     members: Member[];
+    quarterTargets: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', string>;
+    setQuarterTarget: (quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4', value: string) => void;
 }) {
     return (
         <>
@@ -251,6 +258,30 @@ function KpiFormFields({
                     placeholder="e.g. 20"
                 />
             </div>
+            {data.frequency === 'quarterly' && (
+                <div className="col-span-2">
+                    <label className="text-xs font-medium text-slate-600 mb-1 inline-flex items-center gap-1">
+                        Quarterly targets
+                        <InfoTooltip text="Set independently per quarter — they don't have to add up to the overall Target above. Leave a quarter blank to keep it at 0 for now; you can fill it in later." />
+                    </label>
+                    <div className="grid grid-cols-4 gap-2">
+                        {QUARTERS.map((q) => (
+                            <div key={q}>
+                                <label className="block text-[10px] font-semibold text-slate-400 mb-0.5">{q}</label>
+                                <input
+                                    value={quarterTargets[q] ?? ''}
+                                    onChange={(e) => setQuarterTarget(q, e.target.value)}
+                                    type="number"
+                                    step="any"
+                                    min="0"
+                                    className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                                    placeholder="0"
+                                />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
             <div className="col-span-2">
                 <label className="text-xs font-medium text-slate-600 mb-1 inline-flex items-center gap-1">
                     Assign to
@@ -292,6 +323,7 @@ function CreateKpiPanel({ companyId, categories, members }: { companyId: string;
         assigned_user_id: '',
         frequency: 'monthly',
         visibility: 'company',
+        quarter_targets: { Q1: '', Q2: '', Q3: '', Q4: '' } as Record<'Q1' | 'Q2' | 'Q3' | 'Q4', string>,
     });
 
     const submit: FormEventHandler = (e) => {
@@ -314,7 +346,14 @@ function CreateKpiPanel({ companyId, categories, members }: { companyId: string;
 
     return (
         <form onSubmit={submit} className="grid grid-cols-2 gap-3 mb-5 bg-slate-50 rounded-xl p-4">
-            <KpiFormFields data={data} setData={setData} categories={categories} members={members} />
+            <KpiFormFields
+                data={data}
+                setData={setData}
+                categories={categories}
+                members={members}
+                quarterTargets={data.quarter_targets}
+                setQuarterTarget={(q, v) => setData('quarter_targets', { ...data.quarter_targets, [q]: v })}
+            />
             <div className="col-span-2 flex items-center gap-2">
                 <PrimaryButton type="submit" disabled={processing}>
                     Create KPI
@@ -338,6 +377,12 @@ function EditKpiForm({ companyId, kpi, categories, members, onDone }: { companyI
         assigned_user_id: kpi.assigned_user_id ?? '',
         frequency: kpi.frequency,
         visibility: kpi.visibility,
+        quarter_targets: {
+            Q1: kpi.quarter_targets.Q1 !== undefined ? String(kpi.quarter_targets.Q1) : '',
+            Q2: kpi.quarter_targets.Q2 !== undefined ? String(kpi.quarter_targets.Q2) : '',
+            Q3: kpi.quarter_targets.Q3 !== undefined ? String(kpi.quarter_targets.Q3) : '',
+            Q4: kpi.quarter_targets.Q4 !== undefined ? String(kpi.quarter_targets.Q4) : '',
+        } as Record<'Q1' | 'Q2' | 'Q3' | 'Q4', string>,
     });
 
     const submit: FormEventHandler = (e) => {
@@ -347,7 +392,14 @@ function EditKpiForm({ companyId, kpi, categories, members, onDone }: { companyI
 
     return (
         <form onSubmit={submit} className="grid grid-cols-2 gap-3 mt-3 mb-2 bg-slate-50 rounded-xl p-4">
-            <KpiFormFields data={data} setData={setData} categories={categories} members={members} />
+            <KpiFormFields
+                data={data}
+                setData={setData}
+                categories={categories}
+                members={members}
+                quarterTargets={data.quarter_targets}
+                setQuarterTarget={(q, v) => setData('quarter_targets', { ...data.quarter_targets, [q]: v })}
+            />
             <div className="col-span-2 flex items-center gap-2">
                 <PrimaryButton type="submit" disabled={processing}>
                     Save changes

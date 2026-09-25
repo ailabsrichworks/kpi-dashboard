@@ -75,4 +75,69 @@ class WeightedScoreServiceTest extends TestCase
         $this->assertCount(3, $result['needs_attention']);
         $this->assertSame(['Worst', 'Second worst', 'Third worst'], array_column($result['needs_attention'], 'name'));
     }
+
+    public function test_a_kpi_with_quarter_rows_uses_the_sum_actual_over_sum_target_rollup_instead_of_the_latest_submission(): void
+    {
+        $kpis = [
+            ['id' => 'a', 'name' => 'Quarterly KPI', 'target' => 999, 'weight' => 100],
+        ];
+        // A stale/irrelevant "latest submission" is deliberately present here
+        // too, to prove the quarter rollup takes precedence over it whenever
+        // quarter rows exist for the KPI.
+        $latest = ['a' => ['value' => 1, 'submission_date' => '2026-01-01']];
+        $quarters = [
+            'a' => [
+                ['quarter' => 'Q1', 'target' => 100, 'actual' => 50, 'status' => 'on_track'],
+                ['quarter' => 'Q2', 'target' => 100, 'actual' => 100, 'status' => 'completed'],
+                ['quarter' => 'Q3', 'target' => 100, 'actual' => 80, 'status' => 'at_risk'],
+                ['quarter' => 'Q4', 'target' => 100, 'actual' => 70, 'status' => 'not_started'],
+            ],
+        ];
+
+        $result = (new WeightedScoreService())->summarize($kpis, $latest, $quarters);
+
+        // (50+100+80+70) / (100*4) * 100 = 75
+        $this->assertSame(75.0, $result['overall_score']);
+        $this->assertSame(1, $result['at_risk']);
+        $this->assertSame(0, $result['on_track']);
+        $this->assertSame(0, $result['completed_annual']);
+        $this->assertSame(['completed' => 1, 'total' => 1, 'progress' => 100.0], $result['quarterly']['Q2']);
+        $this->assertSame(['completed' => 0, 'total' => 1, 'progress' => 50.0], $result['quarterly']['Q1']);
+    }
+
+    public function test_completed_annual_only_counts_a_kpi_once_all_four_quarters_are_signed_off(): void
+    {
+        $kpis = [
+            ['id' => 'a', 'name' => 'Fully signed off', 'target' => null, 'weight' => 50],
+            ['id' => 'b', 'name' => 'Three of four', 'target' => null, 'weight' => 50],
+        ];
+        $completedQuarter = fn (string $q) => ['quarter' => $q, 'target' => 10, 'actual' => 10, 'status' => 'completed'];
+        $quarters = [
+            'a' => [$completedQuarter('Q1'), $completedQuarter('Q2'), $completedQuarter('Q3'), $completedQuarter('Q4')],
+            'b' => [$completedQuarter('Q1'), $completedQuarter('Q2'), $completedQuarter('Q3'), ['quarter' => 'Q4', 'target' => 10, 'actual' => 5, 'status' => 'on_track']],
+        ];
+
+        $result = (new WeightedScoreService())->summarize($kpis, [], $quarters);
+
+        $this->assertSame(1, $result['completed_annual']);
+        $this->assertSame(2, $result['quarterly']['Q1']['total']);
+    }
+
+    public function test_a_quarter_kpi_with_zero_total_target_is_treated_as_no_achievement_yet(): void
+    {
+        $kpis = [
+            ['id' => 'a', 'name' => 'No targets set', 'target' => null, 'weight' => 100],
+        ];
+        $quarters = [
+            'a' => [
+                ['quarter' => 'Q1', 'target' => 0, 'actual' => null, 'status' => 'not_started'],
+            ],
+        ];
+
+        $result = (new WeightedScoreService())->summarize($kpis, [], $quarters);
+
+        $this->assertNull($result['overall_score']);
+        $this->assertSame(1, $result['at_risk']);
+        $this->assertSame(0, $result['on_track']);
+    }
 }

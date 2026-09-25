@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Platform;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Platform\Concerns\ComputesFinancialYear;
 use App\Services\SupabaseUserService;
 use App\Services\WeightedScoreService;
 use Illuminate\Http\Request;
@@ -10,6 +11,8 @@ use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
+    use ComputesFinancialYear;
+
     /**
      * Two genuinely different pages behind one URL, split by platform tier —
      * requirement #9: "Since Richworks is effectively the platform operator,
@@ -152,12 +155,23 @@ class DashboardController extends Controller
             $latestByKpiId[$submission['kpi_id']] ??= $submission;
         }
 
+        // Only the current financial year — a quarter row from a prior year
+        // (once this feature has been live long enough to have any) must
+        // never silently feed into this year's score.
+        $quarters = $supabase->get('kpi_quarters', [
+            'kpi_id' => 'in.(' . implode(',', $kpiIds) . ')',
+            'financial_year' => 'eq.' . $this->currentFinancialYear(),
+            'select' => 'kpi_id,quarter,target,actual,status',
+        ]);
+
+        $quartersByKpiId = collect($quarters)->groupBy('kpi_id')->map(fn ($group) => $group->all())->all();
+
         $byCompany = collect($myKpis)->groupBy('company_id');
 
         $scoreService = app(WeightedScoreService::class);
 
-        return $byCompany->map(function ($kpis) use ($scoreService, $latestByKpiId) {
-            $summary = $scoreService->summarize($kpis->all(), $latestByKpiId);
+        return $byCompany->map(function ($kpis) use ($scoreService, $latestByKpiId, $quartersByKpiId) {
+            $summary = $scoreService->summarize($kpis->all(), $latestByKpiId, $quartersByKpiId);
 
             // "My KPIs" preview (dashboard.blade.php's category-badge strip)
             // — grouped from the same fetched rows, not a second query.

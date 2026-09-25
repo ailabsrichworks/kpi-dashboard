@@ -3,6 +3,12 @@ import { scoreStyle } from '@/lib/scoreStyle';
 import { Card, StatCard } from '@/Components/Platform/ui';
 import { ExclamationTriangleIcon } from '@/Components/Platform/Icons';
 
+export interface QuarterProgress {
+    completed: number;
+    total: number;
+    progress: number;
+}
+
 export interface MyPerformance {
     overall_score: number | null;
     kpi_count: number;
@@ -11,20 +17,27 @@ export interface MyPerformance {
     needs_attention: Array<{ name: string; achievement: number }>;
     total_weight: number;
     category_counts: Array<{ category: string; count: number }>;
+    quarterly: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', QuarterProgress>;
+    completed_annual: number;
 }
 
 /**
  * Ports the legacy Dashboard/MyPerformanceCard.tsx's overall shape (score +
- * status badge, On Track/At Risk tiles, "Needs Attention" list) onto the
- * Platform's own data — see WeightedScoreService's docblock for how the
- * score is computed from each assigned KPI's latest submission instead of a
- * quarterly rollup (the Platform has no per-period tracking yet). Reuses
+ * status badge, On Track/At Risk tiles, "Needs Attention" list, "My
+ * Quarterly Progress" grid) onto the Platform's own data — see
+ * WeightedScoreService's docblock for how a KPI with `kpi_quarters` rows uses
+ * a target/actual rollup across quarters instead of its latest submission.
+ * The Q1-Q4 tiles only render when at least one assigned KPI actually has a
+ * quarter row (i.e. is `quarterly`-frequency) — a member with only
+ * non-quarterly KPIs sees no regression from before this existed. Reuses
  * `scoreStyle()` as-is: it's a pure function with no legacy-specific
  * assumptions.
  */
 export default function MyPerformanceCard({ companyId, performance }: { companyId: string; performance: MyPerformance }) {
     const score = performance.overall_score;
     const style = score !== null ? scoreStyle(score) : null;
+    const quarters: Array<'Q1' | 'Q2' | 'Q3' | 'Q4'> = ['Q1', 'Q2', 'Q3', 'Q4'];
+    const hasQuarterlyData = quarters.some((q) => performance.quarterly[q]?.total > 0);
 
     return (
         <Card
@@ -68,11 +81,43 @@ export default function MyPerformanceCard({ companyId, performance }: { companyI
                 </div>
             )}
 
+            {hasQuarterlyData && (
+                <div className="mt-4">
+                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2">My quarterly progress</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {quarters.map((q) => {
+                            const data = performance.quarterly[q];
+                            const pending = data.total === 0;
+                            return (
+                                <div key={q} className="rounded-xl bg-slate-50 p-2.5 border border-slate-100">
+                                    <div className="flex items-center justify-between mb-1.5">
+                                        <span className="text-[10px] font-black text-slate-700">{q}</span>
+                                        <span className="text-[10px] font-black text-slate-600">{pending ? '—' : `${data.progress}%`}</span>
+                                    </div>
+                                    <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden mb-1">
+                                        <div
+                                            className={`h-1.5 rounded-full ${pending ? 'bg-slate-200' : 'bg-brand-800'}`}
+                                            style={{ width: `${pending ? 100 : Math.min(data.progress, 100)}%` }}
+                                        />
+                                    </div>
+                                    <p className="text-[9px] text-slate-400">{data.total === 0 ? 'No KPIs' : `${data.completed}/${data.total} signed off`}</p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
             <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
                 <p className="text-xs text-slate-400">
-                    Quarterly target tracking isn't built on the Platform yet — scores here reflect your latest reported value per KPI.
+                    {hasQuarterlyData
+                        ? `${performance.completed_annual} KPI${performance.completed_annual === 1 ? '' : 's'} fully signed off for all 4 quarters this year.`
+                        : 'Scores here reflect your latest reported value per KPI — set a KPI to quarterly frequency to track it per quarter instead.'}
                 </p>
-                <Link href={`/platform/companies/${companyId}/weightage`} className="text-xs font-semibold text-brand-800 hover:underline flex-none ml-3">
+                <Link
+                    href={`/platform/companies/${companyId}/${hasQuarterlyData ? 'quarterly' : 'weightage'}`}
+                    className="text-xs font-semibold text-brand-800 hover:underline flex-none ml-3"
+                >
                     View my KPIs →
                 </Link>
             </div>

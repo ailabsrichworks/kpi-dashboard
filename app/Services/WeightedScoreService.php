@@ -2,26 +2,34 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Collection;
+
 /**
  * Computes the "My Performance" figures the legacy dashboard's
  * DashboardController::index() derives from kpi_quarters (per-quarter
- * target/actual + weightage) — the Platform has no per-period tracking yet
- * (see database/migrations/2026_09_25_000000's own docblock and this
- * session's Weightage-feature research), so this uses each assigned KPI's
- * MOST RECENT kpi_submissions row as "current achievement" instead of a
- * quarterly rollup. Same overall formula CLAUDE.md documents for legacy —
- * Σ(achievement% × weight%) / Σ(weight%) — just fed from a single current
- * value per KPI rather than four quarters.
+ * target/actual + weightage). Now that the Platform has its own
+ * `kpi_quarters` table (2026_09_26_000000_add_kpi_quarterly_tracking), a KPI
+ * with quarter rows for the current financial year uses the same
+ * "sum(actual)/sum(target) across quarters" rollup legacy's
+ * DashboardController::calculateKpiScore() uses, in preference to a single
+ * latest-submission value; a KPI with no quarters (its frequency isn't
+ * `quarterly`, or none have been set yet) falls back to the single
+ * latest-`kpi_submissions`-row achievement exactly as before. Same overall
+ * formula CLAUDE.md documents for legacy — Σ(achievement% × weight%) /
+ * Σ(weight%) — whichever way each KPI's own achievement was computed.
  *
  * Pure computation, no I/O — callers (DashboardController) fetch the KPI +
- * submission rows via SupabaseUserService (so RLS still governs what's
- * visible) and hand them here.
+ * submission + quarter rows via SupabaseUserService (so RLS still governs
+ * what's visible) and hand them here.
  */
 class WeightedScoreService
 {
+    private const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'];
+
     /**
      * @param array<int, array{id: string, name: string, target: float|null, weight: float|null}> $kpis
      * @param array<string, array{value: float, submission_date: string}> $latestSubmissionByKpiId
+     * @param array<string, array<int, array{quarter: string, target: float|null, actual: float|null, status: string}>> $quartersByKpiId
      * @return array{
      *     overall_score: float|null,
      *     kpi_count: int,
@@ -29,22 +37,41 @@ class WeightedScoreService
      *     at_risk: int,
      *     needs_attention: array<int, array{name: string, achievement: float}>,
      *     total_weight: float,
+     *     quarterly: array<string, array{completed: int, total: int, progress: float}>,
+     *     completed_annual: int,
      * }
      */
-    public function summarize(array $kpis, array $latestSubmissionByKpiId): array
+    public function summarize(array $kpis, array $latestSubmissionByKpiId, array $quartersByKpiId = []): array
     {
         $weightedSum = 0.0;
         $weightTotal = 0.0;
         $onTrack = 0;
         $atRisk = 0;
         $ranked = [];
+        $completedAnnual = 0;
+
+        $quarterProgress = array_fill_keys(self::QUARTERS, 0.0);
+        $quarterCompleted = array_fill_keys(self::QUARTERS, 0);
+        $quarterTotal = array_fill_keys(self::QUARTERS, 0);
 
         foreach ($kpis as $kpi) {
-            $submission = $latestSubmissionByKpiId[$kpi['id']] ?? null;
-            $achievement = $this->achievement($kpi['target'] ?? null, $submission['value'] ?? null);
+            $quarters = collect($quartersByKpiId[$kpi['id']] ?? [])->keyBy('quarter');
+            $weight = $kpi['weight'] ?? null;
+
+            if ($quarters->isNotEmpty()) {
+                $achievement = $this->quarterRollupAchievement($quarters);
+                $this->accumulateQuarterlyBreakdown($quarters, $weight, $quarterProgress, $quarterCompleted, $quarterTotal);
+
+                if ($quarters->count() === 4 && $quarters->every(fn ($q) => ($q['status'] ?? null) === 'completed')) {
+                    $completedAnnual++;
+                }
+            } else {
+                $submission = $latestSubmissionByKpiId[$kpi['id']] ?? null;
+                $achievement = $this->achievement($kpi['target'] ?? null, $submission['value'] ?? null);
+            }
 
             if ($achievement === null) {
-                // No target, or no submission yet — the legacy dashboard
+                // No target, or nothing reported yet — the legacy dashboard
                 // folds "not started" into "at risk" rather than a third
                 // tile; matched here for the same reason (a KPI with
                 // nothing reported yet is exactly the kind of thing that
@@ -60,7 +87,6 @@ class WeightedScoreService
                 $ranked[] = ['name' => $kpi['name'], 'achievement' => $achievement];
             }
 
-            $weight = $kpi['weight'] ?? null;
             if ($weight !== null) {
                 $weightedSum += $achievement * $weight;
                 $weightTotal += $weight;
@@ -69,6 +95,15 @@ class WeightedScoreService
 
         usort($ranked, fn ($a, $b) => $a['achievement'] <=> $b['achievement']);
 
+        $quarterly = [];
+        foreach (self::QUARTERS as $label) {
+            $quarterly[$label] = [
+                'completed' => $quarterCompleted[$label],
+                'total' => $quarterTotal[$label],
+                'progress' => round(min(100, $quarterProgress[$label]), 1),
+            ];
+        }
+
         return [
             'overall_score' => $weightTotal > 0 ? round($weightedSum / $weightTotal, 2) : null,
             'kpi_count' => count($kpis),
@@ -76,7 +111,60 @@ class WeightedScoreService
             'at_risk' => $atRisk,
             'needs_attention' => array_slice($ranked, 0, 3),
             'total_weight' => round($weightTotal, 2),
+            'quarterly' => $quarterly,
+            'completed_annual' => $completedAnnual,
         ];
+    }
+
+    /**
+     * "sum(actual)/sum(target)" across whichever quarters this KPI has for
+     * the current financial year — mirrors legacy's calculateKpiScore(),
+     * except a missing `actual` (nothing reported for that quarter yet)
+     * counts as 0 rather than being skipped, since its `target` still counts
+     * toward the denominator: a quarter nobody has reported on yet should
+     * pull the rollup down, not be invisible to it.
+     */
+    private function quarterRollupAchievement(Collection $quarters): ?float
+    {
+        $targetSum = (float) $quarters->sum(fn ($q) => (float) ($q['target'] ?? 0));
+        $actualSum = (float) $quarters->sum(fn ($q) => (float) ($q['actual'] ?? 0));
+
+        if ($targetSum <= 0) {
+            return null;
+        }
+
+        return round(($actualSum / $targetSum) * 100, 2);
+    }
+
+    /**
+     * Feeds the Dashboard's Q1-Q4 tiles — legacy's myProgressByQ/
+     * myCompletedByQ/myTotalByQ, reimplemented here so every KPI's
+     * contribution is computed once, in the same pass as its overall
+     * achievement, rather than a second loop over the same data.
+     */
+    private function accumulateQuarterlyBreakdown(Collection $quarters, ?float $weight, array &$progress, array &$completed, array &$total): void
+    {
+        foreach (self::QUARTERS as $label) {
+            $quarter = $quarters->get($label);
+            if (!$quarter) {
+                continue;
+            }
+
+            $total[$label]++;
+
+            if (($quarter['status'] ?? null) === 'completed') {
+                $completed[$label]++;
+            }
+
+            if ($weight === null) {
+                continue;
+            }
+
+            $achievement = $this->achievement($quarter['target'] ?? null, $quarter['actual'] ?? null);
+            if ($achievement !== null) {
+                $progress[$label] += $achievement * $weight / 100;
+            }
+        }
     }
 
     private function achievement(?float $target, ?float $value): ?float

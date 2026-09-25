@@ -277,6 +277,30 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::post('/companies/{company}/weight-change-requests/{weightChangeRequest}/reject', [\App\Http\Controllers\Platform\WeightageController::class, 'reject'])
         ->name('platform.weightage.reject');
 
+    Route::get('/companies/{company}/quarterly', [\App\Http\Controllers\Platform\QuarterlyController::class, 'index'])
+        ->name('platform.quarterly.index');
+
+    Route::post('/companies/{company}/quarterly/{quarter}/actual', [\App\Http\Controllers\Platform\QuarterlyController::class, 'updateActual'])
+        ->name('platform.quarterly.update-actual');
+
+    Route::post('/companies/{company}/quarterly/{quarter}/submit-completion', [\App\Http\Controllers\Platform\QuarterlyController::class, 'submitCompletion'])
+        ->name('platform.quarterly.submit-completion');
+
+    Route::post('/companies/{company}/quarterly/{quarter}/approve-completion', [\App\Http\Controllers\Platform\QuarterlyController::class, 'approveCompletion'])
+        ->name('platform.quarterly.approve-completion');
+
+    Route::post('/companies/{company}/quarterly/{quarter}/reject-completion', [\App\Http\Controllers\Platform\QuarterlyController::class, 'rejectCompletion'])
+        ->name('platform.quarterly.reject-completion');
+
+    Route::post('/companies/{company}/quarterly/{quarter}/request-change', [\App\Http\Controllers\Platform\QuarterlyController::class, 'requestActualChange'])
+        ->name('platform.quarterly.request-change');
+
+    Route::post('/companies/{company}/quarterly/change-requests/{changeRequest}/approve', [\App\Http\Controllers\Platform\QuarterlyController::class, 'approveActualChange'])
+        ->name('platform.quarterly.approve-change');
+
+    Route::post('/companies/{company}/quarterly/change-requests/{changeRequest}/reject', [\App\Http\Controllers\Platform\QuarterlyController::class, 'rejectActualChange'])
+        ->name('platform.quarterly.reject-change');
+
     Route::get('/notifications', [\App\Http\Controllers\Platform\NotificationController::class, 'index'])
         ->name('platform.notifications.index');
 

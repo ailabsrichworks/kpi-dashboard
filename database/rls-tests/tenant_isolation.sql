@@ -59,6 +59,8 @@ declare
   v_auth_c_member uuid := gen_random_uuid();
   v_user_c_admin uuid;
   v_user_c_member uuid;
+  v_kpi_c uuid;
+  v_quarter_c uuid;
 begin
   -- ---------------------------------------------------------------------
   -- Fixtures (run as the connecting superuser/owner -- RLS doesn't apply
@@ -519,6 +521,82 @@ begin
 
   execute 'reset role';
   raise notice 'PASS (14): notifications_insert lets an admin notify their company, and anyone notify themselves, nothing more';
+
+  -- ---------------------------------------------------------------------
+  -- Scenario 15: kpi_quarters / kpi_quarter_update_requests
+  -- (2026_09_26_000000_add_kpi_quarterly_tracking). Reuses Company C's
+  -- admin/member fixtures from scenario 14.
+  -- ---------------------------------------------------------------------
+  insert into kpis (company_id, name, frequency, assigned_user_id)
+    values (v_company_c, 'RLS Test Quarterly KPI', 'quarterly', v_user_c_member)
+    returning id into v_kpi_c;
+
+  insert into kpi_quarters (company_id, kpi_id, financial_year, quarter, target, status, start_date, end_date)
+    values (v_company_c, v_kpi_c, 'FY2026', 'Q1', 100, 'not_started', '2026-01-01', '2026-03-31')
+    returning id into v_quarter_c;
+
+  -- 15a: a user with no relationship to Company C cannot even see the row
+  -- (auth_can_view_kpi() denies it, same predicate kpis_select shares).
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_b)::text, true);
+  execute 'set local role authenticated';
+
+  select count(*) into v_count from kpi_quarters where id = v_quarter_c;
+  if v_count <> 0 then raise exception 'FAIL (15a): a user outside Company C could read its kpi_quarters row'; end if;
+
+  execute 'reset role';
+
+  -- 15b: the KPI's own assigned owner can directly update `actual` while
+  -- the quarter is still not_started/on_track/at_risk.
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_c_member)::text, true);
+  execute 'set local role authenticated';
+
+  update kpi_quarters set actual = 42 where id = v_quarter_c;
+
+  execute 'reset role';
+
+  select count(*) into v_count from kpi_quarters where id = v_quarter_c and actual = 42;
+  if v_count <> 1 then raise exception 'FAIL (15b): the KPI owner could not directly update actual pre-completion'; end if;
+
+  -- Move the quarter to pending_completion as the admin (bypasses the owner
+  -- trigger branch entirely) so 15c/15d can test the locked state for real,
+  -- not just assert a trigger message in isolation.
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_c_admin)::text, true);
+  execute 'set local role authenticated';
+  update kpi_quarters set status = 'pending_completion', completion_submitted_at = now(), completion_submitted_by = v_user_c_admin where id = v_quarter_c;
+  execute 'reset role';
+
+  -- 15c: the owner can no longer edit `actual` once it's locked
+  -- (pending_completion) -- must go through a request instead once completed.
+  begin
+    perform set_config('request.jwt.claims', json_build_object('sub', v_auth_c_member)::text, true);
+    execute 'set local role authenticated';
+    update kpi_quarters set actual = 999 where id = v_quarter_c;
+    raise exception 'FAIL (15c): the owner edited actual on a locked (pending_completion) quarter -- should have been refused';
+  exception
+    when others then
+      if sqlerrm not like '%locked%' then
+        raise exception 'FAIL (15c): update was refused, but not for the expected reason -- got: %', sqlerrm;
+      end if;
+  end;
+  execute 'reset role';
+
+  -- 15d: even the KPI's own owner cannot self-approve their own sign-off
+  -- (move pending_completion -> completed) -- that transition requires an
+  -- administrator, per restrict_kpi_quarter_owner_update().
+  begin
+    perform set_config('request.jwt.claims', json_build_object('sub', v_auth_c_member)::text, true);
+    execute 'set local role authenticated';
+    update kpi_quarters set status = 'completed' where id = v_quarter_c;
+    raise exception 'FAIL (15d): the KPI owner self-approved their own quarter completion -- should have required an administrator';
+  exception
+    when others then
+      if sqlerrm not like '%administrator%' then
+        raise exception 'FAIL (15d): update was refused, but not for the expected reason -- got: %', sqlerrm;
+      end if;
+  end;
+  execute 'reset role';
+
+  raise notice 'PASS (15): kpi_quarters is tenant-isolated, the owner has exactly one direct-write path, and only an admin can sign off a quarter';
 
   raise notice '=== ALL RLS ISOLATION SCENARIOS COMPLETED ===';
 
