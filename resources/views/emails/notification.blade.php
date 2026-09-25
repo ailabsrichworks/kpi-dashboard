@@ -25,7 +25,7 @@
                                 </p>
                             @endif
                             <p style="font-size:12px; color:#94a3b8; line-height:1.6; margin:24px 0 0;">
-                                You're receiving this because a notification was sent to you on the RGHB KPI Dashboard.
+                                You're receiving this because a notification was sent to you on the Performix Dashboard.
                             </p>
                         </td>
                     </tr>

@@ -19,7 +19,7 @@ interface Task {
     id: string;
     title: string;
     description: string | null;
-    status: 'open' | 'in_progress' | 'blocked' | 'done' | 'cancelled';
+    status: 'open' | 'in_progress' | 'done' | 'cancelled';
     priority: 'low' | 'medium' | 'high';
     due_date: string | null;
     // A meeting is a task with a specific time-of-day rather than just a
@@ -50,33 +50,18 @@ interface Member {
     users: Person;
 }
 
-interface TaskScore {
-    score: number | null;
-    status: 'on_track' | 'at_risk' | 'critical' | 'insufficient_data';
-    breakdown: Record<string, number | null>;
-}
-
 interface TasksPageProps {
     company: Company;
     tasks: Task[];
     links: TaskKpiLink[];
     kpis: Kpi[];
     members: Member[];
-    taskScore: TaskScore;
     [key: string]: unknown;
 }
-
-const TASK_SCORE_STATUS: Record<TaskScore['status'], { label: string; tone: 'success' | 'warning' | 'danger' | 'default' }> = {
-    on_track: { label: 'On Track', tone: 'success' },
-    at_risk: { label: 'At Risk', tone: 'warning' },
-    critical: { label: 'Critical', tone: 'danger' },
-    insufficient_data: { label: 'Not enough data yet', tone: 'default' },
-};
 
 const STATUS_COLUMNS: { key: Task['status']; label: string; dot: string }[] = [
     { key: 'open', label: 'To Do', dot: 'bg-slate-400' },
     { key: 'in_progress', label: 'In Progress', dot: 'bg-sky-500' },
-    { key: 'blocked', label: 'Blocked', dot: 'bg-amber-500' },
     { key: 'done', label: 'Done', dot: 'bg-emerald-500' },
     { key: 'cancelled', label: 'Cancelled', dot: 'bg-red-400' },
 ];
@@ -306,7 +291,6 @@ function EditTaskForm({ companyId, task, onDone }: { companyId: string; task: Ta
                 <select value={data.status} onChange={(e) => setData('status', e.target.value as Task['status'])} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
                     <option value="open">To Do</option>
                     <option value="in_progress">In progress</option>
-                    <option value="blocked">Blocked</option>
                     <option value="done">Done</option>
                     <option value="cancelled">Cancelled</option>
                 </select>
@@ -682,7 +666,7 @@ function CalendarView({
     );
 }
 
-export default function TasksIndex({ company, tasks, links, kpis, members, taskScore }: TasksPageProps) {
+export default function TasksIndex({ company, tasks, links, kpis, members }: TasksPageProps) {
     const [view, setView] = useState<'board' | 'calendar'>('board');
     const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
     const [expandedLinksId, setExpandedLinksId] = useState<string | null>(null);
@@ -731,25 +715,6 @@ export default function TasksIndex({ company, tasks, links, kpis, members, taskS
                 <StatCard label="Overdue" value={stats.overdue} tone={stats.overdue > 0 ? 'danger' : 'default'} />
                 <StatCard label="Meetings this week" value={stats.meetings} />
             </div>
-
-            <Card className="mb-5">
-                <div className="flex items-center justify-between gap-4">
-                    <div>
-                        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1">This week's task score</p>
-                        {taskScore.score !== null ? (
-                            <p className="text-2xl font-bold text-slate-900 tabular-nums">
-                                {taskScore.score}
-                                <span className="text-sm font-semibold text-slate-400">/100</span>
-                            </p>
-                        ) : (
-                            <p className="text-sm text-slate-400">No tasks in scope this week</p>
-                        )}
-                    </div>
-                    <Badge tone={TASK_SCORE_STATUS[taskScore.status].tone === 'default' ? 'neutral' : TASK_SCORE_STATUS[taskScore.status].tone}>
-                        {TASK_SCORE_STATUS[taskScore.status].label}
-                    </Badge>
-                </div>
-            </Card>
 
             <Card>
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-2">

@@ -5,10 +5,8 @@ namespace App\Http\Controllers\Platform;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Platform\Concerns\LogsAdminActions;
 use App\Http\Controllers\Platform\Concerns\PlatformAuthorization;
-use App\Services\PlatformTaskScoreCalculator;
 use App\Services\SupabaseUserService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Inertia\Inertia;
 
 /**
@@ -88,19 +86,12 @@ class TaskController extends Controller
             'select' => 'user_id,users(name,email)',
         ]);
 
-        $callerId = $request->attributes->get('platformUser')['id'];
-        $myTasks = collect($tasks)->where('assignee_user_id', $callerId)->values()->all();
-        $weekStart = now()->startOfWeek(Carbon::MONDAY);
-        $weekEnd = now()->endOfWeek(Carbon::SUNDAY);
-        $taskScore = (new PlatformTaskScoreCalculator())->calculate($myTasks, $weekStart, $weekEnd);
-
         return Inertia::render('Platform/Tasks/Index', [
             'company' => $companyRow,
             'tasks' => $tasks,
             'links' => $links,
             'kpis' => $kpis,
             'members' => $members,
-            'taskScore' => $taskScore,
         ]);
     }
 
@@ -111,7 +102,7 @@ class TaskController extends Controller
         $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'status' => 'nullable|in:open,in_progress,blocked,done,cancelled',
+            'status' => 'nullable|in:open,in_progress,done,cancelled',
             'priority' => 'nullable|in:low,medium,high',
             'due_date' => 'nullable|date',
             'meeting_time' => 'nullable|date_format:H:i',
@@ -183,7 +174,7 @@ class TaskController extends Controller
         $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'status' => 'required|in:open,in_progress,blocked,done,cancelled',
+            'status' => 'required|in:open,in_progress,done,cancelled',
             'priority' => 'required|in:low,medium,high',
             'due_date' => 'nullable|date',
             'meeting_time' => 'nullable|date_format:H:i',

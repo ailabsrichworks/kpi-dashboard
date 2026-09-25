@@ -2,15 +2,11 @@ import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ReactNode, useState } from 'react';
 import {
     AdjustmentsIcon,
-    BellIcon,
     BuildingIcon,
     ChecklistIcon,
     ClipboardCheckIcon,
-    CogIcon,
     DocumentDuplicateIcon,
-    DocumentIcon,
     HomeIcon,
-    LinkIcon,
     LogoutIcon,
     MenuIcon,
     RocketIcon,
@@ -69,7 +65,6 @@ interface PlatformLayoutProps {
 
 interface SharedProps {
     platformUser: PlatformUser | null;
-    platformUnreadNotificationCount: number;
     flash: { error?: string | null; success?: string | null };
     [key: string]: unknown;
 }
@@ -88,24 +83,16 @@ function isCompanyMember(user: PlatformUser | null, companyId: string): boolean 
     return user.company_memberships.some((m) => m.company_id === companyId);
 }
 
-/** Mirrors PlatformAuthorization::ensureCompanyWideViewer() exactly. */
-function isCompanyWideViewer(user: PlatformUser | null, companyId: string): boolean {
-    if (canAdminister(user, companyId)) return true;
-    return !!user?.company_memberships.some((m) => m.company_id === companyId && m.role === 'slt');
-}
-
 function NavLink({
     href,
     icon,
     children,
     currentUrl,
-    badge,
 }: {
     href: string;
     icon: ReactNode;
     children: ReactNode;
     currentUrl: string;
-    badge?: number;
 }) {
     const active = currentUrl === href || (href !== '/platform/dashboard' && currentUrl.startsWith(href));
 
@@ -117,12 +104,7 @@ function NavLink({
             }`}
         >
             <span className="flex-none">{icon}</span>
-            <span className="flex-1">{children}</span>
-            {!!badge && (
-                <span className="flex-none rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                    {badge > 99 ? '99+' : badge}
-                </span>
-            )}
+            {children}
         </Link>
     );
 }
@@ -131,41 +113,19 @@ function NavSectionLabel({ children }: { children: ReactNode }) {
     return <p className="px-3 mt-5 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{children}</p>;
 }
 
-function SidebarContent({
-    platformUser,
-    company,
-    currentUrl,
-    unreadNotificationCount,
-}: {
-    platformUser: PlatformUser | null;
-    company?: CompanyRef | null;
-    currentUrl: string;
-    unreadNotificationCount: number;
-}) {
-    // `companies` on a membership comes from an RLS-scoped embed, so it
-    // resolves to null for a company the caller's own membership row still
-    // references but can no longer read the parent row for (e.g. it's since
-    // been suspended/archived — company_users own-row visibility outlives
-    // that, per Phase 5's documented suspension-enforcement design). Picking
-    // company_memberships[0] blindly could land on exactly that dead
-    // membership while a perfectly live one sits later in the (unordered)
-    // array — prefer the first membership that actually resolved a company,
-    // falling back to [0] only if every membership is unresolvable.
-    const bestMembership =
-        platformUser?.company_memberships.find((m) => m.companies) ?? platformUser?.company_memberships[0];
+function SidebarContent({ platformUser, company, currentUrl }: { platformUser: PlatformUser | null; company?: CompanyRef | null; currentUrl: string }) {
     const contextCompany =
         company ??
-        (platformUser && !platformUser.is_super_admin && bestMembership
+        (platformUser && !platformUser.is_super_admin && platformUser.company_memberships[0]
             ? {
-                  id: bestMembership.company_id,
-                  name: bestMembership.companies?.name ?? 'Your company',
-                  code: bestMembership.companies?.code ?? '',
+                  id: platformUser.company_memberships[0].company_id,
+                  name: platformUser.company_memberships[0].companies?.name ?? 'Your company',
+                  code: platformUser.company_memberships[0].companies?.code ?? '',
               }
             : null);
 
     const isAdminHere = contextCompany ? canAdminister(platformUser, contextCompany.id) : false;
     const isMemberHere = contextCompany ? isCompanyMember(platformUser, contextCompany.id) : false;
-    const isSltViewerHere = contextCompany ? isCompanyWideViewer(platformUser, contextCompany.id) : false;
 
     return (
         <div className="flex h-full flex-col">
@@ -188,14 +148,6 @@ function SidebarContent({
                 <NavLink href="/platform/anira" icon={<SparklesIcon className="w-[18px] h-[18px]" />} currentUrl={currentUrl}>
                     Ask ANIRA
                 </NavLink>
-                <NavLink
-                    href="/platform/notifications"
-                    icon={<BellIcon className="w-[18px] h-[18px]" />}
-                    currentUrl={currentUrl}
-                    badge={unreadNotificationCount}
-                >
-                    Notifications
-                </NavLink>
 
                 {contextCompany && isMemberHere && (
                     <>
@@ -209,15 +161,6 @@ function SidebarContent({
                                 Departments &amp; People
                             </NavLink>
                         )}
-                        {isSltViewerHere && (
-                            <NavLink
-                                href={`/platform/companies/${contextCompany.id}/slt-dashboard`}
-                                icon={<RocketIcon className="w-[18px] h-[18px]" />}
-                                currentUrl={currentUrl}
-                            >
-                                SLT Dashboard
-                            </NavLink>
-                        )}
                         <NavLink
                             href={`/platform/companies/${contextCompany.id}/kpis`}
                             icon={<TargetIcon className="w-[18px] h-[18px]" />}
@@ -226,39 +169,11 @@ function SidebarContent({
                             KPIs
                         </NavLink>
                         <NavLink
-                            href={`/platform/companies/${contextCompany.id}/weightage`}
-                            icon={<ChecklistIcon className="w-[18px] h-[18px]" />}
-                            currentUrl={currentUrl}
-                        >
-                            Weightage
-                        </NavLink>
-                        <NavLink
-                            href={`/platform/companies/${contextCompany.id}/quarterly`}
-                            icon={<ClipboardCheckIcon className="w-[18px] h-[18px]" />}
-                            currentUrl={currentUrl}
-                        >
-                            Quarterly Progress
-                        </NavLink>
-                        <NavLink
                             href={`/platform/companies/${contextCompany.id}/tasks`}
                             icon={<ChecklistIcon className="w-[18px] h-[18px]" />}
                             currentUrl={currentUrl}
                         >
-                            Things To Do
-                        </NavLink>
-                        <NavLink
-                            href={`/platform/companies/${contextCompany.id}/target-linkages`}
-                            icon={<LinkIcon className="w-[18px] h-[18px]" />}
-                            currentUrl={currentUrl}
-                        >
-                            Target Linkages
-                        </NavLink>
-                        <NavLink
-                            href={`/platform/companies/${contextCompany.id}/job-description`}
-                            icon={<DocumentIcon className="w-[18px] h-[18px]" />}
-                            currentUrl={currentUrl}
-                        >
-                            Job Description
+                            Tasks
                         </NavLink>
                         {isAdminHere && (
                             <NavLink
@@ -285,15 +200,6 @@ function SidebarContent({
                                 currentUrl={currentUrl}
                             >
                                 Audit log
-                            </NavLink>
-                        )}
-                        {isAdminHere && (
-                            <NavLink
-                                href={`/platform/companies/${contextCompany.id}/settings`}
-                                icon={<CogIcon className="w-[18px] h-[18px]" />}
-                                currentUrl={currentUrl}
-                            >
-                                Settings
                             </NavLink>
                         )}
                     </>
@@ -343,21 +249,8 @@ function FlashBanner({ tone, children }: { tone: 'success' | 'error'; children: 
     return <div className={`mb-5 rounded-xl border px-4 py-3 text-sm ${styles}`}>{children}</div>;
 }
 
-function NotificationBell({ count }: { count: number }) {
-    return (
-        <Link href="/platform/notifications" className="relative flex-none text-slate-500 hover:text-slate-700" aria-label="Notifications">
-            <BellIcon className="w-5 h-5" />
-            {count > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                    {count > 9 ? '9+' : count}
-                </span>
-            )}
-        </Link>
-    );
-}
-
 export default function PlatformLayout({ title, description, company, actions, maxWidth = 'max-w-5xl', children }: PlatformLayoutProps) {
-    const { platformUser, platformUnreadNotificationCount, flash } = usePage<SharedProps>().props;
+    const { platformUser, flash } = usePage<SharedProps>().props;
     const currentUrl = usePage().url;
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
@@ -367,7 +260,7 @@ export default function PlatformLayout({ title, description, company, actions, m
 
             <div className="min-h-screen bg-slate-50 lg:flex">
                 <aside className="hidden lg:flex lg:w-64 lg:flex-none lg:flex-col bg-brand-900">
-                    <SidebarContent platformUser={platformUser} company={company} currentUrl={currentUrl} unreadNotificationCount={platformUnreadNotificationCount ?? 0} />
+                    <SidebarContent platformUser={platformUser} company={company} currentUrl={currentUrl} />
                 </aside>
 
                 {mobileNavOpen && (
@@ -379,7 +272,7 @@ export default function PlatformLayout({ title, description, company, actions, m
                                     <XMarkIcon className="w-5 h-5" />
                                 </button>
                             </div>
-                            <SidebarContent platformUser={platformUser} company={company} currentUrl={currentUrl} unreadNotificationCount={platformUnreadNotificationCount ?? 0} />
+                            <SidebarContent platformUser={platformUser} company={company} currentUrl={currentUrl} />
                         </aside>
                     </div>
                 )}
@@ -406,10 +299,7 @@ export default function PlatformLayout({ title, description, company, actions, m
                                     {description && <p className="text-xs text-slate-500 mt-0.5">{description}</p>}
                                 </div>
                             </div>
-                            <div className="flex-none flex items-center gap-3">
-                                <NotificationBell count={platformUnreadNotificationCount ?? 0} />
-                                {actions}
-                            </div>
+                            {actions && <div className="flex-none flex items-center gap-3">{actions}</div>}
                         </div>
                     </header>
 

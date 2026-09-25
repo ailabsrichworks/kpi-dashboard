@@ -54,13 +54,6 @@ declare
   v_auth_a3 uuid := gen_random_uuid();
   v_user_a3 uuid;
   v_kpi_restricted uuid;
-  v_company_c uuid;
-  v_auth_c_admin uuid := gen_random_uuid();
-  v_auth_c_member uuid := gen_random_uuid();
-  v_user_c_admin uuid;
-  v_user_c_member uuid;
-  v_kpi_c uuid;
-  v_quarter_c uuid;
 begin
   -- ---------------------------------------------------------------------
   -- Fixtures (run as the connecting superuser/owner -- RLS doesn't apply
@@ -70,17 +63,10 @@ begin
   insert into companies (name, code) values ('RLS Test Co B', 'RLSTEST_B') returning id into v_company_b;
 
   -- Inserted directly into both auth.users and public.users rather than
-  -- purely relying on the on_auth_user_created trigger to populate the
-  -- latter: that trigger (2026_09_24_040000_create_auth_user_sync_trigger)
-  -- now genuinely exists in every migration replay including this one, and
-  -- fires synchronously as part of the same `insert into auth.users` below
-  -- -- so it always creates the public.users row first, with only
-  -- name/email populated (no role). The explicit inserts below are kept
-  -- anyway (this script doesn't need to depend on that trigger's exact
-  -- behavior to set up its fixtures) but must use `on conflict ... do
-  -- update`, not a plain insert, since the trigger's row already exists by
-  -- the time these run -- a plain insert would collide on
-  -- users_auth_user_id_unique every time now.
+  -- relying on the on_auth_user_created trigger: that trigger is documented
+  -- (SupabaseUserService::firstEventually()'s docblock) as writing the
+  -- public.users row asynchronously, which this synchronous test can't wait
+  -- on. Testing RLS policies doesn't require exercising the signup trigger.
   insert into auth.users (
     id, instance_id, aud, role, email, encrypted_password,
     email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data
@@ -94,18 +80,10 @@ begin
     (v_auth_center, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
      'rls-test-center@example.invalid', crypt('rls-test-password', gen_salt('bf')), now(), now(), now(), '{}', '{}');
 
-  insert into users (auth_user_id, name, email, role) values (v_auth_a, 'RLS Test User A', 'rls-test-a@example.invalid', 'member')
-    on conflict (auth_user_id) do update set name = excluded.name, email = excluded.email, role = excluded.role
-    returning id into v_user_a;
-  insert into users (auth_user_id, name, email, role) values (v_auth_a2, 'RLS Test User A2', 'rls-test-a2@example.invalid', 'member')
-    on conflict (auth_user_id) do update set name = excluded.name, email = excluded.email, role = excluded.role
-    returning id into v_user_a2;
-  insert into users (auth_user_id, name, email, role) values (v_auth_b, 'RLS Test User B', 'rls-test-b@example.invalid', 'member')
-    on conflict (auth_user_id) do update set name = excluded.name, email = excluded.email, role = excluded.role
-    returning id into v_user_b;
-  insert into users (auth_user_id, name, email, role) values (v_auth_center, 'RLS Test Center Admin', 'rls-test-center@example.invalid', 'richworks_super_admin')
-    on conflict (auth_user_id) do update set name = excluded.name, email = excluded.email, role = excluded.role
-    returning id into v_user_center;
+  insert into users (auth_user_id, name, email, role) values (v_auth_a, 'RLS Test User A', 'rls-test-a@example.invalid', 'member') returning id into v_user_a;
+  insert into users (auth_user_id, name, email, role) values (v_auth_a2, 'RLS Test User A2', 'rls-test-a2@example.invalid', 'member') returning id into v_user_a2;
+  insert into users (auth_user_id, name, email, role) values (v_auth_b, 'RLS Test User B', 'rls-test-b@example.invalid', 'member') returning id into v_user_b;
+  insert into users (auth_user_id, name, email, role) values (v_auth_center, 'RLS Test Center Admin', 'rls-test-center@example.invalid', 'richworks_super_admin') returning id into v_user_center;
 
   insert into company_users (company_id, user_id, role) values (v_company_a, v_user_a, 'company_admin');
   -- Second Company A member -- needed to exercise users_select's
@@ -337,9 +315,7 @@ begin
   -- ---------------------------------------------------------------------
   insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
     values (v_auth_a3, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'rls-test-a3@example.invalid', crypt('rls-test-password', gen_salt('bf')), now(), now(), now(), '{}', '{}');
-  insert into users (auth_user_id, name, email, role) values (v_auth_a3, 'RLS Test User A3 (suspended)', 'rls-test-a3@example.invalid', 'member')
-    on conflict (auth_user_id) do update set name = excluded.name, email = excluded.email, role = excluded.role
-    returning id into v_user_a3;
+  insert into users (auth_user_id, name, email, role) values (v_auth_a3, 'RLS Test User A3 (suspended)', 'rls-test-a3@example.invalid', 'member') returning id into v_user_a3;
   insert into company_users (company_id, user_id, role, status) values (v_company_a, v_user_a3, 'employee', 'suspended');
   insert into department_users (department_id, user_id, company_id, role) values (v_dept_a, v_user_a3, v_company_a, 'employee');
 
@@ -381,19 +357,6 @@ begin
   if v_count <> 1 then raise exception 'FAIL (11 baseline): Company A admin cannot see a fellow Company A member before suspension'; end if;
 
   execute 'reset role';
-
-  -- Table-owner privilege (the "reset role" above) bypasses RLS itself,
-  -- but not the restrict_company_admin_to_branding() BEFORE UPDATE trigger
-  -- (2026_09_24_060000_allow_company_admin_branding_updates) -- that
-  -- trigger is a plain PL/pgSQL function keyed off auth.uid(), which reads
-  -- request.jwt.claims regardless of Postgres role, and that GUC is still
-  -- left over from the v_auth_a baseline check just above (set_config's
-  -- is_local=true only resets at end of TRANSACTION, not at "reset role").
-  -- Left as v_auth_a (a plain company_admin), the trigger would correctly
-  -- refuse this status change exactly as it would in production -- so set
-  -- it to the Center super admin here, which is who actually performs a
-  -- real suspend in the app (CompanyController::suspend()).
-  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_center)::text, true);
 
   update companies set status = 'suspended' where id = v_company_a;
 
@@ -437,14 +400,7 @@ begin
   -- straight to 'archived' (mirroring CompanyController::archive()'s
   -- allowed-from list, which includes 'suspended') must not accidentally
   -- restore access on the way through.
-  --
-  -- Same stale-request.jwt.claims issue as scenario 11's suspend UPDATE
-  -- above -- re-set it to the Center super admin right before this status
-  -- change too, so restrict_company_admin_to_branding()'s trigger lets it
-  -- through instead of refusing a plain company_admin's status edit.
   -- ---------------------------------------------------------------------
-  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_center)::text, true);
-
   update companies set status = 'archived' where id = v_company_a;
 
   perform set_config('request.jwt.claims', json_build_object('sub', v_auth_a)::text, true);
@@ -461,142 +417,6 @@ begin
 
   execute 'reset role';
   raise notice 'PASS (13): archived locks a company out exactly like suspended';
-
-  -- ---------------------------------------------------------------------
-  -- Scenario 14: notifications_insert (2026_09_25_000000_add_notifications_insert_policy).
-  -- A fresh, self-contained company/pair of users -- deliberately not
-  -- reusing Company A (archived by scenario 13) or Company B (only ever
-  -- has one user), since this scenario needs an active company admin AND
-  -- an active plain member to actually exercise both branches of `with
-  -- check (auth_can_administer_company(company_id) or user_id =
-  -- auth_current_user_id())`.
-  -- ---------------------------------------------------------------------
-  insert into companies (name, code) values ('RLS Test Co C', 'RLSTEST_C') returning id into v_company_c;
-
-  insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
-    values
-      (v_auth_c_admin, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'rls-test-c-admin@example.invalid', crypt('rls-test-password', gen_salt('bf')), now(), now(), now(), '{}', '{}'),
-      (v_auth_c_member, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'rls-test-c-member@example.invalid', crypt('rls-test-password', gen_salt('bf')), now(), now(), now(), '{}', '{}');
-
-  insert into users (auth_user_id, name, email, role) values (v_auth_c_admin, 'RLS Test C Admin', 'rls-test-c-admin@example.invalid', 'member')
-    on conflict (auth_user_id) do update set name = excluded.name, email = excluded.email, role = excluded.role
-    returning id into v_user_c_admin;
-  insert into users (auth_user_id, name, email, role) values (v_auth_c_member, 'RLS Test C Member', 'rls-test-c-member@example.invalid', 'member')
-    on conflict (auth_user_id) do update set name = excluded.name, email = excluded.email, role = excluded.role
-    returning id into v_user_c_member;
-
-  insert into company_users (company_id, user_id, role) values (v_company_c, v_user_c_admin, 'company_admin');
-  insert into company_users (company_id, user_id, role) values (v_company_c, v_user_c_member, 'employee');
-
-  -- 14a: a company admin can notify a fellow member.
-  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_c_admin)::text, true);
-  execute 'set local role authenticated';
-
-  insert into notifications (company_id, user_id, title, message)
-    values (v_company_c, v_user_c_member, 'Test', 'Admin-sent notification');
-
-  execute 'reset role';
-
-  select count(*) into v_count from notifications where user_id = v_user_c_member and company_id = v_company_c;
-  if v_count <> 1 then raise exception 'FAIL (14a): a company admin could not notify a fellow member'; end if;
-
-  -- 14b: a plain member can notify themselves.
-  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_c_member)::text, true);
-  execute 'set local role authenticated';
-
-  insert into notifications (company_id, user_id, title, message)
-    values (v_company_c, v_user_c_member, 'Test', 'Self-notification');
-
-  select count(*) into v_count from notifications where user_id = v_user_c_member and company_id = v_company_c;
-  if v_count <> 2 then raise exception 'FAIL (14b): a plain member could not notify themselves'; end if;
-
-  -- 14c: a plain member cannot notify someone else (not an admin, not self).
-  begin
-    insert into notifications (company_id, user_id, title, message)
-      values (v_company_c, v_user_c_admin, 'Test', 'Should be refused');
-    raise exception 'FAIL (14c): a plain member notified someone else -- should have been refused by RLS';
-  exception
-    when insufficient_privilege then null; -- expected: RLS refused the insert
-  end;
-
-  execute 'reset role';
-  raise notice 'PASS (14): notifications_insert lets an admin notify their company, and anyone notify themselves, nothing more';
-
-  -- ---------------------------------------------------------------------
-  -- Scenario 15: kpi_quarters / kpi_quarter_update_requests
-  -- (2026_09_26_000000_add_kpi_quarterly_tracking). Reuses Company C's
-  -- admin/member fixtures from scenario 14.
-  -- ---------------------------------------------------------------------
-  insert into kpis (company_id, name, frequency, assigned_user_id)
-    values (v_company_c, 'RLS Test Quarterly KPI', 'quarterly', v_user_c_member)
-    returning id into v_kpi_c;
-
-  insert into kpi_quarters (company_id, kpi_id, financial_year, quarter, target, status, start_date, end_date)
-    values (v_company_c, v_kpi_c, 'FY2026', 'Q1', 100, 'not_started', '2026-01-01', '2026-03-31')
-    returning id into v_quarter_c;
-
-  -- 15a: a user with no relationship to Company C cannot even see the row
-  -- (auth_can_view_kpi() denies it, same predicate kpis_select shares).
-  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_b)::text, true);
-  execute 'set local role authenticated';
-
-  select count(*) into v_count from kpi_quarters where id = v_quarter_c;
-  if v_count <> 0 then raise exception 'FAIL (15a): a user outside Company C could read its kpi_quarters row'; end if;
-
-  execute 'reset role';
-
-  -- 15b: the KPI's own assigned owner can directly update `actual` while
-  -- the quarter is still not_started/on_track/at_risk.
-  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_c_member)::text, true);
-  execute 'set local role authenticated';
-
-  update kpi_quarters set actual = 42 where id = v_quarter_c;
-
-  execute 'reset role';
-
-  select count(*) into v_count from kpi_quarters where id = v_quarter_c and actual = 42;
-  if v_count <> 1 then raise exception 'FAIL (15b): the KPI owner could not directly update actual pre-completion'; end if;
-
-  -- Move the quarter to pending_completion as the admin (bypasses the owner
-  -- trigger branch entirely) so 15c/15d can test the locked state for real,
-  -- not just assert a trigger message in isolation.
-  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_c_admin)::text, true);
-  execute 'set local role authenticated';
-  update kpi_quarters set status = 'pending_completion', completion_submitted_at = now(), completion_submitted_by = v_user_c_admin where id = v_quarter_c;
-  execute 'reset role';
-
-  -- 15c: the owner can no longer edit `actual` once it's locked
-  -- (pending_completion) -- must go through a request instead once completed.
-  begin
-    perform set_config('request.jwt.claims', json_build_object('sub', v_auth_c_member)::text, true);
-    execute 'set local role authenticated';
-    update kpi_quarters set actual = 999 where id = v_quarter_c;
-    raise exception 'FAIL (15c): the owner edited actual on a locked (pending_completion) quarter -- should have been refused';
-  exception
-    when others then
-      if sqlerrm not like '%locked%' then
-        raise exception 'FAIL (15c): update was refused, but not for the expected reason -- got: %', sqlerrm;
-      end if;
-  end;
-  execute 'reset role';
-
-  -- 15d: even the KPI's own owner cannot self-approve their own sign-off
-  -- (move pending_completion -> completed) -- that transition requires an
-  -- administrator, per restrict_kpi_quarter_owner_update().
-  begin
-    perform set_config('request.jwt.claims', json_build_object('sub', v_auth_c_member)::text, true);
-    execute 'set local role authenticated';
-    update kpi_quarters set status = 'completed' where id = v_quarter_c;
-    raise exception 'FAIL (15d): the KPI owner self-approved their own quarter completion -- should have required an administrator';
-  exception
-    when others then
-      if sqlerrm not like '%administrator%' then
-        raise exception 'FAIL (15d): update was refused, but not for the expected reason -- got: %', sqlerrm;
-      end if;
-  end;
-  execute 'reset role';
-
-  raise notice 'PASS (15): kpi_quarters is tenant-isolated, the owner has exactly one direct-write path, and only an admin can sign off a quarter';
 
   raise notice '=== ALL RLS ISOLATION SCENARIOS COMPLETED ===';
 

@@ -16,26 +16,8 @@ use App\Http\Controllers\AiController;
 |--------------------------------------------------------------------------
 */
 
-// This repo is deployed as TWO separate Railway services with two separate
-// Supabase databases behind two separate domains -- richworks.performix.ai
-// (the original single-tenant app; its production database genuinely has
-// `employees`/`users.password_hash`, and Supabase Auth's `auth.users` has
-// zero rows there, so /platform/login can never work) and
-// andalusia.performix.ai (a brand-new Platform-only database; it has no
-// `employees` table at all, so the legacy /login form 500s instead).
-// Both services build from this same `main` branch, so hardcoding either
-// redirect here breaks the OTHER service's login page the next time either
-// side "fixes" it back -- confirmed happening twice in one day (commits
-// a539ccb and 96237d8). LOGIN_MODE is an explicit per-service Railway env
-// var (set in each service's own dashboard, never committed) that decides
-// which login page this specific deployment actually has: `platform` for
-// andalusia.performix.ai, anything else (including unset, for backward
-// compatibility with the richworks service's existing config) falls back
-// to the legacy behavior.
-$loginMode = env('LOGIN_MODE', 'legacy');
-
-Route::get('/', function () use ($loginMode) {
-    return redirect()->route($loginMode === 'platform' ? 'platform.login' : 'login');
+Route::get('/', function () {
+    return redirect()->route('login');
 });
 
 // Telegram Mini App shell — opened inside Telegram's WebView, no Laravel session
@@ -45,27 +27,19 @@ Route::view('/telegram/app', 'telegram.app', [
     'botUsername' => env('TELEGRAM_BOT_USERNAME', ''),
 ])->name('telegram.app');
 
-if ($loginMode === 'platform') {
-    // No legacy schema exists on this deployment's database at all -- keep
-    // the `login` route NAME resolvable (dozens of legacy controllers call
-    // route('login') as their unauthenticated-redirect target; those code
-    // paths are otherwise unreachable here, but a missing route name would
-    // still be a hard error if any of them somehow got hit) without ever
-    // rendering the legacy form, which would just 500 on this database.
-    Route::get('/login', fn () => redirect()->route('platform.login'))->name('login');
-} else {
-    // This IS the working login for this service's real production data
-    // (confirmed live, 2026-08-18): `users` genuinely has `password_hash`/
-    // `is_active`, `employees` genuinely exists, and Supabase Auth
-    // (auth.users) has zero accounts in this project's database -- so
-    // /platform/login can never succeed here. See CLAUDE.md's "Login
-    // system correction" for how this was confirmed.
-    Route::get('/login', [AuthController::class, 'showLogin'])
-        ->name('login');
+// This IS the working login for this company's real production data
+// (confirmed live, 2026-08-18): `users` genuinely has `password_hash`/
+// `is_active`, `employees` genuinely exists, and Supabase Auth (auth.users)
+// has zero accounts in this project -- so /platform/login can never
+// succeed here. An earlier redirect to /platform/login, based on the
+// opposite (unverified) assumption, made this real, working form
+// unreachable. See CLAUDE.md's "Login system correction" for how this was
+// confirmed before re-enabling it.
+Route::get('/login', [AuthController::class, 'showLogin'])
+    ->name('login');
 
-    Route::post('/login', [AuthController::class, 'submitLogin'])
-        ->name('login.submit');
-}
+Route::post('/login', [AuthController::class, 'submitLogin'])
+    ->name('login.submit');
 
 // Lets the front-end recover from a stale CSRF token (see partials/sidebar.blade.php's
 // fetch patch) without a full page reload -- deliberately outside kpi.auth so it still
@@ -181,9 +155,6 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::post('/companies/{company}/unarchive', [\App\Http\Controllers\Platform\CompanyController::class, 'unarchive'])
         ->name('platform.companies.unarchive');
 
-    Route::get('/companies/{company}/settings', [\App\Http\Controllers\Platform\CompanyController::class, 'settings'])
-        ->name('platform.companies.settings');
-
     Route::post('/companies/{company}/branding', [\App\Http\Controllers\Platform\CompanyController::class, 'updateBranding'])
         ->name('platform.companies.branding');
 
@@ -261,63 +232,6 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
 
     Route::delete('/companies/{company}/kpis/{kpi}/grants/{grant}', [\App\Http\Controllers\Platform\KpiController::class, 'destroyGrant'])
         ->name('platform.kpis.grants.destroy');
-
-    Route::get('/companies/{company}/weightage', [\App\Http\Controllers\Platform\WeightageController::class, 'index'])
-        ->name('platform.weightage.index');
-
-    Route::post('/companies/{company}/weightage/allocate', [\App\Http\Controllers\Platform\WeightageController::class, 'allocate'])
-        ->name('platform.weightage.allocate');
-
-    Route::post('/companies/{company}/kpis/{kpi}/weight-change-requests', [\App\Http\Controllers\Platform\WeightageController::class, 'requestChange'])
-        ->name('platform.weightage.request-change');
-
-    Route::post('/companies/{company}/weight-change-requests/{weightChangeRequest}/approve', [\App\Http\Controllers\Platform\WeightageController::class, 'approve'])
-        ->name('platform.weightage.approve');
-
-    Route::post('/companies/{company}/weight-change-requests/{weightChangeRequest}/reject', [\App\Http\Controllers\Platform\WeightageController::class, 'reject'])
-        ->name('platform.weightage.reject');
-
-    Route::get('/companies/{company}/quarterly', [\App\Http\Controllers\Platform\QuarterlyController::class, 'index'])
-        ->name('platform.quarterly.index');
-
-    Route::post('/companies/{company}/quarterly/{quarter}/actual', [\App\Http\Controllers\Platform\QuarterlyController::class, 'updateActual'])
-        ->name('platform.quarterly.update-actual');
-
-    Route::post('/companies/{company}/quarterly/{quarter}/submit-completion', [\App\Http\Controllers\Platform\QuarterlyController::class, 'submitCompletion'])
-        ->name('platform.quarterly.submit-completion');
-
-    Route::post('/companies/{company}/quarterly/{quarter}/approve-completion', [\App\Http\Controllers\Platform\QuarterlyController::class, 'approveCompletion'])
-        ->name('platform.quarterly.approve-completion');
-
-    Route::post('/companies/{company}/quarterly/{quarter}/reject-completion', [\App\Http\Controllers\Platform\QuarterlyController::class, 'rejectCompletion'])
-        ->name('platform.quarterly.reject-completion');
-
-    Route::post('/companies/{company}/quarterly/{quarter}/request-change', [\App\Http\Controllers\Platform\QuarterlyController::class, 'requestActualChange'])
-        ->name('platform.quarterly.request-change');
-
-    Route::post('/companies/{company}/quarterly/change-requests/{changeRequest}/approve', [\App\Http\Controllers\Platform\QuarterlyController::class, 'approveActualChange'])
-        ->name('platform.quarterly.approve-change');
-
-    Route::post('/companies/{company}/quarterly/change-requests/{changeRequest}/reject', [\App\Http\Controllers\Platform\QuarterlyController::class, 'rejectActualChange'])
-        ->name('platform.quarterly.reject-change');
-
-    Route::get('/companies/{company}/slt-dashboard', [\App\Http\Controllers\Platform\SltDashboardController::class, 'index'])
-        ->name('platform.slt-dashboard');
-
-    Route::get('/notifications', [\App\Http\Controllers\Platform\NotificationController::class, 'index'])
-        ->name('platform.notifications.index');
-
-    Route::post('/notifications/{notification}/read', [\App\Http\Controllers\Platform\NotificationController::class, 'markRead'])
-        ->name('platform.notifications.read');
-
-    Route::post('/notifications/read-all', [\App\Http\Controllers\Platform\NotificationController::class, 'markAllRead'])
-        ->name('platform.notifications.read-all');
-
-    Route::get('/companies/{company}/target-linkages', [\App\Http\Controllers\Platform\PlaceholderController::class, 'targetLinkages'])
-        ->name('platform.target-linkages');
-
-    Route::get('/companies/{company}/job-description', [\App\Http\Controllers\Platform\PlaceholderController::class, 'jobDescription'])
-        ->name('platform.job-description');
 
     Route::get('/companies/{company}/tasks', [\App\Http\Controllers\Platform\TaskController::class, 'index'])
         ->name('platform.tasks.index');

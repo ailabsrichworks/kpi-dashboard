@@ -3,12 +3,10 @@
 namespace App\Http\Controllers\Platform;
 
 use App\Http\Controllers\Controller;
-use App\Http\Controllers\Platform\Concerns\ComputesFinancialYear;
 use App\Http\Controllers\Platform\Concerns\LogsAdminActions;
 use App\Http\Controllers\Platform\Concerns\PlatformAuthorization;
 use App\Services\SupabaseUserService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Inertia\Inertia;
 
 /**
@@ -20,7 +18,6 @@ use Inertia\Inertia;
  */
 class KpiController extends Controller
 {
-    use ComputesFinancialYear;
     use LogsAdminActions;
     use PlatformAuthorization;
 
@@ -52,47 +49,14 @@ class KpiController extends Controller
 
         $kpiIds = array_column($kpis, 'id');
 
-        // Only fetched for `quarterly`-frequency KPIs' current-year targets —
-        // used purely to prefill the Edit form's 4 quarter-target inputs, not
-        // to show any achievement/progress here (that's Quarterly Progress's
-        // own page).
-        $quarterlyKpiIds = collect($kpis)->where('frequency', 'quarterly')->pluck('id')->all();
-        $quarters = empty($quarterlyKpiIds)
-            ? []
-            : $supabase->get('kpi_quarters', [
-                'kpi_id' => 'in.(' . implode(',', $quarterlyKpiIds) . ')',
-                'financial_year' => 'eq.' . $this->currentFinancialYear(),
-                'select' => 'kpi_id,quarter,target',
-            ]);
-        $quarterTargetsByKpi = collect($quarters)->groupBy('kpi_id')->map(
-            fn ($group) => $group->pluck('target', 'quarter')->all()
-        );
-
-        $kpis = collect($kpis)->map(function ($kpi) use ($quarterTargetsByKpi) {
-            $kpi['quarter_targets'] = $quarterTargetsByKpi->get($kpi['id'], (object) []);
-
-            return $kpi;
-        })->values();
-
         // Only fetched for KPIs that could possibly have one — 'company'
         // visibility (the default) never checks this table at read time, so
         // there is nothing here to show for the common case.
-        //
-        // `users!kpi_access_grants_user_id_foreign` (not a bare `users(...)`)
-        // is required: `kpi_access_grants` has TWO foreign keys into `users`
-        // (`user_id` and `granted_by`), so an unqualified embed is ambiguous.
-        // PostgREST returns 300 Multiple Choices with an error payload in
-        // that case — and Laravel's HTTP client doesn't treat 300 as a
-        // failure (`failed()` only checks 4xx/5xx), so `->throw()` silently
-        // let that error object through as if it were the real `grants`
-        // array. Confirmed live: every load of this page for a company with
-        // at least one KPI returned that PGRST201 error object as `grants`
-        // instead of the actual per-KPI access-grant rows.
         $grants = empty($kpiIds)
             ? []
             : $supabase->get('kpi_access_grants', [
                 'kpi_id' => 'in.(' . implode(',', $kpiIds) . ')',
-                'select' => 'id,kpi_id,user_id,department_id,users!kpi_access_grants_user_id_foreign(name,email),departments(name)',
+                'select' => 'id,kpi_id,user_id,department_id,users(name,email),departments(name)',
             ]);
 
         $departments = $supabase->get('departments', [
@@ -251,29 +215,12 @@ class KpiController extends Controller
             'description' => 'nullable|string',
             'target' => 'nullable|numeric',
             'unit' => 'nullable|string|max:50',
-            'weight' => 'nullable|numeric|min:0|max:100',
             'frequency' => 'required|in:daily,weekly,monthly,quarterly,custom',
             'visibility' => 'nullable|in:company,department,restricted',
-            'assigned_user_id' => 'nullable|uuid',
-            'quarter_targets' => 'nullable|array',
-            'quarter_targets.Q1' => 'nullable|numeric|min:0',
-            'quarter_targets.Q2' => 'nullable|numeric|min:0',
-            'quarter_targets.Q3' => 'nullable|numeric|min:0',
-            'quarter_targets.Q4' => 'nullable|numeric|min:0',
         ]);
 
         /** @var SupabaseUserService $supabase */
         $supabase = $request->attributes->get('platformSupabase');
-
-        if ($request->assigned_user_id) {
-            $this->ensureCompanyMemberExists($supabase, $company, $request->assigned_user_id);
-        }
-
-        // Generated here (rather than left to the DB default) so the new
-        // KPI's id is known immediately, without a follow-up SELECT — the
-        // insert below deliberately uses return=minimal (see comment) so
-        // there's no RETURNING row to read it back from otherwise.
-        $kpiId = (string) Str::uuid();
 
         try {
             // return=minimal (3rd arg false): `kpis_select`'s policy calls
@@ -286,32 +233,17 @@ class KpiController extends Controller
             // was a real bug: every KPI created by anyone other than a Super
             // Admin failed. Nothing here uses the returned row anyway.
             $supabase->insert('kpis', [
-                'id' => $kpiId,
                 'company_id' => $company,
                 'category_id' => $request->category_id ?: null,
                 'name' => $request->name,
                 'description' => $request->description,
                 'target' => $request->target,
                 'unit' => $request->unit,
-                'weight' => $request->weight,
                 'frequency' => $request->frequency,
                 'visibility' => $request->input('visibility', 'company'),
-                'assigned_user_id' => $request->assigned_user_id ?: null,
             ], false);
         } catch (\Throwable $e) {
             return back()->withInput()->with('error', 'Could not create KPI: ' . $e->getMessage());
-        }
-
-        $quarterSyncFailed = false;
-        if ($request->frequency === 'quarterly') {
-            try {
-                $this->syncQuarterTargets($supabase, $company, $kpiId, $request->input('quarter_targets', []));
-            } catch (\Throwable) {
-                // The KPI itself was created successfully — a hiccup saving
-                // its quarter targets shouldn't undo that or block the audit
-                // log below. Targets can be filled in afterward via Edit.
-                $quarterSyncFailed = true;
-            }
         }
 
         try {
@@ -326,60 +258,7 @@ class KpiController extends Controller
             return back()->with('error', 'KPI was created, but the action could not be logged — contact support before continuing.');
         }
 
-        if ($quarterSyncFailed) {
-            return back()->with('error', 'KPI "' . $request->name . '" created, but its quarterly targets could not be saved — edit the KPI to set them.');
-        }
-
         return back()->with('success', 'KPI "' . $request->name . '" created.');
-    }
-
-    /**
-     * Upserts the 4 `kpi_quarters` rows for a `quarterly`-frequency KPI —
-     * `financial_year`/`start_date`/`end_date` are always computed here, on
-     * the server, never taken from the client (see the quarterly-tracking
-     * migration's own docblock for why: no custom fiscal-year offset, no
-     * client-controlled quarter windows). Only `target` comes from the
-     * caller, defaulting to whatever the row already had (or 0 for a brand
-     * new one) when left blank — the same "keep the previous value if the
-     * form didn't send one" rule legacy's own `upsertQuarters()` uses.
-     *
-     * PostgREST has no upsert-by-unique-key without an `on_conflict` param
-     * this client doesn't build, so this reads-then-writes per quarter
-     * instead — fine at 4 rows, called only from an admin-gated action.
-     *
-     * @param array<string, float|null> $targets keyed by 'Q1'..'Q4'
-     */
-    private function syncQuarterTargets(SupabaseUserService $supabase, string $company, string $kpiId, array $targets): void
-    {
-        $financialYear = $this->currentFinancialYear();
-
-        foreach (['Q1', 'Q2', 'Q3', 'Q4'] as $quarter) {
-            $existing = $supabase->first('kpi_quarters', [
-                'kpi_id' => 'eq.' . $kpiId,
-                'financial_year' => 'eq.' . $financialYear,
-                'quarter' => 'eq.' . $quarter,
-                'select' => 'id,target',
-            ]);
-
-            $target = $targets[$quarter] ?? ($existing['target'] ?? 0);
-
-            if ($existing) {
-                $supabase->update('kpi_quarters', ['id' => 'eq.' . $existing['id']], ['target' => $target], false);
-                continue;
-            }
-
-            [$startDate, $endDate] = $this->quarterDateRange($financialYear, $quarter);
-
-            $supabase->insert('kpi_quarters', [
-                'company_id' => $company,
-                'kpi_id' => $kpiId,
-                'financial_year' => $financialYear,
-                'quarter' => $quarter,
-                'target' => $target,
-                'start_date' => $startDate->toDateString(),
-                'end_date' => $endDate->toDateString(),
-            ], false);
-        }
     }
 
     /**
@@ -407,28 +286,17 @@ class KpiController extends Controller
             'description' => 'nullable|string',
             'target' => 'nullable|numeric',
             'unit' => 'nullable|string|max:50',
-            'weight' => 'nullable|numeric|min:0|max:100',
             'frequency' => 'required|in:daily,weekly,monthly,quarterly,custom',
             'visibility' => 'nullable|in:company,department,restricted',
-            'assigned_user_id' => 'nullable|uuid',
-            'quarter_targets' => 'nullable|array',
-            'quarter_targets.Q1' => 'nullable|numeric|min:0',
-            'quarter_targets.Q2' => 'nullable|numeric|min:0',
-            'quarter_targets.Q3' => 'nullable|numeric|min:0',
-            'quarter_targets.Q4' => 'nullable|numeric|min:0',
         ]);
 
         /** @var SupabaseUserService $supabase */
         $supabase = $request->attributes->get('platformSupabase');
 
-        if ($request->assigned_user_id) {
-            $this->ensureCompanyMemberExists($supabase, $company, $request->assigned_user_id);
-        }
-
         $before = $supabase->first('kpis', [
             'id' => 'eq.' . $kpi,
             'company_id' => 'eq.' . $company,
-            'select' => 'id,name,description,target,unit,weight,frequency,visibility,category_id,assigned_user_id',
+            'select' => 'id,name,description,target,unit,frequency,visibility,category_id',
         ]);
 
         if (!$before) {
@@ -441,25 +309,14 @@ class KpiController extends Controller
             'description' => $request->description,
             'target' => $request->target,
             'unit' => $request->unit,
-            'weight' => $request->weight,
             'frequency' => $request->frequency,
             'visibility' => $request->input('visibility', $before['visibility']),
-            'assigned_user_id' => $request->assigned_user_id ?: null,
         ];
 
         try {
             $supabase->update('kpis', ['id' => 'eq.' . $kpi], $after, false);
         } catch (\Throwable $e) {
             return back()->withInput()->with('error', 'Could not update KPI: ' . $e->getMessage());
-        }
-
-        $quarterSyncFailed = false;
-        if ($after['frequency'] === 'quarterly') {
-            try {
-                $this->syncQuarterTargets($supabase, $company, $kpi, $request->input('quarter_targets', []));
-            } catch (\Throwable) {
-                $quarterSyncFailed = true;
-            }
         }
 
         try {
@@ -476,10 +333,6 @@ class KpiController extends Controller
             }
         } catch (\Throwable) {
             return back()->with('error', 'KPI was updated, but the action could not be logged — contact support before continuing.');
-        }
-
-        if ($quarterSyncFailed) {
-            return back()->with('error', 'KPI "' . $request->name . '" updated, but its quarterly targets could not be saved — try again.');
         }
 
         return back()->with('success', 'KPI "' . $request->name . '" updated.');
@@ -559,27 +412,5 @@ class KpiController extends Controller
         }
 
         return back()->with('success', 'Access revoked.');
-    }
-
-    /**
-     * kpis.assigned_user_id references the global `users` table, which has
-     * no company-membership constraint of its own — without this check, a
-     * Company Admin could (accidentally, via a stale form, or via a raw API
-     * call) assign a KPI to a user who isn't even a member of this company.
-     * restrict_kpi_owner_weight_update() also re-checks this at write time
-     * as the real boundary; this is only for a clean redirect at the point
-     * of assignment instead of a confusing failure later when that person
-     * tries to allocate weight on a KPI that silently refuses them.
-     */
-    private function ensureCompanyMemberExists(SupabaseUserService $supabase, string $company, string $userId): void
-    {
-        $member = $supabase->first('company_users', [
-            'company_id' => 'eq.' . $company,
-            'user_id' => 'eq.' . $userId,
-            'status' => 'eq.active',
-            'select' => 'user_id',
-        ]);
-
-        abort_unless($member, 422, 'The assigned user is not an active member of this company.');
     }
 }

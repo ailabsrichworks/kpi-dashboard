@@ -97,7 +97,7 @@ class AiService
         }
 
         $system = <<<PROMPT
-You are ANIRA, the KPI AI Consultant for RGHB KPI Dashboard — an internal performance management system. Your name is ANIRA.
+You are ANIRA, the KPI AI Consultant for Performix Dashboard — an internal performance management system. Your name is ANIRA.
 
 HOW THE SYSTEM WORKS:
 - Employees are organised by role: EXECUTIVE, MANAGER, VP, SLT (Senior Leadership Team).

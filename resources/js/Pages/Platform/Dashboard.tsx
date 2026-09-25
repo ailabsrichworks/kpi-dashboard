@@ -1,11 +1,7 @@
 import { Link } from '@inertiajs/react';
-import { useState } from 'react';
 import PlatformLayout from '@/Components/Platform/PlatformLayout';
-import { BuildingIcon, ClipboardCheckIcon, LinkIcon, RocketIcon, TargetIcon, UsersIcon } from '@/Components/Platform/Icons';
+import { BuildingIcon, ClipboardCheckIcon, RocketIcon, TargetIcon, UsersIcon } from '@/Components/Platform/Icons';
 import { Card, EmptyState, StatCard, StatusBadge } from '@/Components/Platform/ui';
-import MyPerformanceCard, { MyPerformance } from './Dashboard/MyPerformanceCard';
-import DepartmentOverview, { DepartmentOverviewRow } from './Dashboard/DepartmentOverview';
-import MyKpisPreview from './Dashboard/MyKpisPreview';
 
 interface Company {
     id: string;
@@ -17,8 +13,6 @@ interface Company {
     kpi_count: number;
     submission_count: number;
     avg_achievement_pct: number | null;
-    my_performance: MyPerformance | null;
-    department_overview: DepartmentOverviewRow[];
 }
 
 interface PlatformUser {
@@ -37,63 +31,13 @@ interface PlatformUser {
 interface DashboardPageProps {
     me: PlatformUser;
     visibleCompanies: Company[];
-    greeting: string;
     [key: string]: unknown;
 }
 
-/**
- * Ports dashboard.blade.php's "Company Overview" collapsible section — the
- * department-ranking bars are worth having open by default less often than
- * "My performance", so it starts collapsed and remembers the choice per
- * company (a Super Admin/Platform Admin browsing several companies shouldn't
- * have one company's expand state leak into another's).
- */
-function CompanyOverviewToggle({ companyId, rows }: { companyId: string; rows: DepartmentOverviewRow[] }) {
-    const storageKey = `platformCompanyOverviewOpen:${companyId}`;
-    const [open, setOpen] = useState(() => {
-        try {
-            return localStorage.getItem(storageKey) === 'true';
-        } catch {
-            return false;
-        }
-    });
-
-    function toggle() {
-        const next = !open;
-        setOpen(next);
-        try {
-            localStorage.setItem(storageKey, next ? 'true' : 'false');
-        } catch {
-            // Private window / blocked storage — the toggle still works for this page view.
-        }
-    }
-
-    return (
-        <div>
-            <button
-                type="button"
-                onClick={toggle}
-                className="w-full flex items-center justify-between bg-white rounded-2xl px-4 py-3 border border-slate-200 shadow-sm hover:bg-slate-50 transition"
-            >
-                <div className="flex items-center gap-2.5">
-                    <BuildingIcon className="w-4 h-4 text-slate-400" />
-                    <span className="text-xs font-bold text-slate-700">Company overview</span>
-                </div>
-                <span className="text-[11px] font-semibold text-brand-800">{open ? 'Hide' : 'Show'}</span>
-            </button>
-            {open && (
-                <div className="mt-2">
-                    <DepartmentOverview rows={rows} />
-                </div>
-            )}
-        </div>
-    );
-}
-
-export default function PlatformDashboard({ me, visibleCompanies, greeting }: DashboardPageProps) {
+export default function PlatformDashboard({ me, visibleCompanies }: DashboardPageProps) {
     return (
         <PlatformLayout
-            title={`${greeting}, ${me.name.split(' ')[0]}`}
+            title={`Welcome back, ${me.name.split(' ')[0]}`}
             description={me.is_platform_admin ? 'Platform Admin' : 'Here are the companies you can access.'}
         >
             <Card
@@ -156,40 +100,6 @@ export default function PlatformDashboard({ me, visibleCompanies, greeting }: Da
                                         }
                                         icon={<RocketIcon className="w-3.5 h-3.5" />}
                                     />
-                                </div>
-
-                                {company.my_performance && company.my_performance.kpi_count > 0 && (
-                                    <div className="mt-4 space-y-4">
-                                        <MyPerformanceCard companyId={company.id} performance={company.my_performance} />
-                                        <MyKpisPreview
-                                            companyId={company.id}
-                                            kpiCount={company.my_performance.kpi_count}
-                                            totalWeight={company.my_performance.total_weight}
-                                            categoryCounts={company.my_performance.category_counts}
-                                        />
-                                    </div>
-                                )}
-
-                                {company.department_overview.length > 0 && (
-                                    <div className="mt-4">
-                                        <CompanyOverviewToggle companyId={company.id} rows={company.department_overview} />
-                                    </div>
-                                )}
-
-                                <div className="mt-4">
-                                    <Link
-                                        href={`/platform/companies/${company.id}/target-linkages`}
-                                        className="flex items-center justify-between gap-3 bg-white rounded-2xl px-4 py-3 border border-slate-200 shadow-sm hover:bg-slate-50 transition"
-                                    >
-                                        <div className="flex items-center gap-2.5 min-w-0">
-                                            <LinkIcon className="w-4 h-4 text-slate-400 flex-none" />
-                                            <div className="min-w-0">
-                                                <p className="text-xs font-bold text-slate-700">Target linkages</p>
-                                                <p className="text-[11px] text-slate-400">Cascading targets between manager and team — not built on the Platform yet</p>
-                                            </div>
-                                        </div>
-                                        <span className="text-[11px] font-semibold text-brand-800 flex-none">View →</span>
-                                    </Link>
                                 </div>
                             </li>
                         ))}
