@@ -54,10 +54,20 @@ class SupabaseService
      * table. Use `SupabaseUserService` (the caller's own token) for Platform
      * code, or `AuthorizedDataScope` for assistant/bot contexts with no HTTP
      * request of their own to carry a token.
+     *
+     * `notifications` is deliberately NOT in this list, unlike its sibling
+     * tenant tables: the legacy single-tenant app's own `NotificationService`
+     * is a real, currently-restored caller of `SupabaseService` against a
+     * table of the same name for its own, unrelated single-tenant purpose
+     * (see CLAUDE.md's "Known dormant issues" — it already fails safely
+     * there, via a column mismatch, not this guard). No Platform code path
+     * touches `notifications` through `SupabaseService` — every Platform
+     * caller already uses `SupabaseUserService` — so leaving it out here
+     * reopens nothing this guard exists to close.
      */
     private const TENANT_OWNED_TABLES = [
         'company_users', 'department_users', 'departments', 'kpi_categories',
-        'kpis', 'kpi_submissions', 'roles', 'notifications', 'kpi_access_grants',
+        'kpis', 'kpi_submissions', 'roles', 'kpi_access_grants',
         'platform_admin_assignments', 'import_batches', 'audit_logs', 'reports',
         'tasks', 'task_kpi_links', 'company_goals', 'company_performance_periods',
         'kpi_period_targets', 'kpi_target_revisions', 'approval_workflows',

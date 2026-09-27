@@ -6,9 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Telegram\Concerns\ResolvesTelegramEmployee;
 use App\Services\AiService;
 use App\Services\KpiQuarterUpdateService;
+use App\Services\NotificationService;
 use App\Services\SupabaseService;
 use App\Services\TaskAccessPolicy;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 
 class TelegramProjectTaskController extends Controller
 {
@@ -22,6 +25,83 @@ class TelegramProjectTaskController extends Controller
     private function nowMy(): string
     {
         return now()->timezone('Asia/Kuala_Lumpur')->toDateTimeString();
+    }
+
+    /**
+     * Same rule as the web Mini App's MiniAppTaskController::
+     * verifyNotifyEmployee() — a task's optional notify_employee_id is only
+     * accepted if it's someone the caller can actually see (the exact same
+     * TaskAccessPolicy scope the "Notify via Telegram" dropdown is built
+     * from), never an arbitrary employee id the caller was never shown.
+     *
+     * @return array{ok: bool, employee_id: ?string, message?: string}
+     */
+    private function verifyNotifyEmployee(?string $employeeId, array $actor, TaskAccessPolicy $policy): array
+    {
+        if (empty($employeeId)) {
+            return ['ok' => true, 'employee_id' => null];
+        }
+
+        if (!$policy->canView($actor, $employeeId)) {
+            return [
+                'ok' => false,
+                'employee_id' => null,
+                'message' => "That's not someone you can notify — pick someone from the list.",
+            ];
+        }
+
+        return ['ok' => true, 'employee_id' => $employeeId];
+    }
+
+    private function notifyMessageFor(array $task, string $actorName): string
+    {
+        $lines = [];
+
+        if (!empty($task['description'])) {
+            $lines[] = $task['description'];
+        }
+
+        $lines[] = 'Priority: ' . ucfirst($task['priority'] ?? 'medium');
+
+        if (!empty($task['due_date'])) {
+            $due = Carbon::parse($task['due_date'])->format('j M Y');
+            if (!empty($task['due_time'])) {
+                $due .= ' at ' . Carbon::parse($task['due_time'])->format('g:i A');
+            }
+            $lines[] = 'Due: ' . $due;
+        }
+
+        $lines[] = 'Assigned by: ' . $actorName;
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * Same pipeline as the web Mini App — NotificationService::notify() ->
+     * sendTelegram(), never a bespoke sender. Returns whether the recipient
+     * actually has Telegram linked, so the save response can say "notified"
+     * vs. "saved, but they haven't linked Telegram yet" instead of claiming
+     * success either way.
+     */
+    private function notifyAndDescribe(string $employeeId, array $task, string $actorId, string $actorName, SupabaseService $supabase, NotificationService $notifications): string
+    {
+        $linked = (bool) $notifications->telegramChatIdFor($employeeId);
+
+        $notifications->notify(
+            [$employeeId],
+            'ttd_task_notify',
+            ['id' => $actorId, 'name' => $actorName],
+            $task['title'],
+            $this->notifyMessageFor($task, $actorName),
+            null
+        );
+
+        $recipient = $supabase->first('employees', ['id' => 'eq.' . $employeeId, 'select' => 'short_name']);
+        $name = $recipient['short_name'] ?? 'They';
+
+        return $linked
+            ? "Notified {$name} via Telegram."
+            : "{$name} hasn't linked Telegram yet, so they weren't notified.";
     }
 
     /*
@@ -128,11 +208,22 @@ class TelegramProjectTaskController extends Controller
 
         $linksByTask = collect($links)->groupBy('task_id');
 
-        $result = array_map(function ($task) use ($projectMap, $linksByTask, $kpiMap) {
+        $employeeIds = array_unique(array_filter(array_merge(
+            array_map(fn ($t) => $t['assignee_employee_id'] ?? $t['employee_id'] ?? null, $tasks),
+            array_column($tasks, 'notify_employee_id')
+        )));
+        $employeeMap = empty($employeeIds) ? collect() : collect($supabase->get('employees', [
+            'id' => 'in.(' . implode(',', $employeeIds) . ')',
+            'select' => 'id,short_name',
+        ]) ?? [])->keyBy('id');
+
+        $result = array_map(function ($task) use ($projectMap, $linksByTask, $kpiMap, $employeeMap) {
             $linkedKpis = $linksByTask->get($task['id'], collect())->map(function ($link) use ($kpiMap) {
                 $kpi = $kpiMap->get($link['kpi_id']);
                 return $kpi ? ['kpi_id' => $kpi['id'], 'kpi_title' => $kpi['kpi_title'], 'category' => $kpi['category'] ?? null] : null;
             })->filter()->values();
+
+            $assigneeId = $task['assignee_employee_id'] ?? $task['employee_id'];
 
             return [
                 'id' => $task['id'],
@@ -150,11 +241,15 @@ class TelegramProjectTaskController extends Controller
                 'estimated_effort_hours' => isset($task['estimated_effort_hours']) ? (float) $task['estimated_effort_hours'] : null,
                 'start_date' => $task['start_date'] ?? null,
                 'due_date' => $task['due_date'] ?? null,
+                'due_time' => $task['due_time'] ?? null,
                 'reminder_at' => $task['reminder_at'] ?? null,
                 'visibility' => $task['visibility'] ?? 'private',
                 'recurrence_rule' => $task['recurrence_rule'] ?? 'none',
                 'is_unplanned' => (bool) ($task['is_unplanned'] ?? false),
-                'assignee_employee_id' => $task['assignee_employee_id'] ?? $task['employee_id'],
+                'assignee_employee_id' => $assigneeId,
+                'assignee_name' => $employeeMap->get($assigneeId)['short_name'] ?? null,
+                'notify_employee_id' => $task['notify_employee_id'] ?? null,
+                'notify_employee_name' => $employeeMap->get($task['notify_employee_id'] ?? null)['short_name'] ?? null,
                 'linked_kpis' => $linkedKpis,
             ];
         }, $tasks);
@@ -164,10 +259,78 @@ class TelegramProjectTaskController extends Controller
 
     /*
     |--------------------------------------------------------------------------
+    | GET /api/telegram/project-tasks/assignable-employees
+    |--------------------------------------------------------------------------
+    | Same rule and shape as the web Mini App's MiniAppTaskController::
+    | assignableEmployees() — every employee this caller is allowed to see
+    | (TaskAccessPolicy::visibleEmployeeIds()), ordered alphabetically via
+    | Supabase's own ORDER BY (never a PHP-side re-sort), each flagged with
+    | has_telegram so "Notify via Telegram" can filter to only people who
+    | can actually receive one.
+    */
+    public function assignableEmployees(Request $request, SupabaseService $supabase, TaskAccessPolicy $policy)
+    {
+        $validated = $request->validate([
+            'employee_id' => 'required|string',
+            'company_code' => 'required|string',
+        ]);
+
+        $this->resolveContext($request, $supabase, $validated['employee_id'], $validated['company_code']);
+
+        $actorEmployee = $supabase->first('employees', [
+            'id' => 'eq.' . $validated['employee_id'],
+            'select' => '*',
+        ]);
+
+        if (empty($actorEmployee)) {
+            return response()->json(['employees' => []]);
+        }
+
+        $employeeIds = $policy->visibleEmployeeIds($actorEmployee);
+
+        if (empty($employeeIds)) {
+            return response()->json(['employees' => []]);
+        }
+
+        $employees = $supabase->get('employees', [
+            'id' => 'in.(' . implode(',', $employeeIds) . ')',
+            'select' => 'id,short_name',
+            'order' => 'short_name.asc',
+        ]) ?? [];
+
+        $userIdByEmployeeId = collect();
+        $chatIdByUserId = collect();
+        try {
+            $roles = $supabase->get('user_company_roles', [
+                'employee_id' => 'in.(' . implode(',', array_column($employees, 'id')) . ')',
+                'is_active' => 'eq.true',
+                'select' => 'employee_id,user_id',
+            ]) ?? [];
+            $userIdByEmployeeId = collect($roles)->pluck('user_id', 'employee_id');
+            $userIds = array_values(array_unique(array_filter($userIdByEmployeeId->all())));
+            $chatIdByUserId = empty($userIds) ? collect() : collect($supabase->get('users', [
+                'id' => 'in.(' . implode(',', $userIds) . ')',
+                'select' => 'id,telegram_chat_id',
+            ]) ?? [])->pluck('telegram_chat_id', 'id');
+        } catch (\Throwable $e) {
+            Log::warning('Could not resolve Telegram linkage for assignable employees (Telegram Mini App)', ['error' => $e->getMessage()]);
+        }
+
+        $employees = array_map(function ($employee) use ($userIdByEmployeeId, $chatIdByUserId) {
+            $userId = $userIdByEmployeeId->get($employee['id']);
+            $employee['has_telegram'] = $userId ? !empty($chatIdByUserId->get($userId)) : false;
+            return $employee;
+        }, $employees);
+
+        return response()->json(['employees' => $employees]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | POST /api/telegram/project-tasks
     |--------------------------------------------------------------------------
     */
-    public function createTask(Request $request, SupabaseService $supabase, TaskAccessPolicy $policy)
+    public function createTask(Request $request, SupabaseService $supabase, TaskAccessPolicy $policy, NotificationService $notifications)
     {
         $validated = $request->validate([
             'employee_id' => 'required|string',
@@ -189,6 +352,8 @@ class TelegramProjectTaskController extends Controller
             'estimated_effort_hours' => 'nullable|numeric|min:0',
             'start_date' => 'nullable|date',
             'due_date' => 'nullable|date',
+            'due_time' => 'nullable|date_format:H:i',
+            'notify_employee_id' => 'nullable|string',
             'reminder_at' => 'nullable|date',
             'visibility' => 'nullable|in:private,team,department',
             'recurrence_rule' => 'nullable|in:none,daily,weekdays,weekly,monthly',
@@ -207,17 +372,24 @@ class TelegramProjectTaskController extends Controller
             return response()->json(['success' => false, 'message' => 'Project not found.'], 404);
         }
 
+        $actorEmployee = $supabase->first('employees', [
+            'id' => 'eq.' . $validated['employee_id'],
+            'select' => '*',
+        ]);
+
+        if (empty($actorEmployee)) {
+            return response()->json(['success' => false, 'message' => 'Employee not found.'], 404);
+        }
+
         $assigneeId = $validated['assignee_employee_id'] ?? $validated['employee_id'];
 
-        if ($assigneeId !== $validated['employee_id']) {
-            $actorEmployee = $supabase->first('employees', [
-                'id' => 'eq.' . $validated['employee_id'],
-                'select' => '*',
-            ]);
+        if ($assigneeId !== $validated['employee_id'] && !$policy->canAssign($actorEmployee, $assigneeId)) {
+            return response()->json(['success' => false, 'message' => "You're not allowed to assign tasks to this person."], 403);
+        }
 
-            if (!$actorEmployee || !$policy->canAssign($actorEmployee, $assigneeId)) {
-                return response()->json(['success' => false, 'message' => "You're not allowed to assign tasks to this person."], 403);
-            }
+        $notifyCheck = $this->verifyNotifyEmployee($validated['notify_employee_id'] ?? null, $actorEmployee, $policy);
+        if (!$notifyCheck['ok']) {
+            return response()->json(['success' => false, 'message' => $notifyCheck['message']], 422);
         }
 
         $kpiIds = array_unique($validated['kpi_ids'] ?? []);
@@ -254,6 +426,8 @@ class TelegramProjectTaskController extends Controller
             'estimated_effort_hours' => $validated['estimated_effort_hours'] ?? null,
             'start_date' => $validated['start_date'] ?? null,
             'due_date' => $validated['due_date'] ?? null,
+            'due_time' => $validated['due_time'] ?? null,
+            'notify_employee_id' => $notifyCheck['employee_id'],
             'reminder_at' => $validated['reminder_at'] ?? null,
             'visibility' => $validated['visibility'] ?? 'private',
             'recurrence_rule' => $validated['recurrence_rule'] ?? 'none',
@@ -271,7 +445,24 @@ class TelegramProjectTaskController extends Controller
             }
         }
 
-        return response()->json(['task' => $task]);
+        $message = 'Task saved!';
+
+        if ($task) {
+            $notifications->notify(
+                array_unique(array_filter([$validated['employee_id'], $assigneeId])),
+                'ttd_task_created',
+                ['id' => $validated['employee_id'], 'name' => $actorEmployee['short_name'] ?? 'You'],
+                'New task created',
+                "\"{$task['title']}\" was created.",
+                null
+            );
+
+            if ($notifyCheck['employee_id']) {
+                $message .= ' ' . $this->notifyAndDescribe($notifyCheck['employee_id'], $task, $validated['employee_id'], $actorEmployee['short_name'] ?? 'You', $supabase, $notifications);
+            }
+        }
+
+        return response()->json(['task' => $task, 'message' => $message]);
     }
 
     /*
@@ -485,7 +676,7 @@ class TelegramProjectTaskController extends Controller
     | Full task-details edit — same fields and scoping as the web Mini App's
     | MiniAppTaskController::update().
     */
-    public function update(Request $request, SupabaseService $supabase, string $id)
+    public function update(Request $request, SupabaseService $supabase, TaskAccessPolicy $policy, NotificationService $notifications, string $id)
     {
         $validated = $request->validate([
             'employee_id' => 'required|string',
@@ -499,6 +690,9 @@ class TelegramProjectTaskController extends Controller
             'estimated_effort_hours' => 'nullable|numeric|min:0',
             'start_date' => 'nullable|date',
             'due_date' => 'nullable|date',
+            'due_time' => 'nullable|date_format:H:i',
+            'assignee_employee_id' => 'nullable|string',
+            'notify_employee_id' => 'nullable|string',
             'reminder_at' => 'nullable|date',
             'visibility' => 'nullable|in:private,team,department',
             'recurrence_rule' => 'nullable|in:none,daily,weekdays,weekly,monthly',
@@ -516,6 +710,26 @@ class TelegramProjectTaskController extends Controller
             return response()->json(['success' => false, 'message' => 'Task not found.'], 404);
         }
 
+        $actorEmployee = $supabase->first('employees', [
+            'id' => 'eq.' . $validated['employee_id'],
+            'select' => '*',
+        ]);
+
+        if (empty($actorEmployee)) {
+            return response()->json(['success' => false, 'message' => 'Employee not found.'], 404);
+        }
+
+        $currentAssignee = $task['assignee_employee_id'] ?? $task['employee_id'];
+        $newAssignee = $validated['assignee_employee_id'] ?? null;
+        if ($newAssignee && $newAssignee !== $currentAssignee && !$policy->canAssign($actorEmployee, $newAssignee)) {
+            return response()->json(['success' => false, 'message' => 'You cannot assign this task to that employee.'], 403);
+        }
+
+        $notifyCheck = $this->verifyNotifyEmployee($validated['notify_employee_id'] ?? null, $actorEmployee, $policy);
+        if (!$notifyCheck['ok']) {
+            return response()->json(['success' => false, 'message' => $notifyCheck['message']], 422);
+        }
+
         $supabase->safePatch('telegram_project_tasks', ['id' => 'eq.' . $id], [
             'title' => trim($validated['title']),
             'description' => $validated['description'] ?? $task['description'] ?? null,
@@ -526,6 +740,9 @@ class TelegramProjectTaskController extends Controller
             'estimated_effort_hours' => $validated['estimated_effort_hours'] ?? $task['estimated_effort_hours'] ?? null,
             'start_date' => $validated['start_date'] ?? $task['start_date'] ?? null,
             'due_date' => $validated['due_date'] ?? $task['due_date'] ?? null,
+            'due_time' => $validated['due_time'] ?? null,
+            'assignee_employee_id' => $newAssignee ?: $currentAssignee,
+            'notify_employee_id' => $notifyCheck['employee_id'],
             'reminder_at' => $validated['reminder_at'] ?? $task['reminder_at'] ?? null,
             'visibility' => $validated['visibility'] ?? $task['visibility'] ?? 'private',
             'recurrence_rule' => $validated['recurrence_rule'] ?? $task['recurrence_rule'] ?? 'none',
@@ -533,7 +750,31 @@ class TelegramProjectTaskController extends Controller
             'updated_at' => $this->nowMy(),
         ]);
 
-        return response()->json(['success' => true]);
+        $notifications->notify(
+            array_unique(array_filter([$validated['employee_id'], $newAssignee ?: $currentAssignee])),
+            'ttd_task_updated',
+            ['id' => $validated['employee_id'], 'name' => $actorEmployee['short_name'] ?? 'You'],
+            'Task updated',
+            "\"{$validated['title']}\" details were updated.",
+            null
+        );
+
+        $message = 'Changes saved!';
+
+        // Only send when notify_employee_id is new or has actually changed —
+        // it's always resent by the client on every save, so without this
+        // check every unrelated edit would re-notify the same person.
+        if ($notifyCheck['employee_id'] && $notifyCheck['employee_id'] !== ($task['notify_employee_id'] ?? null)) {
+            $message .= ' ' . $this->notifyAndDescribe($notifyCheck['employee_id'], [
+                'title' => trim($validated['title']),
+                'description' => $validated['description'] ?? $task['description'] ?? null,
+                'due_date' => $validated['due_date'] ?? $task['due_date'] ?? null,
+                'due_time' => $validated['due_time'] ?? null,
+                'priority' => $validated['priority'] ?? $task['priority'] ?? 'medium',
+            ], $validated['employee_id'], $actorEmployee['short_name'] ?? 'You', $supabase, $notifications);
+        }
+
+        return response()->json(['success' => true, 'message' => $message]);
     }
 
     /*
@@ -545,7 +786,7 @@ class TelegramProjectTaskController extends Controller
     | only row that needs deleting directly. Same contract as the web Mini
     | App's MiniAppTaskController::destroy().
     */
-    public function destroy(Request $request, SupabaseService $supabase, string $id)
+    public function destroy(Request $request, SupabaseService $supabase, NotificationService $notifications, string $id)
     {
         $validated = $request->validate([
             'employee_id' => 'required|string',
@@ -557,7 +798,7 @@ class TelegramProjectTaskController extends Controller
         $task = $supabase->first('telegram_project_tasks', [
             'id' => 'eq.' . $id,
             'employee_id' => 'eq.' . $validated['employee_id'],
-            'select' => 'id',
+            'select' => 'id,title,assignee_employee_id',
         ]);
 
         if (empty($task)) {
@@ -569,6 +810,17 @@ class TelegramProjectTaskController extends Controller
         if (!$deleted) {
             return response()->json(['success' => false, 'message' => 'Could not delete task.'], 500);
         }
+
+        $actorEmployee = $supabase->first('employees', ['id' => 'eq.' . $validated['employee_id'], 'select' => 'short_name']);
+
+        $notifications->notify(
+            array_unique(array_filter([$validated['employee_id'], $task['assignee_employee_id'] ?? null])),
+            'ttd_task_deleted',
+            ['id' => $validated['employee_id'], 'name' => $actorEmployee['short_name'] ?? 'You'],
+            'Task deleted',
+            "\"{$task['title']}\" was deleted.",
+            null
+        );
 
         return response()->json(['success' => true]);
     }
@@ -630,6 +882,13 @@ class TelegramProjectTaskController extends Controller
             'order' => 'created_at.desc',
         ]) ?? [];
 
+        $assigneeId = $task['assignee_employee_id'] ?? $task['employee_id'];
+        $namedIds = array_unique(array_filter([$assigneeId, $task['notify_employee_id'] ?? null]));
+        $employeeMap = empty($namedIds) ? collect() : collect($supabase->get('employees', [
+            'id' => 'in.(' . implode(',', $namedIds) . ')',
+            'select' => 'id,short_name',
+        ]) ?? [])->keyBy('id');
+
         return response()->json([
             'task' => [
                 'id' => $task['id'],
@@ -642,7 +901,12 @@ class TelegramProjectTaskController extends Controller
                 'status' => $task['status'],
                 'priority' => $task['priority'] ?? 'medium',
                 'due_date' => $task['due_date'] ?? null,
+                'due_time' => $task['due_time'] ?? null,
                 'start_date' => $task['start_date'] ?? null,
+                'assignee_employee_id' => $assigneeId,
+                'assignee_name' => $employeeMap->get($assigneeId)['short_name'] ?? null,
+                'notify_employee_id' => $task['notify_employee_id'] ?? null,
+                'notify_employee_name' => $employeeMap->get($task['notify_employee_id'] ?? null)['short_name'] ?? null,
                 'linked_kpis' => $linkedKpis,
             ],
             'updates' => array_map(fn ($u) => [
@@ -667,7 +931,7 @@ class TelegramProjectTaskController extends Controller
     | update is also logged to telegram_project_task_updates so a KPI's
     | linked tasks can show a "what was updated, and when" history.
     */
-    public function updateProgress(Request $request, SupabaseService $supabase, string $id)
+    public function updateProgress(Request $request, SupabaseService $supabase, NotificationService $notifications, string $id)
     {
         $validated = $request->validate([
             'employee_id' => 'required|string',
@@ -714,6 +978,17 @@ class TelegramProjectTaskController extends Controller
             'new_actual' => $newActual,
         ]);
 
+        $actorEmployee = $supabase->first('employees', ['id' => 'eq.' . $validated['employee_id'], 'select' => 'short_name']);
+
+        $notifications->notify(
+            array_unique(array_filter([$validated['employee_id'], $task['assignee_employee_id'] ?? null])),
+            'ttd_task_progress',
+            ['id' => $validated['employee_id'], 'name' => $actorEmployee['short_name'] ?? 'You'],
+            'Task progress updated',
+            "\"{$task['title']}\" progress was updated.",
+            null
+        );
+
         return response()->json([
             'success' => true,
             'task_actual' => $newActual,
@@ -730,7 +1005,7 @@ class TelegramProjectTaskController extends Controller
     | this never touches actual/target, only the task's lifecycle state and
     | the audit trail in telegram_project_task_updates.
     */
-    public function dailyUpdate(Request $request, SupabaseService $supabase, string $id)
+    public function dailyUpdate(Request $request, SupabaseService $supabase, NotificationService $notifications, string $id)
     {
         $validated = $request->validate([
             'employee_id' => 'required|string',
@@ -777,6 +1052,17 @@ class TelegramProjectTaskController extends Controller
             'reschedule_reason' => $validated['reschedule_reason'] ?? null,
             'channel' => 'telegram',
         ]);
+
+        $actorEmployee = $supabase->first('employees', ['id' => 'eq.' . $validated['employee_id'], 'select' => 'short_name']);
+
+        $notifications->notify(
+            array_unique(array_filter([$validated['employee_id'], $task['assignee_employee_id'] ?? $task['employee_id'] ?? null])),
+            'ttd_task_progress',
+            ['id' => $validated['employee_id'], 'name' => $actorEmployee['short_name'] ?? 'You'],
+            'Daily update logged',
+            "\"{$task['title']}\" was marked " . str_replace('_', ' ', $validated['status']) . '.',
+            null
+        );
 
         return response()->json(['success' => true]);
     }

@@ -43,7 +43,22 @@ abstract class Controller
 
     protected function isQuarterControlAuthorized(): bool
     {
-        return $this->isBtsSession()
-            || in_array(session('employee_uuid'), self::QUARTER_CONTROL_EXTRA_ACCESS_IDS, true);
+        return self::sessionHasQuarterControlAccess();
+    }
+
+    /**
+     * Static, session-only version of isQuarterControlAuthorized() so
+     * non-controller code (HandleInertiaRequests, sharing this as a Layout
+     * prop for the React sidebar) can check the same named-individual grant
+     * without duplicating the id list a third time -- the Blade sidebar
+     * partial still keeps its own copy (see partials/sidebar.blade.php)
+     * since it runs before this Inertia-only middleware would apply.
+     */
+    public static function sessionHasQuarterControlAccess(): bool
+    {
+        $isBts = session('admin_impersonating') === true
+            || strtoupper(trim(session('department_code') ?? '')) === 'BTS';
+
+        return $isBts || in_array(session('employee_uuid'), self::QUARTER_CONTROL_EXTRA_ACCESS_IDS, true);
     }
 }

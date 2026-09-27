@@ -118,7 +118,7 @@ class AniraController extends Controller
         }
 
         try {
-            $rephrased = $ai->rephraseAppraiserComment(
+            $rephrased = $ai->rephraseAppraiserScoreJustification(
                 $request->kpi_name,
                 $request->score ?? '—',
                 $request->comment

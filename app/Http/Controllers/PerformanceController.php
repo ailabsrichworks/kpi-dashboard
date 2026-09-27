@@ -1,0 +1,1389 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Services\SupabaseService;
+use App\Services\QuarterOverrideService;
+use App\Services\AppraiserDelegationService;
+use App\Services\ApprovalHierarchyService;
+
+class PerformanceController extends Controller
+{
+    private string $currentFinancialYear = 'FY2026';
+
+    public function kpiAppraisal(SupabaseService $supabase, QuarterOverrideService $overrides, ApprovalHierarchyService $hierarchy)
+    {
+        if (!session()->has('employee_uuid') || !session()->has('company_code')) {
+            return redirect()->route('login');
+        }
+
+        $employees = $supabase->get('employees', [
+            'id'        => 'eq.' . session('employee_uuid'),
+            'is_active' => 'eq.true',
+            'select'    => '*',
+        ]);
+        $user = $employees[0] ?? null;
+
+        if (!$user) {
+            session()->flush();
+            return redirect()->route('login');
+        }
+
+        // ── Tenure calculation ────────────────────────────────────────────────
+        $joinDate = $user['join_date'] ?? null;
+        $tenure   = '—';
+        if ($joinDate) {
+            $diff = \Carbon\Carbon::parse($joinDate)->diff(now());
+            $parts = [];
+            if ($diff->y > 0) $parts[] = $diff->y . ' year' . ($diff->y !== 1 ? 's' : '');
+            if ($diff->m > 0) $parts[] = $diff->m . ' month' . ($diff->m !== 1 ? 's' : '');
+            $tenure = $parts ? implode(' ', $parts) : 'Less than 1 month';
+        }
+
+        // Reporting-to (approver) -- resolved the same way real approval
+        // routing is (ApprovalHierarchyService::getApprover(), role-aware:
+        // Executive -> manager_id/vp_id, Manager -> vp_id/reports_to_id,
+        // VP -> reports_to_id), not a raw reports_to_id read. reports_to_id
+        // alone disagreed with who actually approves this employee's work
+        // for any Executive/Manager whose manager_id/vp_id took priority.
+        $reportsTo = $hierarchy->getApprover($user);
+
+        // Department
+        $department = null;
+        if (!empty($user['department_code'])) {
+            $depts      = $supabase->get('departments', [
+                'code'   => 'eq.' . $user['department_code'],
+                'select' => '*',
+            ]);
+            $department = $depts[0] ?? null;
+        }
+
+        // ── Quarter logic ─────────────────────────────────────────────────────
+        $now   = now();
+        $month = (int) $now->format('n');
+        $year  = (int) $now->format('Y');
+
+        // Calendar-year quarters
+        $quarterOfMonth = match(true) {
+            $month <= 3 => 1,
+            $month <= 6 => 2,
+            $month <= 9 => 3,
+            default     => 4,
+        };
+
+        // Submission windows: last ~week of quarter + first ~week of next quarter
+        $windows = [
+            1 => ['start' => "{$year}-03-24", 'end' => "2026-07-31"],
+            2 => ['start' => "{$year}-06-23", 'end' => "{$year}-07-31"],
+            3 => ['start' => "{$year}-09-22", 'end' => "{$year}-10-06"],
+            4 => ['start' => "{$year}-12-23", 'end' => ($year + 1) . "-01-06"],
+        ];
+
+        // Check if we are currently inside any submission window
+        $displayQuarter = $quarterOfMonth;
+        $isWindowOpen   = false;
+        foreach ($windows as $q => $win) {
+            if ($now->toDateString() >= $win['start'] && $now->toDateString() <= $win['end']) {
+                $displayQuarter = $q;
+                $isWindowOpen   = true;
+                break;
+            }
+        }
+
+        // A BTS-issued override (QuarterOverrideController) force-opens a
+        // specific quarter's appraisal until a chosen deadline -- checked
+        // only once none of the normal hardcoded windows match today, so it
+        // never masks a genuinely-open window.
+        if (!$isWindowOpen) {
+            foreach ([1, 2, 3, 4] as $q) {
+                if ($overrides->isActive($this->currentFinancialYear, 'Q' . $q)) {
+                    $displayQuarter = $q;
+                    $isWindowOpen   = true;
+                    break;
+                }
+            }
+        }
+
+        $window     = $windows[$displayQuarter];
+        $windowStart = \Carbon\Carbon::parse($window['start'])->format('d M Y');
+        $windowEnd   = \Carbon\Carbon::parse($window['end'])->format('d M Y');
+        $qLabel      = 'Q' . $displayQuarter;
+
+        // ── KPIs for this user ────────────────────────────────────────────────
+        $kpis = $supabase->get('kpis', [
+            'employee_id'    => 'eq.' . $user['id'],
+            'financial_year' => 'eq.' . $this->currentFinancialYear,
+            'select'         => 'id,kpi_title,category,sub_category,unit,base_target,actual_value,status,weightage',
+        ]) ?? [];
+
+        $quarterScores = [];
+        foreach ($kpis as $kpi) {
+            $qRows = $supabase->get('kpi_quarters', [
+                'kpi_id'  => 'eq.' . $kpi['id'],
+                'quarter' => 'eq.' . $qLabel,
+                'select'  => 'quarter,quarter_target,quarter_actual,status',
+            ]);
+            $quarterScores[$kpi['id']] = $qRows[0] ?? null;
+        }
+
+        return view('performance.kpi', [
+            'user'                 => $user,
+            'currentUserName'      => $user['full_name'] ?? $user['short_name'] ?? 'User',
+            'userPosition'         => $user['position'] ?? $user['role'] ?? '-',
+            'departmentName'       => $department['name'] ?? $user['department_code'] ?? '-',
+            'reportsToName'        => $reportsTo ? ($reportsTo['full_name'] ?? $reportsTo['short_name'] ?? '-') : '-',
+            'reportsToPosition'    => $reportsTo['position'] ?? $reportsTo['role'] ?? '-',
+            'joinDate'             => $joinDate ? \Carbon\Carbon::parse($joinDate)->format('d M Y') : '—',
+            'tenure'               => $tenure,
+            'currentFinancialYear' => $this->currentFinancialYear,
+            'displayQuarter'       => $displayQuarter,
+            'qLabel'               => $qLabel,
+            'isWindowOpen'         => $isWindowOpen,
+            'windowStart'          => $windowStart,
+            'windowEnd'            => $windowEnd,
+            'kpis'                 => $kpis,
+            'quarterScores'        => $quarterScores,
+        ]);
+    }
+
+    public function attitude(SupabaseService $supabase, QuarterOverrideService $overrides, ApprovalHierarchyService $hierarchy)
+    {
+        if (!session()->has('employee_uuid') || !session()->has('company_code')) {
+            return redirect()->route('login');
+        }
+
+        $employees = $supabase->get('employees', [
+            'id'        => 'eq.' . session('employee_uuid'),
+            'is_active' => 'eq.true',
+            'select'    => '*',
+        ]);
+        $user = $employees[0] ?? null;
+
+        if (!$user) {
+            session()->flush();
+            return redirect()->route('login');
+        }
+
+        // See kpiAppraisal() above: role-aware resolution via
+        // ApprovalHierarchyService, not a raw reports_to_id read.
+        $reportsTo = $hierarchy->getApprover($user);
+
+        $department = null;
+        if (!empty($user['department_code'])) {
+            $depts      = $supabase->get('departments', [
+                'code'   => 'eq.' . $user['department_code'],
+                'select' => '*',
+            ]);
+            $department = $depts[0] ?? null;
+        }
+
+        $now   = now();
+        $month = (int) $now->format('n');
+        $year  = (int) $now->format('Y');
+
+        $quarterOfMonth = match(true) {
+            $month <= 3 => 1,
+            $month <= 6 => 2,
+            $month <= 9 => 3,
+            default     => 4,
+        };
+
+        $windows = [
+            1 => ['start' => "{$year}-03-24", 'end' => "2026-07-31"],
+            2 => ['start' => "{$year}-06-23", 'end' => "{$year}-07-31"],
+            3 => ['start' => "{$year}-09-22", 'end' => "{$year}-10-06"],
+            4 => ['start' => "{$year}-12-23", 'end' => ($year + 1) . "-01-06"],
+        ];
+
+        $displayQuarter = $quarterOfMonth;
+        $isWindowOpen   = false;
+        foreach ($windows as $q => $win) {
+            if ($now->toDateString() >= $win['start'] && $now->toDateString() <= $win['end']) {
+                $displayQuarter = $q;
+                $isWindowOpen   = true;
+                break;
+            }
+        }
+
+        // See kpiAppraisal()'s identical block -- a BTS override force-opens
+        // a specific quarter once none of the normal windows match today.
+        if (!$isWindowOpen) {
+            foreach ([1, 2, 3, 4] as $q) {
+                if ($overrides->isActive($this->currentFinancialYear, 'Q' . $q)) {
+                    $displayQuarter = $q;
+                    $isWindowOpen   = true;
+                    break;
+                }
+            }
+        }
+
+        $window      = $windows[$displayQuarter];
+        $windowStart = \Carbon\Carbon::parse($window['start'])->format('d M Y');
+        $windowEnd   = \Carbon\Carbon::parse($window['end'])->format('d M Y');
+        $qLabel      = 'Q' . $displayQuarter;
+
+        $assessmentAreas = [
+            [
+                'no'          => 1,
+                'title'       => 'Knowledge of Job Requirements',
+                'description' => 'Knowledge of job requirements, methods, techniques and skills involved in doing the job, and in applying these to perform efficiently.',
+            ],
+            [
+                'no'          => 2,
+                'title'       => 'Quality of Work Done',
+                'description' => 'To what degree did the appraisee fulfil the quality expectations of the job? Was the work completed accurate and reliable? What is the degree of excellence of end results?',
+            ],
+            [
+                'no'          => 3,
+                'title'       => 'Planning and Organising Skills',
+                'description' => 'To what degree did the appraisee anticipate needs, forecast conditions, set goals and standards, plan and schedule work?',
+            ],
+            [
+                'no'          => 4,
+                'title'       => 'Decision Making',
+                'description' => 'Was the appraisee able to analyse problems effectively and make sound decisions and commit to those decisions to achieve an acceptable result?',
+            ],
+            [
+                'no'          => 5,
+                'title'       => 'Communication Skills',
+                'description' => 'Did the appraisee communicate effectively verbal and written, with superiors and peers?',
+            ],
+            [
+                'no'          => 6,
+                'title'       => 'Teamwork',
+                'description' => 'Was the appraisee able to adopt and adapt in work conditions/situations and work with others toward a common objective?',
+            ],
+            [
+                'no'          => 7,
+                'title'       => 'Interpersonal Relationships',
+                'description' => 'How well did the appraisee relate to associates, superiors, and external contacts to get the desired cooperation and assistance?',
+            ],
+            [
+                'no'          => 8,
+                'title'       => 'Attitude Towards Work',
+                'description' => 'Was the appraisee able to work independently without need for direct supervision? How well did the appraisee adapt to new tasks and to changes in the work environment? Did the appraisee show commitment in discharge of his/her duties?',
+            ],
+            [
+                'no'          => 9,
+                'title'       => 'Time Management / Tardiness',
+                'description' => 'Is the appraisee able to plan, execute and complete assigned tasks within the deadline given? Did the appraisee conform to Company\'s rules and regulations at all times? Was the appraisee punctual in attendance and timekeeping?',
+            ],
+            [
+                'no'          => 10,
+                'title'       => 'Appearance',
+                'description' => 'Was the appraisee well groomed? Did the appraisee make an excellent impression?',
+            ],
+            [
+                'no'          => 11,
+                'title'       => 'Dependability / Accountability',
+                'description' => 'Able to carry out work with limited or minimum supervision and able to follow work instructions. Demonstrates high level of commitment to complete tasks assigned and shows initiative in ensuring job is completed efficiently and effectively.',
+            ],
+            [
+                'no'          => 12,
+                'title'       => 'Values',
+                'description' => 'Does the appraisee understand and demonstrate organisation values all the time?',
+            ],
+        ];
+
+        return view('performance.attitude', [
+            'user'                 => $user,
+            'currentUserName'      => $user['full_name'] ?? $user['short_name'] ?? 'User',
+            'userPosition'         => $user['position'] ?? $user['role'] ?? '-',
+            'departmentName'       => $department['name'] ?? $user['department_code'] ?? '-',
+            'reportsToName'        => $reportsTo
+                                        ? ($reportsTo['full_name'] ?? $reportsTo['short_name'] ?? '-')
+                                        : '-',
+            'reportsToPosition'    => $reportsTo['position'] ?? $reportsTo['role'] ?? '-',
+            'currentFinancialYear' => $this->currentFinancialYear,
+            'displayQuarter'       => $displayQuarter,
+            'qLabel'               => $qLabel,
+            'isWindowOpen'         => $isWindowOpen,
+            'windowStart'          => $windowStart,
+            'windowEnd'            => $windowEnd,
+            'assessmentAreas'      => $assessmentAreas,
+        ]);
+    }
+
+    public function reportQuarter(string $quarter, SupabaseService $supabase, QuarterOverrideService $overrides, ApprovalHierarchyService $hierarchy)
+    {
+        if (!session()->has('employee_uuid') || !session()->has('company_code')) {
+            return redirect()->route('login');
+        }
+
+        $q = strtoupper($quarter);
+        if (!in_array($q, ['Q1','Q2','Q3','Q4'])) abort(404);
+
+        $employees = $supabase->get('employees', [
+            'id'        => 'eq.' . session('employee_uuid'),
+            'is_active' => 'eq.true',
+            'select'    => '*',
+        ]);
+        $user = $employees[0] ?? null;
+        if (!$user) { session()->flush(); return redirect()->route('login'); }
+
+        // Tenure
+        $joinDate = $user['join_date'] ?? null;
+        $tenure   = '—';
+        if ($joinDate) {
+            $diff  = \Carbon\Carbon::parse($joinDate)->diff(now());
+            $parts = [];
+            if ($diff->y > 0) $parts[] = $diff->y . ' year' . ($diff->y !== 1 ? 's' : '');
+            if ($diff->m > 0) $parts[] = $diff->m . ' month' . ($diff->m !== 1 ? 's' : '');
+            $tenure = $parts ? implode(' ', $parts) : 'Less than 1 month';
+        }
+
+        // Reports-to -- see kpiAppraisal() above: role-aware resolution via
+        // ApprovalHierarchyService, not a raw reports_to_id read.
+        $reportsTo = $hierarchy->getApprover($user);
+
+        // Department
+        $department = null;
+        if (!empty($user['department_code'])) {
+            $depts      = $supabase->get('departments', ['code' => 'eq.' . $user['department_code'], 'select' => '*']);
+            $department = $depts[0] ?? null;
+        }
+
+        // Window for THIS specific quarter
+        $now  = now()->timezone('Asia/Kuala_Lumpur');
+        $year = (int) $now->year;
+        $mon  = (int) $now->month;
+
+        $windows = [
+            'Q1' => ['start' => "{$year}-03-24", 'end' => "2026-07-31"],
+            'Q2' => ['start' => "{$year}-06-23", 'end' => "{$year}-07-31"],
+            'Q3' => ['start' => "{$year}-09-22", 'end' => "{$year}-10-06"],
+            'Q4' => ['start' => "{$year}-12-23", 'end' => ($year + 1) . "-01-06"],
+        ];
+        // Q4 window bleeds into January — if it's Jan 1-6, reference last year's Q4
+        if ($q === 'Q4' && $mon === 1 && $now->day <= 6) {
+            $py = $year - 1;
+            $windows['Q4'] = ['start' => "{$py}-12-23", 'end' => "{$year}-01-06"];
+        }
+
+        $window       = $windows[$q];
+        $today        = $now->toDateString();
+        $isWindowOpen = $today >= $window['start'] && $today <= $window['end'];
+        $isFuture     = $today < $window['start'];
+        $windowStart  = \Carbon\Carbon::parse($window['start'])->format('d M Y');
+        $windowEnd    = \Carbon\Carbon::parse($window['end'])->format('d M Y');
+
+        // A BTS-issued override (QuarterOverrideController) force-opens THIS
+        // specific quarter's self-review until a chosen deadline, regardless
+        // of its normal submission window -- e.g. reopening the quarter
+        // before the current one for a late correction.
+        $quarterOverride = $overrides->activeOverride($this->currentFinancialYear, $q);
+        if ($quarterOverride) {
+            $isWindowOpen = true;
+            $isFuture     = false;
+            $windowEnd    = \Carbon\Carbon::parse($quarterOverride['open_until'])
+                ->timezone('Asia/Kuala_Lumpur')->format('d M Y, g:i A');
+        }
+
+        // KPIs
+        $kpis = $supabase->get('kpis', [
+            'employee_id'    => 'eq.' . $user['id'],
+            'financial_year' => 'eq.' . $this->currentFinancialYear,
+            'select'         => 'id,kpi_title,category,sub_category,unit,base_target,actual_value,status,weightage',
+        ]) ?? [];
+
+        $quarterScores = [];
+        $allQuarters   = [];
+        foreach ($kpis as $kpi) {
+            $qRows = $supabase->get('kpi_quarters', [
+                'kpi_id' => 'eq.' . $kpi['id'],
+                'select' => 'quarter,quarter_title,quarter_target,quarter_actual,status,remark,completion_review,completion_proof_urls',
+            ]);
+            foreach ($qRows as $row) {
+                $allQuarters[$kpi['id']][$row['quarter']] = $row;
+            }
+            $quarterScores[$kpi['id']] = $allQuarters[$kpi['id']][$q] ?? null;
+        }
+
+        // Attendance — aggregate months for this quarter
+        $quarterMonths = match($q) {
+            'Q1' => [1, 2, 3], 'Q2' => [4, 5, 6],
+            'Q3' => [7, 8, 9], 'Q4' => [10, 11, 12],
+        };
+        $attYear = ($q === 'Q4' && $mon === 1 && $now->day <= 6) ? ($year - 1) : $year;
+
+        $allAttendance = $supabase->get('attendance_summary', [
+            'employee_id' => 'eq.' . $user['id'],
+            'year'        => 'eq.' . $attYear,
+            'select'      => 'month,working_days,present_days,absent_days,late_count,total_late_minutes,mc_days,al_days,other_leave_days,insufficient_count',
+        ]) ?? [];
+
+        $qAttendance = array_filter($allAttendance, fn($r) => in_array((int)$r['month'], $quarterMonths));
+
+        $attendanceSummary = [
+            'has_data' => !empty($qAttendance), 'working_days' => 0, 'present_days' => 0,
+            'absent_days' => 0, 'late_count' => 0, 'total_late_minutes' => 0,
+            'mc_days' => 0, 'al_days' => 0, 'other_leave_days' => 0, 'insufficient_count' => 0, 'months' => [],
+        ];
+        foreach ($qAttendance as $ar) {
+            $attendanceSummary['working_days']        += (int)($ar['working_days'] ?? 0);
+            $attendanceSummary['present_days']        += (int)($ar['present_days'] ?? 0);
+            $attendanceSummary['absent_days']         += (int)($ar['absent_days'] ?? 0);
+            $attendanceSummary['late_count']          += (int)($ar['late_count'] ?? 0);
+            $attendanceSummary['total_late_minutes']  += (int)($ar['total_late_minutes'] ?? 0);
+            $attendanceSummary['mc_days']             += (int)($ar['mc_days'] ?? 0);
+            $attendanceSummary['al_days']             += (int)($ar['al_days'] ?? 0);
+            $attendanceSummary['other_leave_days']    += (int)($ar['other_leave_days'] ?? 0);
+            $attendanceSummary['insufficient_count']  += (int)($ar['insufficient_count'] ?? 0);
+            $attendanceSummary['months'][]            = \Carbon\Carbon::create($attYear, (int)$ar['month'], 1)->format('M Y');
+        }
+
+        $attendanceYTD = ['has_data' => !empty($allAttendance), 'mc_days' => 0, 'other_leave_days' => 0, 'late_count' => 0];
+        foreach ($allAttendance as $ar) {
+            $attendanceYTD['mc_days']          += (int)($ar['mc_days'] ?? 0);
+            $attendanceYTD['other_leave_days'] += (int)($ar['other_leave_days'] ?? 0);
+            $attendanceYTD['late_count']       += (int)($ar['late_count'] ?? 0);
+        }
+
+        // Assessment areas — vary by role
+        $role = strtolower($user['role'] ?? '');
+        $assessmentAreas = match(true) {
+            $role === 'executive' => [
+                ['no' =>  1, 'title' => 'Knowledge of Job Requirements',  'description' => 'Knowledge of job requirements, methods, techniques and skills involved in doing the job, and applying these to perform efficiently.'],
+                ['no' =>  2, 'title' => 'Quality of Work Done',           'description' => 'Degree to which quality expectations of the job were fulfilled — accuracy, reliability, and excellence of end results.'],
+                ['no' =>  3, 'title' => 'Planning & Organising Skills',   'description' => 'Degree to which the appraisee anticipated needs, forecast conditions, set goals and standards, planned and scheduled work.'],
+                ['no' =>  4, 'title' => 'Decision Making',                'description' => 'Able to analyse problems effectively, make sound decisions, and commit to those decisions to achieve an acceptable result.'],
+                ['no' =>  5, 'title' => 'Communication Skills',           'description' => 'Communicated effectively — verbal and written — with superiors and peers.'],
+                ['no' =>  6, 'title' => 'Teamwork',                       'description' => 'Able to adopt and adapt in work conditions/situations and work with others toward a common objective.'],
+                ['no' =>  7, 'title' => 'Interpersonal Relationships',    'description' => 'How well the appraisee related to associates, superiors, and external contacts to get the desired cooperation and assistance.'],
+                ['no' =>  8, 'title' => 'Attitude Towards Work',          'description' => 'Able to work independently without direct supervision; adapted well to new tasks/changes; showed commitment in discharge of duties.'],
+                ['no' =>  9, 'title' => 'Time Management / Tardiness',    'description' => 'Able to plan, execute and complete assigned tasks within deadline; conformed to company rules; punctual in attendance and timekeeping.'],
+                ['no' => 10, 'title' => 'Appearance',                     'description' => 'Well-groomed; made an excellent impression.'],
+                ['no' => 11, 'title' => 'Dependability / Accountability', 'description' => 'Carries out work with limited/minimum supervision, follows instructions; shows initiative to complete tasks efficiently and effectively.'],
+                ['no' => 12, 'title' => 'Values',                         'description' => 'Understands and demonstrates organisation values at all times.'],
+            ],
+            $role === 'manager' || $role === 'vp' => [
+                ['no' =>  1, 'title' => 'Quality of Work',                        'description' => 'Consistently promotes quality awareness and continuous improvement without decreasing productivity or increasing cost.'],
+                ['no' =>  2, 'title' => 'Dependability / Accountability / Ownership', 'description' => 'Works with minimal supervision, follows instructions clearly, and shows initiative to complete tasks efficiently.'],
+                ['no' =>  3, 'title' => 'Problem-Solving & Decision Making',      'description' => 'Identifies and rectifies work problems independently; provides solutions and recommendations.'],
+                ['no' =>  4, 'title' => 'Time Management',                        'description' => 'Plans, executes and completes assigned tasks within the required deadline.'],
+                ['no' =>  5, 'title' => 'Work Relationship / Service Orientation','description' => 'Builds cordial, positive relationships with colleagues and external parties; strong client rapport.'],
+                ['no' =>  6, 'title' => 'Performance Target',                     'description' => 'Has achieved the expected KPIs set by the superior and/or Management.'],
+                ['no' =>  7, 'title' => 'Leadership',                             'description' => 'Able to lead, develop, guide and motivate others toward a common objective.'],
+                ['no' =>  8, 'title' => 'Multi-Tasking Capabilities',             'description' => 'Willing to accept more tasks without complaint; works well under pressure.'],
+                ['no' =>  9, 'title' => 'Discipline (Attendance & Punctuality)',  'description' => 'Conforms to company rules at all times; punctual in attendance and timekeeping.'],
+                ['no' => 10, 'title' => 'Appearance',                             'description' => 'Well-groomed; makes an excellent impression.'],
+                ['no' => 11, 'title' => 'Communication / Interpersonal Skills',   'description' => 'Communicates effectively — verbal and written — with superiors, peers and subordinates.'],
+                ['no' => 12, 'title' => 'Values',                                 'description' => 'Understands and demonstrates organisation values at all times.'],
+            ],
+            default => [
+                ['no' =>  1, 'title' => 'Knowledge of Job Requirements',  'description' => 'Knowledge of job requirements, methods, techniques and skills involved in doing the job, and in applying these to perform efficiently.'],
+                ['no' =>  2, 'title' => 'Quality of Work Done',           'description' => 'To what degree did the appraisee fulfil the quality expectations of the job? Was the work completed accurate and reliable? What is the degree of excellence of end results?'],
+                ['no' =>  3, 'title' => 'Planning and Organising Skills', 'description' => 'To what degree did the appraisee anticipate needs, forecast conditions, set goals and standards, plan and schedule work?'],
+                ['no' =>  4, 'title' => 'Decision Making',                'description' => 'Was the appraisee able to analyse problems effectively and make sound decisions and commit to those decisions to achieve an acceptable result?'],
+                ['no' =>  5, 'title' => 'Communication Skills',           'description' => 'Did the appraisee communicate effectively verbal and written, with superiors and peers?'],
+                ['no' =>  6, 'title' => 'Teamwork',                       'description' => 'Was the appraisee able to adopt and adapt in work conditions/situations and work with others toward a common objective?'],
+                ['no' =>  7, 'title' => 'Interpersonal Relationships',    'description' => 'How well did the appraisee relate to associates, superiors, and external contacts to get the desired cooperation and assistance?'],
+                ['no' =>  8, 'title' => 'Attitude Towards Work',          'description' => 'Was the appraisee able to work independently without need for direct supervision? How well did the appraisee adapt to new tasks and to changes in the work environment? Did the appraisee show commitment in discharge of his/her duties?'],
+                ['no' =>  9, 'title' => 'Time Management / Tardiness',    'description' => "Is the appraisee able to plan, execute and complete assigned tasks within the deadline given? Did the appraisee conform to Company's rules and regulations at all times? Was the appraisee punctual in attendance and timekeeping?"],
+                ['no' => 10, 'title' => 'Appearance',                     'description' => 'Was the appraisee well groomed? Did the appraisee make an excellent impression?'],
+                ['no' => 11, 'title' => 'Dependability / Accountability', 'description' => 'Able to carry out work with limited or minimum supervision and able to follow work instructions. Demonstrates high level of commitment to complete tasks assigned and shows initiative in ensuring job is completed efficiently and effectively.'],
+                ['no' => 12, 'title' => 'Values',                         'description' => 'Does the appraisee understand and demonstrate organisation values all the time?'],
+            ],
+        };
+
+        // Saved data for this quarter
+        $savedRows    = $supabase->get('performance_reports', [
+            'employee_id'    => 'eq.' . $user['id'],
+            'financial_year' => 'eq.' . $this->currentFinancialYear,
+            'quarter'        => 'eq.' . $q,
+            'select'         => 'form_data,status,updated_at',
+        ]) ?? [];
+        $savedData    = !empty($savedRows) ? ($savedRows[0]['form_data'] ?? null) : null;
+        $reportStatus = !empty($savedRows) ? ($savedRows[0]['status'] ?? 'draft') : 'draft';
+        $submittedAt  = !empty($savedRows) ? ($savedRows[0]['updated_at'] ?? null) : null;
+
+        return view('performance.report', [
+            'user'                 => $user,
+            'currentUserName'      => $user['full_name'] ?? $user['short_name'] ?? 'User',
+            'userPosition'         => $user['position'] ?? $user['role'] ?? '-',
+            'departmentName'       => $department['name'] ?? $user['department_code'] ?? '-',
+            'reportsToName'        => $reportsTo ? ($reportsTo['full_name'] ?? $reportsTo['short_name'] ?? '-') : '-',
+            'reportsToPosition'    => $reportsTo['position'] ?? $reportsTo['role'] ?? '-',
+            'joinDate'             => $joinDate ? \Carbon\Carbon::parse($joinDate)->format('d M Y') : '—',
+            'tenure'               => $tenure,
+            'currentFinancialYear' => $this->currentFinancialYear,
+            'quarter'              => $q,
+            'displayQuarter'       => (int) substr($q, 1),
+            'qLabel'               => $q,
+            'isWindowOpen'         => $isWindowOpen,
+            'isFuture'             => $isFuture,
+            'windowStart'          => $windowStart,
+            'windowEnd'            => $windowEnd,
+            'quarterOverrideActive' => (bool) $quarterOverride,
+            'kpis'                 => $kpis,
+            'quarterScores'        => $quarterScores,
+            'allQuarters'          => $allQuarters,
+            'assessmentAreas'      => $assessmentAreas,
+            'attendanceSummary'    => $attendanceSummary,
+            'attendanceYTD'        => $attendanceYTD,
+            'savedData'            => $savedData,
+            'submittedAt'          => $submittedAt,
+            'status'               => $reportStatus,
+            'isAppraiserView'      => false,
+        ]);
+    }
+
+    public function saveReport(string $quarter, \Illuminate\Http\Request $request, SupabaseService $supabase, \App\Services\NotificationService $notifications)
+    {
+        if (!session()->has('employee_uuid')) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+
+        $q = strtoupper($quarter);
+        if (!in_array($q, ['Q1','Q2','Q3','Q4'])) {
+            return response()->json(['error' => 'Invalid quarter'], 422);
+        }
+
+        $action = $request->input('action', 'draft');
+
+        $existing      = $supabase->get('performance_reports', [
+            'employee_id'    => 'eq.' . session('employee_uuid'),
+            'financial_year' => 'eq.' . $this->currentFinancialYear,
+            'quarter'        => 'eq.' . $q,
+            'select'         => 'form_data,status',
+        ]) ?? [];
+        $currentStatus = !empty($existing) ? ($existing[0]['status'] ?? 'draft') : 'draft';
+
+        // Appraisee can only sign the final acknowledgment after the appraiser
+        // has reviewed and signed (status = appraised). Enforced server-side
+        // so it can't be bypassed by tampering with the client.
+        if ($action === 'acknowledge' && $currentStatus !== 'appraised') {
+            return response()->json([
+                'error' => 'You can only sign after your appraiser has reviewed and signed the appraisal.',
+            ], 422);
+        }
+
+        $status = match ($action) {
+            'submit'      => 'submitted',
+            'acknowledge' => 'completed',
+            default       => 'draft',
+        };
+
+        $existingData = !empty($existing) ? ($existing[0]['form_data'] ?? []) : [];
+        $newData      = array_merge($existingData, $request->input('form_data', []));
+
+        // The appraisee's written response is mandatory before they can sign —
+        // enforced server-side too, since the client-side check can be bypassed.
+        if ($action === 'acknowledge' && trim((string) ($newData['s6_response'] ?? '')) === '') {
+            return response()->json([
+                'error' => 'Please write your response before signing.',
+            ], 422);
+        }
+
+        // Stamp the actual signing date server-side, authoritative over whatever
+        // the client's local clock sent — this is the moment acknowledgment
+        // actually locks in, so it's the one point we can be sure "signed" means.
+        if ($action === 'acknowledge' && !empty($newData['sig_appraisee'])) {
+            $newData['sig_appraisee_date'] = now()->timezone('Asia/Kuala_Lumpur')->format('d F Y');
+        }
+
+        $supabase->upsert('performance_reports', [
+            'employee_id'    => session('employee_uuid'),
+            'company_code'   => session('company_code'),
+            'financial_year' => $this->currentFinancialYear,
+            'quarter'        => $q,
+            'form_data'      => $newData,
+            'status'         => $status,
+            'submitted_at'   => now()->toISOString(),
+            'updated_at'     => now()->toISOString(),
+        ], 'employee_id,financial_year,quarter');
+
+        // Only notify on the transition INTO "submitted" — not on every call with
+        // action=submit. Without this guard, a duplicate request (double-tab,
+        // a retried fetch, a resubmit after reload) fires this a second time
+        // and sends the manager a duplicate "submitted their appraisal" notification
+        // even though nothing new was actually submitted.
+        if ($action === 'submit' && !in_array($currentStatus, ['submitted', 'appraised', 'completed'], true)) {
+            $employee = $supabase->first('employees', [
+                'id'     => 'eq.' . session('employee_uuid'),
+                'select' => 'id,full_name,short_name',
+            ]);
+            $employeeName = $employee['full_name'] ?? $employee['short_name'] ?? 'An employee';
+
+            // Only the direct manager reviews a freshly-submitted self-assessment —
+            // VP/SLT are notified separately once the manager has scored and signed
+            // (see appraiserSave()), so they aren't alerted before there's anything
+            // to add remarks on.
+            $directManager = $notifications->appraiserChainFor(session('employee_uuid'))[0] ?? null;
+            if ($directManager) {
+                $notifications->notify(
+                    [$directManager],
+                    'appraisal_submitted',
+                    ['id' => session('employee_uuid'), 'name' => $employeeName],
+                    "{$employeeName} submitted their {$q} appraisal",
+                    'Ready for your review.',
+                    route('performance.appraise.report', [session('employee_uuid'), strtolower($q)]),
+                    $q,
+                    $this->currentFinancialYear
+                );
+            }
+        }
+
+        return response()->json(['success' => true, 'quarter' => $q, 'status' => $status]);
+    }
+
+    /**
+     * Finds which Section 7 part — if any — $viewerId owns relative to
+     * $employee, via AppraiserDelegationService::resolveSection7Chain() (the
+     * single source of truth for that chain, shared with this method's own
+     * notification-escalation logic in appraiserSave() so the two can never
+     * resolve a different occupant for the same employee). That chain is
+     * role-aware, not purely positional — Part B is skipped whenever the
+     * chain jumps straight from Part A to a genuine SLT with no separate VP
+     * in between, per its own docblock.
+     *
+     * $getParent resolves an id into that employee's own record — either a
+     * live Supabase lookup or a pre-fetched map, depending on caller.
+     */
+    private function resolveAppraiserLevel(?array $employee, string $viewerId, callable $getParent, AppraiserDelegationService $delegations): ?string
+    {
+        if (empty($employee)) {
+            return null;
+        }
+
+        foreach ($delegations->resolveSection7Chain($employee, $getParent) as $hop) {
+            if ($hop['id'] === $viewerId) {
+                return $hop['level'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Section 2's "View" — reuses the SLT staff-KPI-drilldown design
+     * (dashboard/staff-kpi-detail.blade.php: header card + quarter cards
+     * with target/actual/progress/remark/attachment) for any appraiser in
+     * the employee's chain, not just SLT Office. Scoped to Q1 up through
+     * whichever quarter is being evaluated — an appraiser reviewing Q1
+     * only sees Q1, not unstarted future quarters.
+     *
+     * Serves two callers: a normal page load (full HTML, with sidebar) and
+     * the Section 2 "View" popup, which passes ?partial=1 and gets back
+     * just this content's markup to inject into its modal — same data,
+     * same authorization, no separate endpoint to keep in sync.
+     */
+    public function viewAppraiseeKpi(string $employeeId, string $kpiId, \Illuminate\Http\Request $request, SupabaseService $supabase, AppraiserDelegationService $delegations)
+    {
+        if (!session()->has('employee_uuid')) {
+            return $request->query('partial')
+                ? response()->json(['error' => 'Not logged in.'], 401)
+                : redirect()->route('login');
+        }
+
+        $fromQuarter = strtolower($request->query('quarter', 'q2'));
+        if (!in_array($fromQuarter, ['q1', 'q2', 'q3', 'q4'], true)) {
+            $fromQuarter = 'q2';
+        }
+        $quartersToShow = array_slice(['Q1', 'Q2', 'Q3', 'Q4'], 0, (int) substr($fromQuarter, 1));
+
+        $viewerId = session('employee_uuid');
+        $staff = $supabase->first('employees', [
+            'id'        => 'eq.' . $employeeId,
+            'is_active' => 'eq.true',
+            'select'    => '*',
+        ]);
+        if (!$staff) {
+            abort(404, 'Employee not found.');
+        }
+
+        $appraiserLevel = $this->resolveAppraiserLevel(
+            $staff,
+            $viewerId,
+            fn ($id) => $supabase->first('employees', ['id' => 'eq.' . $id, 'select' => '*']),
+            $delegations
+        );
+        if (!$appraiserLevel && $this->isBtsSession()) {
+            $appraiserLevel = 'manager';
+        }
+        if (!$appraiserLevel) {
+            abort(403, "You aren't in {$staff['short_name']}'s approver chain (manager/VP/SLT), so you can't view their KPI.");
+        }
+
+        $kpi = $supabase->first('kpis', [
+            'id'          => 'eq.' . $kpiId,
+            'employee_id' => 'eq.' . $employeeId,
+            'select'      => '*',
+        ]);
+        if (!$kpi) {
+            abort(404, 'KPI not found.');
+        }
+
+        $viewer = $supabase->first('employees', [
+            'id'     => 'eq.' . $viewerId,
+            'select' => '*',
+        ]);
+
+        $viewerDepartment = null;
+        if (!empty($viewer['department_code'])) {
+            $viewerDepartment = $supabase->first('departments', [
+                'code'   => 'eq.' . $viewer['department_code'],
+                'select' => '*',
+            ]);
+        }
+
+        $quarters = $supabase->get('kpi_quarters', [
+            'kpi_id' => 'eq.' . $kpiId,
+            'select' => '*',
+        ]) ?? [];
+
+        $quarters = collect($quarters)->map(function ($q) {
+            $target = max(0, (float) ($q['quarter_target'] ?? 0));
+            $actual = max(0, (float) ($q['quarter_actual'] ?? 0));
+            $q['progress_pct'] = $target > 0 ? round(($actual / $target) * 100, 1) : 0;
+            return $q;
+        })->sortBy('quarter')->values()->all();
+
+        $filledQuarters = collect($quarters)->filter(
+            fn ($q) => (float) ($q['quarter_actual'] ?? 0) > 0
+        );
+
+        $average = $filledQuarters->count() > 0
+            ? round($filledQuarters->avg('progress_pct'), 1)
+            : 0;
+
+        $viewData = [
+            'staff'                => $staff,
+            'kpi'                  => $kpi,
+            'quarters'             => $quarters,
+            'quartersToShow'       => $quartersToShow,
+            'average'              => $average,
+            'currentFinancialYear' => $this->currentFinancialYear,
+        ];
+
+        if ($request->query('partial')) {
+            return response(
+                view('dashboard.partials.kpi-detail-content', $viewData)->render()
+            )->header('Content-Type', 'text/html');
+        }
+
+        return view('dashboard.staff-kpi-detail', $viewData + [
+            'user'                 => $viewer,
+            'department'           => $viewerDepartment,
+            'backUrl'              => route('performance.appraise.report', [$employeeId, $fromQuarter]),
+            'backLabel'            => 'Back to ' . ($staff['short_name'] ?? $staff['full_name'] ?? 'Staff') . "'s Appraisal",
+        ]);
+    }
+
+    public function appraiserReport(string $employeeId, string $quarter, SupabaseService $supabase, AppraiserDelegationService $delegations, ApprovalHierarchyService $hierarchy)
+    {
+        if (!session()->has('employee_uuid')) {
+            return redirect()->route('login');
+        }
+
+        $q = strtoupper($quarter);
+        if (!in_array($q, ['Q1','Q2','Q3','Q4'])) abort(404);
+
+        // Verify the viewer sits somewhere in this employee's appraiser chain
+        // (direct manager, VP, or SLT) — not just a direct report.
+        $viewerId = session('employee_uuid');
+        $employees = $supabase->get('employees', [
+            'id'        => 'eq.' . $employeeId,
+            'is_active' => 'eq.true',
+            'select'    => '*',
+        ]);
+        if (empty($employees)) abort(403, 'Employee not found or inactive.');
+        $user = $employees[0];
+
+        $appraiserLevel = $this->resolveAppraiserLevel(
+            $user,
+            $viewerId,
+            fn($id) => $supabase->first('employees', ['id' => 'eq.' . $id, 'select' => '*']),
+            $delegations
+        );
+        // BTS gets full support access regardless of the actual approver
+        // chain — including while impersonating someone via View As, where
+        // the impersonated employee's own chain is irrelevant to BTS's role.
+        // Defaults to 'manager', the widest level (KPI scores + all
+        // sections), not just Section 7 remarks.
+        if (!$appraiserLevel && $this->isBtsSession()) {
+            $appraiserLevel = 'manager';
+        }
+        if (!$appraiserLevel) {
+            abort(403, "You aren't in {$user['short_name']}'s approver chain (manager/VP/SLT), so you can't open their appraisal. If you're using View As, check the profile you're impersonating is still active — it may have reverted.");
+        }
+
+        // Which Section 7 parts actually apply to this employee — Part B is
+        // skipped for anyone whose real chain jumps straight from their
+        // immediate appraiser to SLT with no separate VP in between (see
+        // AppraiserDelegationService::resolveSection7Chain()).
+        $section7Chain  = $delegations->resolveSection7Chain(
+            $user,
+            fn($id) => $supabase->first('employees', ['id' => 'eq.' . $id, 'select' => '*'])
+        );
+        $section7Levels = array_column($section7Chain, 'level');
+
+        // Tenure
+        $joinDate = $user['join_date'] ?? null;
+        $tenure   = '—';
+        if ($joinDate) {
+            $diff  = \Carbon\Carbon::parse($joinDate)->diff(now());
+            $parts = [];
+            if ($diff->y > 0) $parts[] = $diff->y . ' year' . ($diff->y !== 1 ? 's' : '');
+            if ($diff->m > 0) $parts[] = $diff->m . ' month' . ($diff->m !== 1 ? 's' : '');
+            $tenure = $parts ? implode(' ', $parts) : 'Less than 1 month';
+        }
+
+        // Reports-to -- this employee's actual configured approver, the
+        // same role-aware resolution as kpiAppraisal() above. Previously
+        // this showed whoever was CURRENTLY LOGGED IN viewing the report
+        // instead, so a delegate standing in for an absent manager (e.g.
+        // during a "notify the delegate" hand-off) would appear here as
+        // if they were the employee's real manager -- confusing at best,
+        // and wrong the moment anyone other than the true approver opens
+        // this page (View As, BTS support access, etc).
+        $reportsTo = $hierarchy->getApprover($user);
+
+        // Department
+        $department = null;
+        if (!empty($user['department_code'])) {
+            $depts      = $supabase->get('departments', ['code' => 'eq.' . $user['department_code'], 'select' => '*']);
+            $department = $depts[0] ?? null;
+        }
+
+        // Window dates
+        $now  = now()->timezone('Asia/Kuala_Lumpur');
+        $year = (int) $now->year;
+        $mon  = (int) $now->month;
+        $windows = [
+            'Q1' => ['start' => "{$year}-03-24", 'end' => "2026-07-31"],
+            'Q2' => ['start' => "{$year}-06-23", 'end' => "{$year}-07-31"],
+            'Q3' => ['start' => "{$year}-09-22", 'end' => "{$year}-10-06"],
+            'Q4' => ['start' => "{$year}-12-23", 'end' => ($year + 1) . "-01-06"],
+        ];
+        if ($q === 'Q4' && $mon === 1 && $now->day <= 6) {
+            $py = $year - 1;
+            $windows['Q4'] = ['start' => "{$py}-12-23", 'end' => "{$year}-01-06"];
+        }
+        $window      = $windows[$q];
+        $windowStart = \Carbon\Carbon::parse($window['start'])->format('d M Y');
+        $windowEnd   = \Carbon\Carbon::parse($window['end'])->format('d M Y');
+
+        // KPIs for the subordinate
+        $kpis = $supabase->get('kpis', [
+            'employee_id'    => 'eq.' . $user['id'],
+            'financial_year' => 'eq.' . $this->currentFinancialYear,
+            'select'         => 'id,kpi_title,category,sub_category,unit,base_target,actual_value,status,weightage',
+        ]) ?? [];
+
+        $quarterScores = [];
+        $allQuarters   = [];
+        foreach ($kpis as $kpi) {
+            $qRows = $supabase->get('kpi_quarters', [
+                'kpi_id' => 'eq.' . $kpi['id'],
+                'select' => 'quarter,quarter_title,quarter_target,quarter_actual,status,remark,completion_review,completion_proof_urls',
+            ]);
+            foreach ($qRows as $row) {
+                $allQuarters[$kpi['id']][$row['quarter']] = $row;
+            }
+            $quarterScores[$kpi['id']] = $allQuarters[$kpi['id']][$q] ?? null;
+        }
+
+        // Attendance
+        $quarterMonths = match($q) {
+            'Q1' => [1, 2, 3], 'Q2' => [4, 5, 6],
+            'Q3' => [7, 8, 9], 'Q4' => [10, 11, 12],
+        };
+        $attYear = ($q === 'Q4' && $mon === 1 && $now->day <= 6) ? ($year - 1) : $year;
+        $allAttendance = $supabase->get('attendance_summary', [
+            'employee_id' => 'eq.' . $user['id'],
+            'year'        => 'eq.' . $attYear,
+            'select'      => 'month,working_days,present_days,absent_days,late_count,total_late_minutes,mc_days,al_days,other_leave_days,insufficient_count',
+        ]) ?? [];
+        $qAttendance = array_filter($allAttendance, fn($r) => in_array((int)$r['month'], $quarterMonths));
+        $attendanceSummary = [
+            'has_data' => !empty($qAttendance), 'working_days' => 0, 'present_days' => 0,
+            'absent_days' => 0, 'late_count' => 0, 'total_late_minutes' => 0,
+            'mc_days' => 0, 'al_days' => 0, 'other_leave_days' => 0, 'insufficient_count' => 0, 'months' => [],
+        ];
+        foreach ($qAttendance as $ar) {
+            $attendanceSummary['working_days']        += (int)($ar['working_days'] ?? 0);
+            $attendanceSummary['present_days']        += (int)($ar['present_days'] ?? 0);
+            $attendanceSummary['absent_days']         += (int)($ar['absent_days'] ?? 0);
+            $attendanceSummary['late_count']          += (int)($ar['late_count'] ?? 0);
+            $attendanceSummary['total_late_minutes']  += (int)($ar['total_late_minutes'] ?? 0);
+            $attendanceSummary['mc_days']             += (int)($ar['mc_days'] ?? 0);
+            $attendanceSummary['al_days']             += (int)($ar['al_days'] ?? 0);
+            $attendanceSummary['other_leave_days']    += (int)($ar['other_leave_days'] ?? 0);
+            $attendanceSummary['insufficient_count']  += (int)($ar['insufficient_count'] ?? 0);
+            $attendanceSummary['months'][]            = \Carbon\Carbon::create($attYear, (int)$ar['month'], 1)->format('M Y');
+        }
+        $attendanceYTD = ['has_data' => !empty($allAttendance), 'mc_days' => 0, 'other_leave_days' => 0, 'late_count' => 0];
+        foreach ($allAttendance as $ar) {
+            $attendanceYTD['mc_days']          += (int)($ar['mc_days'] ?? 0);
+            $attendanceYTD['other_leave_days'] += (int)($ar['other_leave_days'] ?? 0);
+            $attendanceYTD['late_count']       += (int)($ar['late_count'] ?? 0);
+        }
+
+        // Assessment areas — same logic as reportQuarter
+        $role = strtolower($user['role'] ?? '');
+        $assessmentAreas = match(true) {
+            $role === 'executive' => [
+                ['no' =>  1, 'title' => 'Knowledge of Job Requirements',  'description' => 'Knowledge of job requirements, methods, techniques and skills involved in doing the job, and applying these to perform efficiently.'],
+                ['no' =>  2, 'title' => 'Quality of Work Done',           'description' => 'Degree to which quality expectations of the job were fulfilled — accuracy, reliability, and excellence of end results.'],
+                ['no' =>  3, 'title' => 'Planning & Organising Skills',   'description' => 'Degree to which the appraisee anticipated needs, forecast conditions, set goals and standards, planned and scheduled work.'],
+                ['no' =>  4, 'title' => 'Decision Making',                'description' => 'Able to analyse problems effectively, make sound decisions, and commit to those decisions to achieve an acceptable result.'],
+                ['no' =>  5, 'title' => 'Communication Skills',           'description' => 'Communicated effectively — verbal and written — with superiors and peers.'],
+                ['no' =>  6, 'title' => 'Teamwork',                       'description' => 'Able to adopt and adapt in work conditions/situations and work with others toward a common objective.'],
+                ['no' =>  7, 'title' => 'Interpersonal Relationships',    'description' => 'How well the appraisee related to associates, superiors, and external contacts to get the desired cooperation and assistance.'],
+                ['no' =>  8, 'title' => 'Attitude Towards Work',          'description' => 'Able to work independently without direct supervision; adapted well to new tasks/changes; showed commitment in discharge of duties.'],
+                ['no' =>  9, 'title' => 'Time Management / Tardiness',    'description' => 'Able to plan, execute and complete assigned tasks within deadline; conformed to company rules; punctual in attendance and timekeeping.'],
+                ['no' => 10, 'title' => 'Appearance',                     'description' => 'Well-groomed; made an excellent impression.'],
+                ['no' => 11, 'title' => 'Dependability / Accountability', 'description' => 'Carries out work with limited/minimum supervision, follows instructions; shows initiative to complete tasks efficiently and effectively.'],
+                ['no' => 12, 'title' => 'Values',                         'description' => 'Understands and demonstrates organisation values at all times.'],
+            ],
+            $role === 'manager' || $role === 'vp' => [
+                ['no' =>  1, 'title' => 'Quality of Work',                        'description' => 'Consistently promotes quality awareness and continuous improvement without decreasing productivity or increasing cost.'],
+                ['no' =>  2, 'title' => 'Dependability / Accountability / Ownership', 'description' => 'Works with minimal supervision, follows instructions clearly, and shows initiative to complete tasks efficiently.'],
+                ['no' =>  3, 'title' => 'Problem-Solving & Decision Making',      'description' => 'Identifies and rectifies work problems independently; provides solutions and recommendations.'],
+                ['no' =>  4, 'title' => 'Time Management',                        'description' => 'Plans, executes and completes assigned tasks within the required deadline.'],
+                ['no' =>  5, 'title' => 'Work Relationship / Service Orientation','description' => 'Builds cordial, positive relationships with colleagues and external parties; strong client rapport.'],
+                ['no' =>  6, 'title' => 'Performance Target',                     'description' => 'Has achieved the expected KPIs set by the superior and/or Management.'],
+                ['no' =>  7, 'title' => 'Leadership',                             'description' => 'Able to lead, develop, guide and motivate others toward a common objective.'],
+                ['no' =>  8, 'title' => 'Multi-Tasking Capabilities',             'description' => 'Willing to accept more tasks without complaint; works well under pressure.'],
+                ['no' =>  9, 'title' => 'Discipline (Attendance & Punctuality)',  'description' => 'Conforms to company rules at all times; punctual in attendance and timekeeping.'],
+                ['no' => 10, 'title' => 'Appearance',                             'description' => 'Well-groomed; makes an excellent impression.'],
+                ['no' => 11, 'title' => 'Communication / Interpersonal Skills',   'description' => 'Communicates effectively — verbal and written — with superiors, peers and subordinates.'],
+                ['no' => 12, 'title' => 'Values',                                 'description' => 'Understands and demonstrates organisation values at all times.'],
+            ],
+            default => [
+                ['no' =>  1, 'title' => 'Knowledge of Job Requirements',  'description' => 'Knowledge of job requirements, methods, techniques and skills involved in doing the job, and in applying these to perform efficiently.'],
+                ['no' =>  2, 'title' => 'Quality of Work Done',           'description' => 'To what degree did the appraisee fulfil the quality expectations of the job? Was the work completed accurate and reliable? What is the degree of excellence of end results?'],
+                ['no' =>  3, 'title' => 'Planning and Organising Skills', 'description' => 'To what degree did the appraisee anticipate needs, forecast conditions, set goals and standards, plan and schedule work?'],
+                ['no' =>  4, 'title' => 'Decision Making',                'description' => 'Was the appraisee able to analyse problems effectively and make sound decisions and commit to those decisions to achieve an acceptable result?'],
+                ['no' =>  5, 'title' => 'Communication Skills',           'description' => 'Did the appraisee communicate effectively verbal and written, with superiors and peers?'],
+                ['no' =>  6, 'title' => 'Teamwork',                       'description' => 'Was the appraisee able to adopt and adapt in work conditions/situations and work with others toward a common objective?'],
+                ['no' =>  7, 'title' => 'Interpersonal Relationships',    'description' => 'How well did the appraisee relate to associates, superiors, and external contacts to get the desired cooperation and assistance?'],
+                ['no' =>  8, 'title' => 'Attitude Towards Work',          'description' => 'Was the appraisee able to work independently without need for direct supervision? How well did the appraisee adapt to new tasks and to changes in the work environment? Did the appraisee show commitment in discharge of his/her duties?'],
+                ['no' =>  9, 'title' => 'Time Management / Tardiness',    'description' => "Is the appraisee able to plan, execute and complete assigned tasks within the deadline given? Did the appraisee conform to Company's rules and regulations at all times? Was the appraisee punctual in attendance and timekeeping?"],
+                ['no' => 10, 'title' => 'Appearance',                     'description' => 'Was the appraisee well groomed? Did the appraisee make an excellent impression?'],
+                ['no' => 11, 'title' => 'Dependability / Accountability', 'description' => 'Able to carry out work with limited or minimum supervision and able to follow work instructions. Demonstrates high level of commitment to complete tasks assigned and shows initiative in ensuring job is completed efficiently and effectively.'],
+                ['no' => 12, 'title' => 'Values',                         'description' => 'Does the appraisee understand and demonstrate organisation values all the time?'],
+            ],
+        };
+
+        // Saved data
+        $savedRows = $supabase->get('performance_reports', [
+            'employee_id'    => 'eq.' . $user['id'],
+            'financial_year' => 'eq.' . $this->currentFinancialYear,
+            'quarter'        => 'eq.' . $q,
+            'select'         => 'form_data,status,updated_at',
+        ]) ?? [];
+        $savedData    = !empty($savedRows) ? ($savedRows[0]['form_data'] ?? null) : null;
+        $reportStatus = !empty($savedRows) ? ($savedRows[0]['status'] ?? 'draft') : 'draft';
+        $submittedAt  = !empty($savedRows) ? ($savedRows[0]['updated_at'] ?? null) : null;
+
+        // Each appraiser level submits its own section independently (manager's
+        // 6B/7A, VP's 7B, SLT's 7C) — the lock flag lives inside form_data since
+        // there's no dedicated column per level.
+        $myLevelLocked = !empty($savedData["_{$appraiserLevel}_locked"]);
+
+        // Manager signing Section 7 without ticking any of Confirmation /
+        // Salary Review / Promotion means the whole thing is already
+        // complete — Part B/C are optional, not pending (see
+        // appraiserSave()'s own 'appraisal_completed' notification for the
+        // same rule). Only meaningful once the manager has actually signed;
+        // before that, "not ticked yet" just means "not decided yet", not
+        // "decided nothing's needed".
+        $section7ManagerSigned = !empty($savedData['s7_manager_sig'] ?? null);
+        $section7ManagerTicked = !empty($savedData['s7_manager_confirmation'] ?? null)
+            || !empty($savedData['s7_manager_salary_review'] ?? null)
+            || !empty($savedData['s7_manager_promotion'] ?? null);
+        $section7NotRequired = $section7ManagerSigned && !$section7ManagerTicked;
+
+        // SLT can't touch Part C at all until VP has signed Part B — only
+        // meaningful for a chain with a genuine VP tier that's actually
+        // required; once the manager has settled this with nothing ticked,
+        // there's nothing mandatory left for SLT to wait on VP for.
+        $section7SltLocked = in_array('vp', $section7Levels, true)
+            && empty($savedData['s7_vp_sig'] ?? null)
+            && !$section7NotRequired;
+
+        // Sign-off chain status — so anyone opening this report (the
+        // appraiser, VP, or SLT) can see at a glance who's in the chain,
+        // who's already signed, and whose turn it is next, instead of
+        // having to infer it from which of Part A/B/C are unlocked. "Ready"
+        // means the previous hop has signed and this one hasn't yet — Part
+        // A (manager) has no previous hop, so it's ready from the start.
+        // Every hop AFTER Part A is marked "not required" instead of
+        // "ready" once $section7NotRequired is true, so VP/SLT don't read
+        // an already-settled appraisal as still awaiting their sign-off.
+        $section7ChainStatus = [];
+        $prevSigned = true;
+        foreach ($section7Chain as $index => $hop) {
+            $person = $supabase->first('employees', ['id' => 'eq.' . $hop['id'], 'select' => 'short_name,full_name']);
+            $signed = !empty($savedData["s7_{$hop['level']}_sig"] ?? null);
+
+            $section7ChainStatus[] = [
+                'level'       => $hop['level'],
+                'name'        => $person['full_name'] ?? $person['short_name'] ?? '—',
+                'signed'      => $signed,
+                'date'        => $savedData["s7_{$hop['level']}_date"] ?? null,
+                'ready'       => !$signed && $prevSigned,
+                'notRequired' => $index > 0 && !$signed && $section7NotRequired,
+                'isViewer'    => $hop['id'] === $viewerId,
+            ];
+            $prevSigned = $signed;
+        }
+
+        return view('performance.report', [
+            'user'                 => $user,
+            'currentUserName'      => $user['full_name'] ?? $user['short_name'] ?? 'User',
+            'userPosition'         => $user['position'] ?? $user['role'] ?? '-',
+            'departmentName'       => $department['name'] ?? $user['department_code'] ?? '-',
+            'reportsToName'        => $reportsTo ? ($reportsTo['full_name'] ?? $reportsTo['short_name'] ?? '-') : '-',
+            'reportsToPosition'    => $reportsTo['position'] ?? $reportsTo['role'] ?? '-',
+            'joinDate'             => $joinDate ? \Carbon\Carbon::parse($joinDate)->format('d M Y') : '—',
+            'tenure'               => $tenure,
+            'currentFinancialYear' => $this->currentFinancialYear,
+            'quarter'              => $q,
+            'displayQuarter'       => (int) substr($q, 1),
+            'qLabel'               => $q,
+            'isWindowOpen'         => in_array($reportStatus, ['submitted', 'appraised']),
+            'windowStart'          => $windowStart,
+            'windowEnd'            => $windowEnd,
+            'kpis'                 => $kpis,
+            'quarterScores'        => $quarterScores,
+            'allQuarters'          => $allQuarters,
+            'assessmentAreas'      => $assessmentAreas,
+            'attendanceSummary'    => $attendanceSummary,
+            'attendanceYTD'        => $attendanceYTD,
+            'savedData'            => $savedData,
+            'submittedAt'          => $submittedAt,
+            'status'               => $reportStatus,
+            'isAppraiserView'      => true,
+            'appraiseeId'          => $employeeId,
+            'appraiserLevel'       => $appraiserLevel,
+            'appraiserSaveUrl'     => route('performance.appraise.save', [$employeeId, $q]),
+            'myLevelLocked'        => $myLevelLocked,
+            'section7Levels'       => $section7Levels,
+            'section7SltLocked'    => $section7SltLocked,
+            'section7ChainStatus'  => $section7ChainStatus,
+        ]);
+    }
+
+    // What must be filled before an appraiser level is allowed to submit (and
+    // therefore lock) their section. Manager's submit is the one that advances
+    // the whole appraisal to "appraised" and unlocks the appraisee's own
+    // acknowledgment signature, so it's held to the fullest standard: their
+    // KPI/attitude scores, Section 7 remarks, and both signature fields
+    // (the overall appraiser sign-off plus their Section 7 one).
+    private function missingAppraiserFields(string $level, array $data): array
+    {
+        $isBlank = fn($v) => !isset($v) || $v === '' || $v === null;
+
+        $checks = match ($level) {
+            'manager' => [
+                'Appraiser score (Section 2)'        => $data['s6_s2_app'] ?? null,
+                'Superior rating (Section 3)'        => $data['s6_s3_app'] ?? null,
+                'Recommendations & remarks (Section 7)' => $data['s7_manager_remarks'] ?? null,
+                'Appraiser signature'                => $data['sig_appraiser'] ?? null,
+                'Section 7 signature'                => $data['s7_manager_sig'] ?? null,
+            ],
+            'vp' => [
+                'VP remarks (Section 7)'    => $data['s7_vp_remarks'] ?? null,
+                'VP signature (Section 7)'  => $data['s7_vp_sig'] ?? null,
+            ],
+            'slt' => [
+                'SLT remarks (Section 7)'   => $data['s7_slt_remarks'] ?? null,
+                'SLT signature (Section 7)' => $data['s7_slt_sig'] ?? null,
+            ],
+            default => [],
+        };
+
+        $missing = [];
+        foreach ($checks as $label => $value) {
+            if ($isBlank($value)) {
+                $missing[] = $label;
+            }
+        }
+
+        return $missing;
+    }
+
+    public function appraiserSave(string $employeeId, string $quarter, \Illuminate\Http\Request $request, SupabaseService $supabase, \App\Services\NotificationService $notifications, AppraiserDelegationService $delegations)
+    {
+        if (!session()->has('employee_uuid')) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+
+        $q = strtoupper($quarter);
+        if (!in_array($q, ['Q1','Q2','Q3','Q4'])) {
+            return response()->json(['error' => 'Invalid quarter'], 422);
+        }
+
+        // Verify the viewer sits somewhere in this employee's appraiser chain
+        // (direct manager, VP, or SLT) — not just a direct report.
+        $viewerId = session('employee_uuid');
+        $employees = $supabase->get('employees', [
+            'id'        => 'eq.' . $employeeId,
+            'is_active' => 'eq.true',
+            'select'    => '*',
+        ]);
+        if (empty($employees)) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        $appraiserLevel = $this->resolveAppraiserLevel(
+            $employees[0],
+            $viewerId,
+            fn($id) => $supabase->first('employees', ['id' => 'eq.' . $id, 'select' => '*']),
+            $delegations
+        );
+        // BTS gets full support access regardless of the actual approver
+        // chain — see the same bypass in appraiserReport() above.
+        if (!$appraiserLevel && $this->isBtsSession()) {
+            $appraiserLevel = 'manager';
+        }
+        if (!$appraiserLevel) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        $action = $request->input('action', 'draft');
+
+        // Fetch existing form_data first — needed both to check whether this
+        // level already submitted (and is therefore locked) and to merge onto.
+        $existing      = $supabase->get('performance_reports', [
+            'employee_id'    => 'eq.' . $employeeId,
+            'financial_year' => 'eq.' . $this->currentFinancialYear,
+            'quarter'        => 'eq.' . $q,
+            'select'         => 'form_data,status',
+        ]) ?? [];
+        $existingData  = !empty($existing) ? ($existing[0]['form_data'] ?? []) : [];
+        $currentStatus = !empty($existing) ? ($existing[0]['status'] ?? 'submitted') : 'submitted';
+
+        // Each appraiser level submits its own section independently — once
+        // locked, neither a draft-save nor another submit may touch it again,
+        // even if the client were tampered with (the button is hidden, but this
+        // is the actual enforcement).
+        $lockKey = "_{$appraiserLevel}_locked";
+        if (!empty($existingData[$lockKey])) {
+            return response()->json(['error' => 'Your section has already been submitted and is locked.'], 403);
+        }
+
+        // SLT can't touch their own Part C at all — not the remarks box, not
+        // the checkboxes, not the signature — until VP has actually signed
+        // Part B, for any chain where a genuine VP tier exists (see
+        // resolveSection7Chain()). A chain that skips Part B entirely has no
+        // VP to wait for, so this simply doesn't apply there. It also
+        // doesn't apply once the manager has already signed Section 7 with
+        // nothing ticked — that settles the whole thing as complete, so
+        // there's nothing mandatory left to wait on VP for (matches
+        // appraiserReport()'s own $section7SltLocked/$section7NotRequired).
+        if ($appraiserLevel === 'slt') {
+            $section7Chain = $delegations->resolveSection7Chain(
+                $employees[0],
+                fn($id) => $supabase->first('employees', ['id' => 'eq.' . $id, 'select' => '*'])
+            );
+            $hasGenuineVp = in_array('vp', array_column($section7Chain, 'level'), true);
+            $managerSettledWithNothingTicked = !empty($existingData['s7_manager_sig'])
+                && empty($existingData['s7_manager_confirmation'])
+                && empty($existingData['s7_manager_salary_review'])
+                && empty($existingData['s7_manager_promotion']);
+
+            if ($hasGenuineVp && empty($existingData['s7_vp_sig']) && !$managerSettledWithNothingTicked) {
+                return response()->json([
+                    'error' => "You can't add your Section 7 remarks yet — VP hasn't signed their part.",
+                ], 403);
+            }
+        }
+
+        // Each appraiser level may only write its own portion of the form —
+        // enforced here so a VP/SLT session can't smuggle in edits to the
+        // manager's Section 6B / KPI scores, or another level's Section 7
+        // block, even if the client were tampered with.
+        $allowedPrefixes = match ($appraiserLevel) {
+            'manager' => ['kpi_app_', 'kpi_comment_', 'att_comment_', 'att_count_', 'sup_', 'cv_app_', 'cv_remark_', 's6_', 'sig_appraiser', 's7_manager_'],
+            'vp'      => ['s7_vp_'],
+            'slt'     => ['s7_slt_'],
+            default   => [],
+        };
+
+        $incoming = $request->input('form_data', []);
+        $allowedData = [];
+        foreach ($incoming as $key => $value) {
+            foreach ($allowedPrefixes as $prefix) {
+                if (str_starts_with($key, $prefix)) {
+                    $allowedData[$key] = $value;
+                    break;
+                }
+            }
+        }
+
+        $mergedData = array_merge($existingData, $allowedData);
+
+        // Submitting locks this level's section, so require everything it's
+        // responsible for to actually be filled in first — otherwise a
+        // half-empty appraisal could get locked with no way to fix it. The
+        // fields they *did* fill in are still saved as a draft so nothing
+        // typed gets lost, just not locked/advanced.
+        if ($action === 'submit') {
+            $missing = $this->missingAppraiserFields($appraiserLevel, $mergedData);
+            if (!empty($missing)) {
+                $supabase->upsert('performance_reports', [
+                    'employee_id'    => $employeeId,
+                    'company_code'   => session('company_code'),
+                    'financial_year' => $this->currentFinancialYear,
+                    'quarter'        => $q,
+                    'form_data'      => $mergedData,
+                    'status'         => $currentStatus,
+                    'updated_at'     => now()->toISOString(),
+                ], 'employee_id,financial_year,quarter');
+
+                return response()->json([
+                    'error'   => 'Please complete before submitting: ' . implode(', ', $missing) . '.',
+                    'missing' => $missing,
+                ], 422);
+            }
+
+            $mergedData[$lockKey] = true;
+        }
+
+        $newData = $mergedData;
+
+        // Stamp the actual signing date server-side, authoritative over whatever
+        // the client's local clock sent — this is what finally locks the manager's
+        // signature in, so it's the one moment we can be sure "signed" really means.
+        if ($action === 'submit' && $appraiserLevel === 'manager' && !empty($newData['sig_appraiser'])) {
+            $newData['sig_appraiser_date'] = now()->timezone('Asia/Kuala_Lumpur')->format('d F Y');
+        }
+
+        // Same for whichever Section 7 part this level just signed — replaces
+        // the old manually-typed date field, which nothing ever required
+        // them to actually fill in.
+        if ($action === 'submit' && !empty($newData["s7_{$appraiserLevel}_sig"])) {
+            $newData["s7_{$appraiserLevel}_date"] = now()->timezone('Asia/Kuala_Lumpur')->format('d F Y');
+        }
+
+        // Only the manager's explicit submit ("Mark as Appraised") advances the
+        // overall status — everything else (a draft save, or a VP/SLT submitting
+        // their own remarks) must leave the current status untouched, so it
+        // never regresses from appraised/completed back to submitted.
+        $status = match (true) {
+            $currentStatus === 'completed' => 'completed',
+            $action === 'submit' && $appraiserLevel === 'manager' => 'appraised',
+            default => $currentStatus,
+        };
+
+        $supabase->upsert('performance_reports', [
+            'employee_id'    => $employeeId,
+            'company_code'   => session('company_code'),
+            'financial_year' => $this->currentFinancialYear,
+            'quarter'        => $q,
+            'form_data'      => $newData,
+            'status'         => $status,
+            'updated_at'     => now()->toISOString(),
+        ], 'employee_id,financial_year,quarter');
+
+        // Submitting this level's part is unambiguous proof the viewer has
+        // dealt with whatever notification brought them here — they may well
+        // have arrived via the Sign-off Status box or a bookmark instead of
+        // actually clicking it, and until now only clicking the notification
+        // row itself ever marked it read. Matches both incoming types since
+        // which one applies depends on level (manager gets 'appraisal_submitted',
+        // VP/SLT get 'appraisal_appraised') — harmless to check both.
+        if ($action === 'submit') {
+            $notifications->markAppraisalResolved($viewerId, $employeeId, $q, ['appraisal_submitted', 'appraisal_appraised']);
+        }
+
+        // Manager's submit is what unlocks the appraisee's own acknowledgment
+        // signature — tell them their turn has come, in-app and via Telegram.
+        if ($action === 'submit' && $appraiserLevel === 'manager' && $status === 'appraised') {
+            $appraiser     = $supabase->first('employees', ['id' => 'eq.' . $viewerId, 'select' => 'full_name,short_name']);
+            $appraiserName = $appraiser['full_name'] ?? $appraiser['short_name'] ?? 'Your appraiser';
+
+            $notifications->notify(
+                [$employeeId],
+                'appraisal_appraised',
+                ['id' => $viewerId, 'name' => $appraiserName],
+                "Your {$q} appraisal is ready for your signature",
+                "{$appraiserName} has completed your review. Please sign to acknowledge.",
+                route('performance.report.quarter', strtolower($q)),
+                $q,
+                $this->currentFinancialYear
+            );
+
+            // Section 7 escalation: ticking Confirmation / Salary Review /
+            // Promotion is what actually requires VP's and SLT's attention —
+            // signing without ticking anything completes the manager's own
+            // part, with nothing further required from either of them. Both
+            // branches below notify the same resolved chain either way, just
+            // with a different type/message: 'appraisal_appraised' (needs
+            // your remarks) when ticked, 'appraisal_completed' (nothing
+            // needed from you) when not — so nobody's left guessing whether
+            // a silent appraisal is still awaiting their action. VP and SLT
+            // are notified together in the ticked case — SLT just can't
+            // actually act on it (see the access gate earlier in this method)
+            // until VP has signed Part B.
+            //
+            // Recipients are resolved from this employee's real Section 7
+            // chain, which skips Part B entirely for anyone whose chain has
+            // no genuine VP tier between them and SLT — see
+            // resolveSection7Chain(). So a manager whose own Part A appraiser
+            // is already a VP escalates straight to SLT alone.
+            $ticked = !empty($newData['s7_manager_confirmation'])
+                || !empty($newData['s7_manager_salary_review'])
+                || !empty($newData['s7_manager_promotion']);
+
+            $section7Chain = $delegations->resolveSection7Chain(
+                $employees[0],
+                fn($id) => $supabase->first('employees', ['id' => 'eq.' . $id, 'select' => '*'])
+            );
+            $chainRecipients = array_column(array_slice($section7Chain, 1), 'id');
+            $appraiseeName   = $employees[0]['full_name'] ?? $employees[0]['short_name'] ?? 'An employee';
+
+            if ($ticked) {
+                if (!empty($chainRecipients)) {
+                    $notifications->notify(
+                        $chainRecipients,
+                        'appraisal_appraised',
+                        ['id' => $employeeId, 'name' => $appraiseeName],
+                        "{$appraiseeName}'s {$q} appraisal needs your Section 7 remarks",
+                        "{$appraiserName} flagged this for further review — please add your remarks and sign Section 7.",
+                        route('performance.appraise.report', [$employeeId, strtolower($q)]),
+                        $q,
+                        $this->currentFinancialYear
+                    );
+                }
+            } else {
+                // Nothing ticked — signing alone completes Section 7, no VP/SLT
+                // review needed. Tell everyone who WOULD have been pulled into
+                // that escalation (same chain as above) plus the appraisee
+                // themselves, so nobody's left wondering whether this one
+                // still needs their attention. Two calls, not one, because the
+                // appraisee and the chain need different links — their own
+                // report vs. the appraiser view of it.
+                $notifications->notify(
+                    [$employeeId],
+                    'appraisal_completed',
+                    ['id' => $employeeId, 'name' => $appraiseeName],
+                    "Your {$q} appraisal is complete",
+                    "{$appraiserName} signed Section 7 with nothing flagged — no further review needed from VP/SLT.",
+                    route('performance.report.quarter', strtolower($q)),
+                    $q,
+                    $this->currentFinancialYear
+                );
+
+                if (!empty($chainRecipients)) {
+                    $notifications->notify(
+                        $chainRecipients,
+                        'appraisal_completed',
+                        ['id' => $employeeId, 'name' => $appraiseeName],
+                        "{$appraiseeName}'s {$q} appraisal is complete",
+                        "{$appraiserName} signed Section 7 with nothing flagged — no action needed from you.",
+                        route('performance.appraise.report', [$employeeId, strtolower($q)]),
+                        $q,
+                        $this->currentFinancialYear
+                    );
+                }
+            }
+        }
+
+        return response()->json(['success' => true, 'status' => $status, 'locked' => $action === 'submit']);
+    }
+}

@@ -81,6 +81,50 @@ class TaskControllerTest extends TestCase
         });
     }
 
+    public function test_store_saves_meeting_time_when_the_task_is_a_scheduled_meeting(): void
+    {
+        Http::fake(array_merge($this->fakeEmployeeSessionFakes(), [
+            '*/rest/v1/tasks*' => Http::response([['id' => 'task-1']], 201),
+        ]));
+
+        $this->withSession(['platform_access_token' => $this->fakeToken()])
+            ->post('/platform/companies/company-1/tasks', [
+                'title' => 'Weekly ops sync',
+                'meeting_time' => '09:00',
+            ]);
+
+        Http::assertSent(function ($request) {
+            return str_contains($request->url(), '/rest/v1/tasks')
+                && $request->method() === 'POST'
+                && $request['title'] === 'Weekly ops sync'
+                && $request['meeting_time'] === '09:00';
+        });
+    }
+
+    public function test_update_saves_and_clears_meeting_time(): void
+    {
+        Http::fake(array_merge($this->fakeEmployeeSessionFakes(), [
+            '*/rest/v1/tasks*' => Http::response([[
+                'id' => 'task-1', 'title' => 'Weekly ops sync', 'status' => 'open', 'priority' => 'medium',
+                'due_date' => null, 'meeting_time' => '09:00', 'assignee_user_id' => null,
+            ]], 200),
+        ]));
+
+        $this->withSession(['platform_access_token' => $this->fakeToken()])
+            ->patch('/platform/companies/company-1/tasks/task-1', [
+                'title' => 'Weekly ops sync',
+                'status' => 'in_progress',
+                'priority' => 'medium',
+                'meeting_time' => '10:30',
+            ]);
+
+        Http::assertSent(function ($request) {
+            return str_contains($request->url(), '/rest/v1/tasks')
+                && $request->method() === 'PATCH'
+                && $request['meeting_time'] === '10:30';
+        });
+    }
+
     public function test_update_kpi_links_deletes_existing_then_reinserts_the_given_set(): void
     {
         Http::fake(array_merge($this->fakeEmployeeSessionFakes(), [
