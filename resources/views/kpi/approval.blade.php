@@ -432,21 +432,20 @@
                         @if($type === 'quarter_update')
 
                             @php
-                                // Comma-grouped and decimal-aware: if any of the
-                                // three values in this card row actually has a
-                                // fractional part, all three align to 2dp so the
-                                // row reads consistently — otherwise all three
-                                // round to whole numbers, no stray ".00".
-                                $qcRawPrev = (float) ($approval['old_actual'] ?? 0);
-                                $qcRawReq  = (float) ($approval['requested_actual'] ?? 0);
-                                $qcRawTgt  = (float) ($approval['quarter_target'] ?? 0);
-                                $qcHasDecimal = fmod($qcRawPrev, 1) !== 0.0
-                                    || fmod($qcRawReq, 1) !== 0.0
-                                    || fmod($qcRawTgt, 1) !== 0.0;
-                                $qcDecimals = $qcHasDecimal ? 2 : 0;
-                                $qcFmtPrev = number_format($qcRawPrev, $qcDecimals);
-                                $qcFmtReq  = number_format($qcRawReq, $qcDecimals);
-                                $qcFmtTgt  = number_format($qcRawTgt, $qcDecimals);
+                                // Unit-aware, thousands-separated formatting -- mirrors
+                                // $sec2FmtVal in performance/report.blade.php, so the same
+                                // number reads consistently everywhere it's shown. Decimals
+                                // are kept only when the value actually has a fractional
+                                // part (87.58 stays 87.58; 45 stays 45, not 45.00).
+                                $fmtApprovalVal = function ($v, $u) {
+                                    if ($v === null || $v === '') return '0';
+                                    $n = (float) $v;
+                                    $dp = (fmod($n, 1) !== 0.0) ? 2 : 0;
+                                    if ($u === 'currency')   return 'RM ' . number_format($n, max($dp, 2));
+                                    if ($u === 'percentage') return number_format($n, max($dp, 2)) . '%';
+                                    return number_format($n, $dp);
+                                };
+                                $approvalUnit = $approval['unit'] ?? '';
                             @endphp
 
                             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
@@ -459,7 +458,7 @@
 
                                     <h3 class="text-xl font-black mt-2">
 
-                                        {{ $qcFmtPrev }}
+                                        {{ $fmtApprovalVal($approval['old_actual'] ?? 0, $approvalUnit) }}
 
                                     </h3>
 
@@ -473,7 +472,7 @@
 
                                     <h3 class="text-xl font-black mt-2 text-[#6B3F2A]">
 
-                                        {{ $qcFmtReq }}
+                                        {{ $fmtApprovalVal($approval['requested_actual'] ?? 0, $approvalUnit) }}
 
                                     </h3>
 
@@ -487,7 +486,7 @@
 
                                     <h3 class="text-xl font-black mt-2 text-emerald-700">
 
-                                        {{ $qcFmtTgt }}
+                                        {{ $fmtApprovalVal($approval['quarter_target'] ?? 0, $approvalUnit) }}
 
                                     </h3>
 
