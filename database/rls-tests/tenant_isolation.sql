@@ -54,6 +54,18 @@ declare
   v_auth_a3 uuid := gen_random_uuid();
   v_user_a3 uuid;
   v_kpi_restricted uuid;
+  v_dept_a_child uuid;
+  v_dept_a2 uuid;
+  v_kpi_a2 uuid;
+  v_auth_hr uuid := gen_random_uuid();
+  v_user_hr uuid;
+  v_goal_a uuid;
+  v_kpi_child uuid;
+  v_submission_id uuid;
+  v_request_id uuid;
+  v_request_id2 uuid;
+  v_revision_id uuid;
+  v_achievement numeric;
 begin
   -- ---------------------------------------------------------------------
   -- Fixtures (run as the connecting superuser/owner -- RLS doesn't apply
@@ -62,11 +74,14 @@ begin
   insert into companies (name, code) values ('RLS Test Co A', 'RLSTEST_A') returning id into v_company_a;
   insert into companies (name, code) values ('RLS Test Co B', 'RLSTEST_B') returning id into v_company_b;
 
-  -- Inserted directly into both auth.users and public.users rather than
-  -- relying on the on_auth_user_created trigger: that trigger is documented
-  -- (SupabaseUserService::firstEventually()'s docblock) as writing the
-  -- public.users row asynchronously, which this synchronous test can't wait
-  -- on. Testing RLS policies doesn't require exercising the signup trigger.
+  -- Inserted into auth.users only; on_auth_user_created (added
+  -- 2026_08_28_100000) fires synchronously within this same transaction and
+  -- creates the matching public.users row itself, exactly as it does in
+  -- production -- the UPDATEs below just fill in the role/friendly-name
+  -- this test wants, they don't create the row. (Before that migration
+  -- existed, this fixture inserted both rows explicitly; now the trigger
+  -- owns the insert and a second explicit INSERT would collide on
+  -- users_auth_user_id_unique -- see the CI failure that caught this.)
   insert into auth.users (
     id, instance_id, aud, role, email, encrypted_password,
     email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data
@@ -80,10 +95,10 @@ begin
     (v_auth_center, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
      'rls-test-center@example.invalid', crypt('rls-test-password', gen_salt('bf')), now(), now(), now(), '{}', '{}');
 
-  insert into users (auth_user_id, name, email, role) values (v_auth_a, 'RLS Test User A', 'rls-test-a@example.invalid', 'member') returning id into v_user_a;
-  insert into users (auth_user_id, name, email, role) values (v_auth_a2, 'RLS Test User A2', 'rls-test-a2@example.invalid', 'member') returning id into v_user_a2;
-  insert into users (auth_user_id, name, email, role) values (v_auth_b, 'RLS Test User B', 'rls-test-b@example.invalid', 'member') returning id into v_user_b;
-  insert into users (auth_user_id, name, email, role) values (v_auth_center, 'RLS Test Center Admin', 'rls-test-center@example.invalid', 'richworks_super_admin') returning id into v_user_center;
+  update users set name = 'RLS Test User A' where auth_user_id = v_auth_a returning id into v_user_a;
+  update users set name = 'RLS Test User A2' where auth_user_id = v_auth_a2 returning id into v_user_a2;
+  update users set name = 'RLS Test User B' where auth_user_id = v_auth_b returning id into v_user_b;
+  update users set name = 'RLS Test Center Admin', role = 'richworks_super_admin' where auth_user_id = v_auth_center returning id into v_user_center;
 
   insert into company_users (company_id, user_id, role) values (v_company_a, v_user_a, 'company_admin');
   -- Second Company A member -- needed to exercise users_select's
@@ -315,7 +330,7 @@ begin
   -- ---------------------------------------------------------------------
   insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
     values (v_auth_a3, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'rls-test-a3@example.invalid', crypt('rls-test-password', gen_salt('bf')), now(), now(), now(), '{}', '{}');
-  insert into users (auth_user_id, name, email, role) values (v_auth_a3, 'RLS Test User A3 (suspended)', 'rls-test-a3@example.invalid', 'member') returning id into v_user_a3;
+  update users set name = 'RLS Test User A3 (suspended)' where auth_user_id = v_auth_a3 returning id into v_user_a3;
   insert into company_users (company_id, user_id, role, status) values (v_company_a, v_user_a3, 'employee', 'suspended');
   insert into department_users (department_id, user_id, company_id, role) values (v_dept_a, v_user_a3, v_company_a, 'employee');
 
@@ -417,6 +432,404 @@ begin
 
   execute 'reset role';
   raise notice 'PASS (13): archived locks a company out exactly like suspended';
+
+  -- ---------------------------------------------------------------------
+  -- Scenarios 14-16: Performix Company Platform Phase 1 (organisation
+  -- hierarchy + reporting structure), added
+  -- 2026_08_28_010000_add_organisation_hierarchy_and_reporting.php.
+  -- Company A was archived by scenario 13 -- reactivated here since these
+  -- scenarios test triggers/RLS-widening independent of company lifecycle
+  -- state, not suspension itself.
+  -- ---------------------------------------------------------------------
+  update companies set status = 'active' where id = v_company_a;
+
+  insert into departments (company_id, name, code, unit_type, parent_department_id)
+    values (v_company_a, 'RLS Test Dept A Child', 'RLSDEPTAC', 'team', v_dept_a) returning id into v_dept_a_child;
+
+  -- Scenario 14a: a department cannot be its own parent.
+  begin
+    update departments set parent_department_id = id where id = v_dept_a;
+    raise exception 'FAIL (14a): a department was made its own parent';
+  exception
+    when others then
+      if SQLERRM like '%cannot be its own parent%' then
+        raise notice 'PASS (14a): self-parenting rejected';
+      else
+        raise;
+      end if;
+  end;
+
+  -- Scenario 14b: a deeper cycle (A -> Child -> back to A) must also be
+  -- rejected, not just the direct self-parent case above.
+  begin
+    update departments set parent_department_id = v_dept_a_child where id = v_dept_a;
+    raise exception 'FAIL (14b): a circular organisation hierarchy (A -> Child -> A) was accepted';
+  exception
+    when others then
+      if SQLERRM like '%circular organisation hierarchy%' then
+        raise notice 'PASS (14b): multi-level circular hierarchy rejected';
+      else
+        raise;
+      end if;
+  end;
+
+  -- Scenario 14c: a department's parent must belong to the same company --
+  -- Company B has no departments of its own in this fixture, so borrow
+  -- v_dept_a_child's sibling relationship the other way: attempt to parent
+  -- a Company B department under a Company A one.
+  declare
+    v_dept_b uuid;
+  begin
+    insert into departments (company_id, name, code) values (v_company_b, 'RLS Test Dept B', 'RLSDEPTB') returning id into v_dept_b;
+
+    begin
+      update departments set parent_department_id = v_dept_a where id = v_dept_b;
+      raise exception 'FAIL (14c): a Company B department was parented under a Company A department';
+    exception
+      when others then
+        if SQLERRM like '%must belong to the same company%' then
+          raise notice 'PASS (14c): cross-company parent rejected';
+        else
+          raise;
+        end if;
+    end;
+  end;
+
+  -- Scenario 15a: an employee cannot be their own manager. v_user_a2 has no
+  -- department_users row yet in this fixture (only v_user_a3 does, from
+  -- scenario 10) -- create one first, or the UPDATE below would match zero
+  -- rows and never actually exercise the trigger.
+  insert into department_users (department_id, user_id) values (v_dept_a, v_user_a2);
+
+  begin
+    update department_users set manager_user_id = v_user_a2 where department_id = v_dept_a and user_id = v_user_a2;
+    raise exception 'FAIL (15a): an employee was made their own manager';
+  exception
+    when others then
+      if SQLERRM like '%cannot be their own manager%' then
+        raise notice 'PASS (15a): self-management rejected';
+      else
+        raise;
+      end if;
+  end;
+
+  -- Scenario 15b: a circular management chain (A2 manages A3, then A3 is
+  -- made to manage A2) must be rejected.
+  insert into department_users (department_id, user_id) values (v_dept_a_child, v_user_a3)
+    on conflict (department_id, user_id) do nothing;
+  update department_users set manager_user_id = v_user_a3 where department_id = v_dept_a and user_id = v_user_a2;
+
+  begin
+    update department_users set manager_user_id = v_user_a2 where department_id = v_dept_a_child and user_id = v_user_a3;
+    raise exception 'FAIL (15b): a circular management chain (A2 -> A3 -> A2) was accepted';
+  exception
+    when others then
+      if SQLERRM like '%circular management chain%' then
+        raise notice 'PASS (15b): circular management chain rejected';
+      else
+        raise;
+      end if;
+  end;
+
+  -- Scenario 16: 'hr' gets widened read access to department_users (the
+  -- organisation-hierarchy migration's whole point), but NOT to
+  -- kpi_submissions -- that's still gated by auth_can_view_company_wide(),
+  -- which was deliberately left untouched so HR doesn't gain company-wide
+  -- KPI visibility as a side effect.
+  insert into departments (company_id, name, code) values (v_company_a, 'RLS Test Dept A2', 'RLSDEPTA2') returning id into v_dept_a2;
+  -- A real membership row to look for -- without one, "hr sees 0 rows"
+  -- would be indistinguishable from "there's simply nothing there."
+  insert into department_users (department_id, user_id) values (v_dept_a2, v_user_a2);
+  insert into kpis (company_id, name, target) values (v_company_a, 'RLS Test KPI A2', 100) returning id into v_kpi_a2;
+  insert into kpi_submissions (company_id, department_id, kpi_id, value, submitted_by)
+    values (v_company_a, v_dept_a2, v_kpi_a2, 10, v_user_a);
+
+  insert into auth.users (
+    id, instance_id, aud, role, email, encrypted_password,
+    email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data
+  ) values
+    (v_auth_hr, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+     'rls-test-hr@example.invalid', crypt('rls-test-password', gen_salt('bf')), now(), now(), now(), '{}', '{}');
+  update users set name = 'RLS Test HR' where auth_user_id = v_auth_hr returning id into v_user_hr;
+  insert into company_users (company_id, user_id, role) values (v_company_a, v_user_hr, 'hr');
+  insert into department_users (department_id, user_id, role) values (v_dept_a, v_user_hr, 'hr');
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_hr)::text, true);
+  execute 'set local role authenticated';
+
+  select count(*) into v_count from department_users where department_id = v_dept_a2;
+  if v_count = 0 then raise exception 'FAIL (16a): hr could not see department_users for a department they do not belong to'; end if;
+
+  select count(*) into v_count from kpi_submissions where department_id = v_dept_a2;
+  if v_count <> 0 then raise exception 'FAIL (16b): hr saw a KPI submission in a department they do not belong to — auth_can_view_company_wide() was widened for hr'; end if;
+
+  execute 'reset role';
+  raise notice 'PASS (16): hr sees company-wide department_users but not company-wide kpi_submissions';
+
+  -- ---------------------------------------------------------------------
+  -- Scenarios 17-19: Performix Company Platform Phase 2 (Company Goals +
+  -- KPI cascade), added
+  -- 2026_08_28_020000_add_company_goals_and_kpi_cascade.php. Trigger tests
+  -- (17) run without a role switch, same as scenarios 14/15 -- BEFORE
+  -- triggers fire regardless of RLS/role, so there's nothing to bypass.
+  -- ---------------------------------------------------------------------
+  insert into kpis (company_id, name, target, parent_kpi_id) values (v_company_a, 'RLS Test KPI Child', 50, v_kpi_a) returning id into v_kpi_child;
+
+  -- Scenario 17a: a KPI cannot be its own parent.
+  begin
+    update kpis set parent_kpi_id = id where id = v_kpi_a;
+    raise exception 'FAIL (17a): a KPI was made its own parent';
+  exception
+    when others then
+      if SQLERRM like '%cannot be its own parent%' then
+        raise notice 'PASS (17a): self-parenting KPI rejected';
+      else
+        raise;
+      end if;
+  end;
+
+  -- Scenario 17b: a deeper cycle (A -> Child -> back to A).
+  begin
+    update kpis set parent_kpi_id = v_kpi_child where id = v_kpi_a;
+    raise exception 'FAIL (17b): a circular KPI cascade (A -> Child -> A) was accepted';
+  exception
+    when others then
+      if SQLERRM like '%circular KPI cascade%' then
+        raise notice 'PASS (17b): multi-level circular KPI cascade rejected';
+      else
+        raise;
+      end if;
+  end;
+
+  -- Scenario 17c: a KPI's parent must belong to the same company.
+  begin
+    update kpis set parent_kpi_id = v_kpi_b where id = v_kpi_a;
+    raise exception 'FAIL (17c): a Company A KPI was parented under a Company B KPI';
+  exception
+    when others then
+      if SQLERRM like '%parent must belong to the same company%' then
+        raise notice 'PASS (17c): cross-company KPI parent rejected';
+      else
+        raise;
+      end if;
+  end;
+
+  -- Scenario 18: a KPI's company_goal_id must belong to the same company.
+  declare
+    v_goal_b uuid;
+  begin
+    insert into company_goals (company_id, title) values (v_company_b, 'RLS Test Goal B') returning id into v_goal_b;
+
+    begin
+      update kpis set company_goal_id = v_goal_b where id = v_kpi_a;
+      raise exception 'FAIL (18): a Company A KPI was linked to a Company B goal';
+    exception
+      when others then
+        if SQLERRM like '%goal must belong to the same company%' then
+          raise notice 'PASS (18): cross-company company_goal_id rejected';
+        else
+          raise;
+        end if;
+    end;
+  end;
+
+  -- Scenario 19: company_goals is readable company-wide (any active member,
+  -- like departments_select) but writable only by whoever can administer
+  -- the company -- v_user_a2 is a plain employee in Company A, not an admin.
+  insert into company_goals (company_id, title) values (v_company_a, 'RLS Test Goal A') returning id into v_goal_a;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_b)::text, true);
+  execute 'set local role authenticated';
+
+  select count(*) into v_count from company_goals where id = v_goal_a;
+  if v_count <> 0 then raise exception 'FAIL (19a): Company B user could read Company A''s goal'; end if;
+
+  execute 'reset role';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_a2)::text, true);
+  execute 'set local role authenticated';
+
+  select count(*) into v_count from company_goals where id = v_goal_a;
+  if v_count = 0 then raise exception 'FAIL (19b): Company A''s own plain employee could not read their company''s own goal'; end if;
+
+  begin
+    insert into company_goals (company_id, title) values (v_company_a, 'Employee-created goal');
+    raise exception 'FAIL (19c): a plain employee (not an admin) created a company goal';
+  exception
+    when insufficient_privilege then
+      raise notice 'PASS (19c): non-admin company_goals insert rejected';
+  end;
+
+  execute 'reset role';
+  raise notice 'PASS (19a/19b): company_goals is readable by any company member, cross-company read denied';
+
+  -- ---------------------------------------------------------------------
+  -- Scenario 20: kpi_calc_achievement() (the SQL port of
+  -- KpiCalculationService::achievement()/kpiAchievement.ts, since a Postgres
+  -- view can't call into either) must agree with the other two ports on the
+  -- same inputs -- these three specific cases are the exact ones
+  -- tests/Unit/KpiCalculationServiceTest.php asserts in PHP.
+  -- ---------------------------------------------------------------------
+  select kpi_calc_achievement(80, 100, null, 'higher_is_better') into v_achievement;
+  if v_achievement <> 80.0 then raise exception 'FAIL (20a): kpi_calc_achievement higher_is_better below target got %, want 80', v_achievement; end if;
+
+  select kpi_calc_achievement(575000, 500000, null, 'lower_is_better') into v_achievement;
+  if abs(v_achievement - 86.96) > 0.01 then raise exception 'FAIL (20b): kpi_calc_achievement lower_is_better overshoot got %, want ~86.96 (spec Part 11''s own example -- must not read as "exceeded")', v_achievement; end if;
+
+  select kpi_calc_achievement(1, null, null, 'binary_completion') into v_achievement;
+  if v_achievement <> 100.0 then raise exception 'FAIL (20c): kpi_calc_achievement binary_completion got %, want 100', v_achievement; end if;
+
+  raise notice 'PASS (20): kpi_calc_achievement() SQL port agrees with KpiCalculationService/kpiAchievement.ts on all 3 cross-checked cases';
+
+  -- ---------------------------------------------------------------------
+  -- Scenario 21: approval-gated kpi_submissions_update. v_user_a2 submits;
+  -- an approval_requests/approval_request_steps pair is created by hand
+  -- (mirroring what ApprovalRequestService::createRequest() would do) with
+  -- v_user_a resolved as the CURRENT step's approver. Three checks: (a) the
+  -- submitter themselves cannot decide their own submission (spec Part 8:
+  -- self-approval is blocked at the data layer, not just the UI), (b) the
+  -- actual resolved approver CAN -- proving the mechanism grants access, not
+  -- just denies it, (c) a second, non-current step's resolved approver
+  -- (here, deliberately Company B's own admin, so this also doubles as a
+  -- tenant-isolation check) cannot act on a step that isn't current yet.
+  -- ---------------------------------------------------------------------
+  insert into kpi_submissions (
+    company_id, department_id, kpi_id, value, submitted_by, status,
+    revision_number, financial_year, period_type, period_number
+  ) values (
+    v_company_a, v_dept_a, v_kpi_a, 42, v_user_a2, 'pending_review',
+    1, 2027, 'month', 1
+  ) returning id into v_submission_id;
+
+  insert into approval_requests (company_id, workflow_type, object_type, object_id, department_id, submitted_by)
+  values (v_company_a, 'actual_submission', 'kpi_submission', v_submission_id, v_dept_a, v_user_a2)
+  returning id into v_request_id;
+
+  insert into approval_request_steps (request_id, step_order, approver_type, resolved_approver_user_id, status)
+  values (v_request_id, 1, 'submitter_manager', v_user_a, 'pending');
+  insert into approval_request_steps (request_id, step_order, approver_type, resolved_approver_user_id, status)
+  values (v_request_id, 2, 'role', v_user_b, 'pending');
+
+  -- (a) the submitter cannot decide their own submission.
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_a2)::text, true);
+  execute 'set local role authenticated';
+
+  update kpi_submissions set status = 'approved' where id = v_submission_id;
+  get diagnostics v_rows = row_count;
+  if v_rows <> 0 then raise exception 'FAIL (21a): a submitter approved/updated their own kpi_submission'; end if;
+
+  execute 'reset role';
+
+  -- (c) the step-2 approver (not yet current) cannot act early -- also
+  -- cross-company, so this doubles as an isolation check.
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_b)::text, true);
+  execute 'set local role authenticated';
+
+  update kpi_submissions set status = 'approved' where id = v_submission_id;
+  get diagnostics v_rows = row_count;
+  if v_rows <> 0 then raise exception 'FAIL (21c): a non-current step''s resolved approver updated the submission early'; end if;
+
+  execute 'reset role';
+  raise notice 'PASS (21a/21c): submitter cannot self-approve; a non-current step''s approver cannot act early';
+
+  -- (b) the actual current-step resolved approver CAN.
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_a)::text, true);
+  execute 'set local role authenticated';
+
+  update kpi_submissions set status = 'approved', decided_by = v_user_a where id = v_submission_id;
+  get diagnostics v_rows = row_count;
+  if v_rows <> 1 then raise exception 'FAIL (21b): the correctly-resolved current-step approver could not decide the submission'; end if;
+
+  execute 'reset role';
+  raise notice 'PASS (21b): the resolved current-step approver can decide the submission';
+
+  -- ---------------------------------------------------------------------
+  -- Scenario 22: apply_approved_target_revision() re-checks authorization
+  -- and status itself (it's SECURITY DEFINER, so outer RLS on `kpis` doesn't
+  -- gate it) -- must reject a not-yet-approved revision, then reject an
+  -- unrelated company's caller even once approved, then succeed for the
+  -- actual company admin.
+  -- ---------------------------------------------------------------------
+  insert into kpi_target_revisions (company_id, kpi_id, old_target, new_target, reason, requested_by, effective_financial_year, status)
+  values (v_company_a, v_kpi_a, 100, 250, 'RLS test revision', v_user_a, 2027, 'pending')
+  returning id into v_revision_id;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_a)::text, true);
+  execute 'set local role authenticated';
+
+  begin
+    perform apply_approved_target_revision(v_revision_id);
+    raise exception 'FAIL (22a): applied a target revision that was not yet approved';
+  exception
+    when others then
+      if SQLERRM like '%is not approved%' then
+        raise notice 'PASS (22a): applying a not-yet-approved target revision is rejected';
+      else
+        raise;
+      end if;
+  end;
+
+  execute 'reset role';
+
+  -- Approve it (as the superuser/table owner doing test setup, bypassing
+  -- RLS deliberately here -- getting the row into 'approved' status is
+  -- fixture setup, not the thing being tested).
+  update kpi_target_revisions set status = 'approved' where id = v_revision_id;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_b)::text, true);
+  execute 'set local role authenticated';
+
+  begin
+    perform apply_approved_target_revision(v_revision_id);
+    raise exception 'FAIL (22b): an unrelated company''s user applied another company''s approved target revision';
+  exception
+    when others then
+      if SQLERRM like '%not authorized%' then
+        raise notice 'PASS (22b): an unrelated company cannot apply another company''s target revision';
+      else
+        raise;
+      end if;
+  end;
+
+  execute 'reset role';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_a)::text, true);
+  execute 'set local role authenticated';
+
+  perform apply_approved_target_revision(v_revision_id);
+
+  select target into v_achievement from kpis where id = v_kpi_a;
+  if v_achievement <> 250 then raise exception 'FAIL (22c): apply_approved_target_revision did not update kpis.target (got %)', v_achievement; end if;
+
+  execute 'reset role';
+  raise notice 'PASS (22c): the company''s own admin can apply an approved target revision, and kpis.target is actually updated';
+
+  -- ---------------------------------------------------------------------
+  -- Scenario 23: company_performance_periods (period lifecycle overrides)
+  -- can only be written by whoever can administer the company.
+  -- ---------------------------------------------------------------------
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_a2)::text, true);
+  execute 'set local role authenticated';
+
+  begin
+    insert into company_performance_periods (company_id, financial_year, period_type, period_number, status)
+    values (v_company_a, 2027, 'quarter', 3, 'closed');
+    raise exception 'FAIL (23a): a plain employee closed a company performance period';
+  exception
+    when insufficient_privilege then
+      raise notice 'PASS (23a): non-admin cannot set a period''s lifecycle status';
+  end;
+
+  execute 'reset role';
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_auth_a)::text, true);
+  execute 'set local role authenticated';
+
+  insert into company_performance_periods (company_id, financial_year, period_type, period_number, status, set_by)
+  values (v_company_a, 2027, 'quarter', 3, 'closed', v_user_a);
+
+  execute 'reset role';
+  raise notice 'PASS (23b): a company admin can set a period''s lifecycle status';
 
   raise notice '=== ALL RLS ISOLATION SCENARIOS COMPLETED ===';
 

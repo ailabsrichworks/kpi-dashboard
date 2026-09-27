@@ -29,7 +29,7 @@ export default function ForgotPassword() {
                 title="Reset your password"
                 description="Enter your email and we'll send you a link to choose a new password."
                 footer={
-                    <Link href="/platform/login" className="font-bold text-[#A6906F] hover:text-[#8B7355] transition">
+                    <Link href="/platform/login" className="font-bold text-indigo-600 hover:text-indigo-700 transition">
                         Back to sign in
                     </Link>
                 }
@@ -57,7 +57,7 @@ export default function ForgotPassword() {
                             type="email"
                             value={data.email}
                             onChange={(e) => setData('email', e.target.value)}
-                            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#C9B896] focus:border-[#C9B896] focus:outline-none transition"
+                            className="w-full rounded-xl border border-transparent px-4 py-3 text-sm bg-slate-100 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition"
                             required
                             autoFocus
                         />
@@ -66,7 +66,7 @@ export default function ForgotPassword() {
                     <button
                         type="submit"
                         disabled={processing}
-                        className="w-full rounded-xl bg-[#C9B896] hover:bg-[#BBA57F] py-3 text-sm font-black text-[#3A3128] transition shadow-md hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0"
+                        className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 py-3 text-sm font-black text-white transition shadow-md shadow-indigo-500/30 hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0"
                     >
                         Send reset link
                     </button>

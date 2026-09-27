@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Platform;
 
 use App\Http\Controllers\Controller;
+use App\Services\DashboardWidgetService;
 use App\Services\SupabaseUserService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -47,6 +48,13 @@ class DashboardController extends Controller
      * (or a Platform Admin, scoped to their assigned companies) seeing only
      * their own here — not because this controller filtered it, but because
      * Postgres did — is the actual proof that isolation works.
+     *
+     * A caller scoped to exactly one company (every ordinary Company Admin/
+     * SLT/Executive/Employee) gets that company's own customizable widget
+     * dashboard instead of a one-row list — see `Platform/CompanyDashboard`.
+     * A Platform Admin with several assigned companies still gets the
+     * existing list, since a single customizable layout doesn't make sense
+     * across multiple companies at once.
      */
     private function companyLanding(array $platformUser, SupabaseUserService $supabase)
     {
@@ -75,9 +83,42 @@ class DashboardController extends Controller
             ];
         })->values();
 
+        if ($companiesWithStats->count() === 1) {
+            return $this->companyWidgetDashboard($platformUser, $supabase, $companiesWithStats->first());
+        }
+
         return Inertia::render('Platform/Dashboard', [
             'me' => $platformUser,
             'visibleCompanies' => $companiesWithStats,
+        ]);
+    }
+
+    private function companyWidgetDashboard(array $platformUser, SupabaseUserService $supabase, array $company)
+    {
+        $companyId = $company['id'];
+
+        $widgetRows = $supabase->get('company_dashboard_widgets', [
+            'company_id' => 'eq.' . $companyId,
+            'select' => 'widget_type',
+            'order' => 'position.asc',
+        ]);
+
+        $layout = empty($widgetRows)
+            ? DashboardWidgetService::DEFAULT_LAYOUT
+            : array_column($widgetRows, 'widget_type');
+
+        $widgetData = (new DashboardWidgetService($supabase))->computeData($companyId, $platformUser['id'], $layout);
+
+        $myRole = collect($platformUser['company_memberships'] ?? [])
+            ->firstWhere('company_id', $companyId)['role'] ?? null;
+
+        return Inertia::render('Platform/CompanyDashboard', [
+            'me' => $platformUser,
+            'company' => $company,
+            'layout' => $layout,
+            'widgetData' => $widgetData,
+            'availableWidgets' => DashboardWidgetService::AVAILABLE_WIDGETS,
+            'canEditLayout' => $myRole === 'company_admin' || ($platformUser['is_super_admin'] ?? false),
         ]);
     }
 

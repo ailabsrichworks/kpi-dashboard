@@ -17,42 +17,39 @@ use App\Http\Controllers\AiController;
 */
 
 Route::get('/', function () {
-    return redirect()->route('login');
+    return redirect()->route('platform.login');
 });
 
 // Telegram Mini App shell — opened inside Telegram's WebView, no Laravel session
-// is available there, so this stays outside the kpi.auth group. Auth for the
+// is available there, so this stays outside any auth group. Auth for the
 // data it loads happens per-request via Telegram initData (see routes/api.php).
 Route::view('/telegram/app', 'telegram.app', [
     'botUsername' => env('TELEGRAM_BOT_USERNAME', ''),
 ])->name('telegram.app');
 
-// This IS the working login for this company's real production data
-// (confirmed live, 2026-08-18): `users` genuinely has `password_hash`/
-// `is_active`, `employees` genuinely exists, and Supabase Auth (auth.users)
-// has zero accounts in this project -- so /platform/login can never
-// succeed here. An earlier redirect to /platform/login, based on the
-// opposite (unverified) assumption, made this real, working form
-// unreachable. See CLAUDE.md's "Login system correction" for how this was
-// confirmed before re-enabling it.
+// The legacy single-tenant app's own login, kept reachable directly by URL
+// even though '/' now defaults to the Platform: this company's real
+// production data (`users.password_hash`, `employees`) still lives here.
 Route::get('/login', [AuthController::class, 'showLogin'])
     ->name('login');
 
 Route::post('/login', [AuthController::class, 'submitLogin'])
     ->name('login.submit');
 
-// Lets the front-end recover from a stale CSRF token (see partials/sidebar.blade.php's
-// fetch patch) without a full page reload -- deliberately outside kpi.auth so it still
-// works even when the session itself, not just the token, has expired.
+// Lets the front-end recover from a stale CSRF token without a full page
+// reload, even when the session itself (not just the token) has expired.
 Route::get('/csrf-token', function () {
     return response()->json(['token' => csrf_token()]);
 })->name('csrf.refresh');
 
 /*
 |--------------------------------------------------------------------------
-| MULTI-COMPANY PLATFORM (Supabase Auth + RLS — separate from the legacy
-| employee/company session-based auth above)
+| PERFORMIX PLATFORM (Supabase Auth + RLS)
 |--------------------------------------------------------------------------
+| The only application this codebase runs. The single-tenant legacy app
+| (session/employee-based auth against `employees`/`users.password_hash`)
+| was removed once production confirmed that table no longer exists and a
+| real Supabase Auth Super Admin account works end-to-end here.
 */
 
 Route::get('/platform/login', [\App\Http\Controllers\Platform\AuthController::class, 'showLogin'])
@@ -119,6 +116,9 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::post('/ai/chat', [\App\Http\Controllers\Platform\AniraController::class, 'chat'])
         ->name('platform.ai.chat');
 
+    Route::post('/ai/rephrase-appraiser-comment', [\App\Http\Controllers\Platform\AniraController::class, 'rephraseComment'])
+        ->name('platform.ai.rephrase-appraiser-comment');
+
     Route::get('/admins', [\App\Http\Controllers\Platform\PlatformAdminController::class, 'index'])
         ->name('platform.admins.index');
 
@@ -158,6 +158,12 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::post('/companies/{company}/branding', [\App\Http\Controllers\Platform\CompanyController::class, 'updateBranding'])
         ->name('platform.companies.branding');
 
+    Route::post('/companies/{company}/subscription', [\App\Http\Controllers\Platform\CompanyController::class, 'updateSubscription'])
+        ->name('platform.companies.subscription');
+
+    Route::post('/companies/{company}/dashboard-layout', [\App\Http\Controllers\Platform\DashboardWidgetController::class, 'updateLayout'])
+        ->name('platform.companies.dashboard-layout');
+
     Route::get('/companies/{company}/onboarding', [\App\Http\Controllers\Platform\OnboardingController::class, 'index'])
         ->name('platform.onboarding.show');
 
@@ -172,6 +178,9 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
 
     Route::get('/companies/{company}/onboarding/telegram-config', [\App\Http\Controllers\Platform\OnboardingController::class, 'telegramConfig'])
         ->name('platform.onboarding.telegram-config');
+
+    Route::get('/companies/{company}/review-settings', [\App\Http\Controllers\Platform\OnboardingController::class, 'reviewSettings'])
+        ->name('platform.review-settings.show');
 
     Route::get('/companies/{company}/import', [\App\Http\Controllers\Platform\ImportController::class, 'show'])
         ->name('platform.import.show');
@@ -188,6 +197,9 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::post('/companies/{company}/import/{batch}/users', [\App\Http\Controllers\Platform\UserCreationController::class, 'store'])
         ->name('platform.import.users.store');
 
+    Route::get('/companies/{company}/organisation', [\App\Http\Controllers\Platform\OrganisationController::class, 'index'])
+        ->name('platform.organisation.index');
+
     Route::get('/companies/{company}/departments', [\App\Http\Controllers\Platform\DepartmentController::class, 'index'])
         ->name('platform.departments.index');
 
@@ -200,6 +212,9 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::patch('/companies/{company}/departments/{department}/users/{user}/role', [\App\Http\Controllers\Platform\DepartmentController::class, 'updateUserRole'])
         ->name('platform.departments.users.role.update');
 
+    Route::patch('/companies/{company}/departments/{department}/users/{user}/reporting', [\App\Http\Controllers\Platform\DepartmentController::class, 'updateReporting'])
+        ->name('platform.departments.users.reporting.update');
+
     Route::post('/companies/{company}/users/{user}/suspend', [\App\Http\Controllers\Platform\DepartmentController::class, 'suspendUser'])
         ->name('platform.companies.users.suspend');
 
@@ -211,6 +226,15 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
 
     Route::delete('/companies/{company}/departments/{department}/roles/{role}', [\App\Http\Controllers\Platform\RoleController::class, 'destroy'])
         ->name('platform.roles.destroy');
+
+    Route::get('/companies/{company}/goals', [\App\Http\Controllers\Platform\CompanyGoalController::class, 'index'])
+        ->name('platform.goals.index');
+
+    Route::post('/companies/{company}/goals', [\App\Http\Controllers\Platform\CompanyGoalController::class, 'store'])
+        ->name('platform.goals.store');
+
+    Route::patch('/companies/{company}/goals/{goal}', [\App\Http\Controllers\Platform\CompanyGoalController::class, 'update'])
+        ->name('platform.goals.update');
 
     Route::get('/companies/{company}/kpis', [\App\Http\Controllers\Platform\KpiController::class, 'index'])
         ->name('platform.kpis.index');
@@ -227,11 +251,29 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::post('/companies/{company}/kpis/apply-template', [\App\Http\Controllers\Platform\KpiController::class, 'applyTemplate'])
         ->name('platform.kpis.apply-template');
 
+    Route::post('/companies/{company}/kpis/{kpi}/period-targets', [\App\Http\Controllers\Platform\KpiPeriodTargetController::class, 'store'])
+        ->name('platform.kpis.period-targets.store');
+
     Route::post('/companies/{company}/kpis/{kpi}/grants', [\App\Http\Controllers\Platform\KpiController::class, 'storeGrant'])
         ->name('platform.kpis.grants.store');
 
     Route::delete('/companies/{company}/kpis/{kpi}/grants/{grant}', [\App\Http\Controllers\Platform\KpiController::class, 'destroyGrant'])
         ->name('platform.kpis.grants.destroy');
+
+    Route::post('/companies/{company}/kpis/{kpi}/target-revisions', [\App\Http\Controllers\Platform\TargetRevisionController::class, 'store'])
+        ->name('platform.kpis.target-revisions.store');
+
+    Route::get('/companies/{company}/periods', [\App\Http\Controllers\Platform\PeriodController::class, 'index'])
+        ->name('platform.periods.index');
+
+    Route::post('/companies/{company}/periods', [\App\Http\Controllers\Platform\PeriodController::class, 'update'])
+        ->name('platform.periods.update');
+
+    Route::get('/companies/{company}/approvals', [\App\Http\Controllers\Platform\ApprovalController::class, 'index'])
+        ->name('platform.approvals.index');
+
+    Route::post('/companies/{company}/approvals/{approvalRequest}/decide', [\App\Http\Controllers\Platform\ApprovalController::class, 'decide'])
+        ->name('platform.approvals.decide');
 
     Route::get('/companies/{company}/tasks', [\App\Http\Controllers\Platform\TaskController::class, 'index'])
         ->name('platform.tasks.index');
@@ -263,11 +305,122 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::delete('/kpi-templates/{template}/items/{item}', [\App\Http\Controllers\Platform\KpiTemplateController::class, 'destroyItem'])
         ->name('platform.kpi-templates.items.destroy');
 
+    Route::get('/subscription-plans', [\App\Http\Controllers\Platform\SubscriptionPlanController::class, 'index'])
+        ->name('platform.subscription-plans.index');
+
+    Route::post('/subscription-plans', [\App\Http\Controllers\Platform\SubscriptionPlanController::class, 'store'])
+        ->name('platform.subscription-plans.store');
+
+    Route::patch('/subscription-plans/{plan}', [\App\Http\Controllers\Platform\SubscriptionPlanController::class, 'update'])
+        ->name('platform.subscription-plans.update');
+
+    Route::delete('/subscription-plans/{plan}', [\App\Http\Controllers\Platform\SubscriptionPlanController::class, 'destroy'])
+        ->name('platform.subscription-plans.destroy');
+
     Route::get('/companies/{company}/departments/{department}/submissions', [\App\Http\Controllers\Platform\KpiSubmissionController::class, 'index'])
         ->name('platform.submissions.index');
 
     Route::post('/companies/{company}/departments/{department}/submissions', [\App\Http\Controllers\Platform\KpiSubmissionController::class, 'store'])
         ->name('platform.submissions.store');
+
+    Route::post('/companies/{company}/departments/{department}/submissions/{submission}/score', [\App\Http\Controllers\Platform\KpiSubmissionController::class, 'score'])
+        ->name('platform.submissions.score');
+
+    /*
+    |----------------------------------------------------------------------
+    | CEO / Top Management — company performance command centre
+    |----------------------------------------------------------------------
+    */
+
+    Route::get('/companies/{company}/performance', [\App\Http\Controllers\Platform\CompanyPerformanceController::class, 'index'])
+        ->name('platform.performance.index');
+
+    Route::get('/companies/{company}/performance/goals/{goal}', [\App\Http\Controllers\Platform\CompanyPerformanceController::class, 'goal'])
+        ->name('platform.performance.goal');
+
+    /*
+    |----------------------------------------------------------------------
+    | HR / People Management — people performance command centre
+    |----------------------------------------------------------------------
+    */
+
+    Route::get('/companies/{company}/people', [\App\Http\Controllers\Platform\PeopleController::class, 'index'])
+        ->name('platform.people.index');
+
+    Route::get('/companies/{company}/people/employees', [\App\Http\Controllers\Platform\PeopleController::class, 'employees'])
+        ->name('platform.people.employees');
+
+    Route::get('/companies/{company}/people/managers', [\App\Http\Controllers\Platform\PeopleController::class, 'managers'])
+        ->name('platform.people.managers');
+
+    /*
+    |----------------------------------------------------------------------
+    | Performix HQ — client success (Center-only, see PlatformAuthorization)
+    |----------------------------------------------------------------------
+    */
+
+    Route::get('/hq/client-health', [\App\Http\Controllers\Platform\ClientHealthController::class, 'index'])
+        ->name('platform.hq.client-health.index');
+
+    Route::get('/hq/client-health/{company}', [\App\Http\Controllers\Platform\ClientHealthController::class, 'show'])
+        ->name('platform.hq.client-health.show');
+
+    Route::post('/hq/client-health/{company}', [\App\Http\Controllers\Platform\ClientHealthController::class, 'store'])
+        ->name('platform.hq.client-health.store');
+
+    Route::get('/hq/renewals', [\App\Http\Controllers\Platform\RenewalController::class, 'index'])
+        ->name('platform.hq.renewals.index');
+
+    Route::get('/hq/cam-team', [\App\Http\Controllers\Platform\CamController::class, 'index'])
+        ->name('platform.hq.cam-team.index');
+
+    Route::post('/hq/companies/{company}/cam', [\App\Http\Controllers\Platform\CamController::class, 'assign'])
+        ->name('platform.hq.cam.assign');
+
+    Route::get('/hq/actions', [\App\Http\Controllers\Platform\CamController::class, 'actions'])
+        ->name('platform.hq.actions.index');
+
+    Route::post('/hq/actions', [\App\Http\Controllers\Platform\CamController::class, 'storeAction'])
+        ->name('platform.hq.actions.store');
+
+    Route::patch('/hq/actions/{action}', [\App\Http\Controllers\Platform\CamController::class, 'updateAction'])
+        ->name('platform.hq.actions.update');
+
+    Route::get('/hq/modules', [\App\Http\Controllers\Platform\ModuleController::class, 'index'])
+        ->name('platform.hq.modules.index');
+
+    Route::post('/hq/companies/{company}/modules/{module}', [\App\Http\Controllers\Platform\ModuleController::class, 'toggle'])
+        ->name('platform.hq.modules.toggle');
+
+    Route::get('/hq/support', [\App\Http\Controllers\Platform\SupportController::class, 'index'])
+        ->name('platform.hq.support.index');
+
+    Route::post('/companies/{company}/support-tickets', [\App\Http\Controllers\Platform\SupportController::class, 'store'])
+        ->name('platform.support-tickets.store');
+
+    Route::patch('/hq/support/{ticket}', [\App\Http\Controllers\Platform\SupportController::class, 'update'])
+        ->name('platform.hq.support.update');
+
+    /*
+    |----------------------------------------------------------------------
+    | Performix HQ — Settings hub (Super Admin only, see PlatformAuthorization)
+    |----------------------------------------------------------------------
+    */
+
+    Route::get('/settings', [\App\Http\Controllers\Platform\SettingsController::class, 'index'])
+        ->name('platform.settings.index');
+
+    Route::get('/settings/integrations', [\App\Http\Controllers\Platform\SettingsController::class, 'integrations'])
+        ->name('platform.settings.integrations');
+
+    Route::get('/settings/api-keys', [\App\Http\Controllers\Platform\SettingsController::class, 'apiKeys'])
+        ->name('platform.settings.api-keys');
+
+    Route::get('/settings/billing', [\App\Http\Controllers\Platform\SettingsController::class, 'billing'])
+        ->name('platform.settings.billing');
+
+    Route::get('/settings/compliance', [\App\Http\Controllers\Platform\SettingsController::class, 'compliance'])
+        ->name('platform.settings.compliance');
 });
 
 /*

@@ -86,13 +86,26 @@ class KpiReturningPolicyFixTest extends TestCase
             ]], 200),
             '*/rest/v1/platform_admin_assignments*' => Http::response([], 200),
             '*/rest/v1/rpc/auth_department_ids*' => Http::response(['department-1'], 200),
+            // Phase 1 hardening additions: period lifecycle + approval-engine
+            // lookups that now run before the insert this test asserts on.
+            '*/rest/v1/companies*' => Http::response([['id' => 'company-1', 'financial_year_start_month' => 1]], 200),
+            '*/rest/v1/company_performance_periods*' => Http::response([], 200),
+            '*/rest/v1/kpi_submissions*' => Http::response([], 200),
+            '*/rest/v1/approval_workflows*' => Http::response([], 200),
+            '*/rest/v1/department_users*' => Http::response([['manager_user_id' => 'manager-1']], 200),
+            '*/rest/v1/approval_requests*' => Http::response([[
+                'id' => 'request-1', 'company_id' => 'company-1', 'workflow_type' => 'actual_submission',
+                'object_type' => 'kpi_submission', 'object_id' => 'whatever', 'submitted_by' => 'employee-id',
+                'current_step_order' => 1, 'status' => 'pending',
+            ]], 201),
+            '*/rest/v1/approval_request_steps*' => Http::response([], 201),
         ]);
 
         $this->withSession(['platform_access_token' => $this->fakeCompanyAdminToken()])
             ->post('/platform/companies/company-1/departments/department-1/submissions', [
                 'kpi_id' => '11111111-1111-1111-1111-111111111111',
                 'value' => 50,
-                'submission_date' => '2026-08-17',
+                'submission_date' => now()->toDateString(),
             ]);
 
         Http::assertSent(function ($request) {

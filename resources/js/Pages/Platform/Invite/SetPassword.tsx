@@ -4,7 +4,7 @@ import PasswordInput from '@/Components/PasswordInput';
 import AuthCard from '@/Components/Platform/AuthCard';
 
 const PLATFORM_PASSWORD_INPUT_CLASS =
-    'w-full rounded-xl border border-slate-200 px-4 py-3 text-sm bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#C9B896] focus:border-[#C9B896] focus:outline-none transition pr-10';
+    'w-full rounded-xl border border-transparent px-4 py-3 text-sm bg-slate-100 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none transition pr-10';
 
 interface SetPasswordPageProps {
     email: string | null;
@@ -54,7 +54,7 @@ export default function SetPassword({ email }: SetPasswordPageProps) {
                             minLength={8}
                             autoFocus
                             className={PLATFORM_PASSWORD_INPUT_CLASS}
-                            iconHoverClassName="hover:text-[#A6906F]"
+                            iconHoverClassName="hover:text-indigo-600"
                         />
                     </div>
 
@@ -66,14 +66,14 @@ export default function SetPassword({ email }: SetPasswordPageProps) {
                             onChange={(v) => setData('password_confirmation', v)}
                             minLength={8}
                             className={PLATFORM_PASSWORD_INPUT_CLASS}
-                            iconHoverClassName="hover:text-[#A6906F]"
+                            iconHoverClassName="hover:text-indigo-600"
                         />
                     </div>
 
                     <button
                         type="submit"
                         disabled={processing}
-                        className="w-full rounded-xl bg-[#C9B896] hover:bg-[#BBA57F] py-3 text-sm font-black text-[#3A3128] transition shadow-md hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0"
+                        className="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 py-3 text-sm font-black text-white transition shadow-md shadow-indigo-500/30 hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0"
                     >
                         Set password &amp; continue
                     </button>
