@@ -249,42 +249,6 @@ class AiController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | REPHRASE APPRAISER JUSTIFICATION COMMENT (Section 2 score comment)
-    |--------------------------------------------------------------------------
-    */
-
-    public function rephraseAppraiserComment(Request $request)
-    {
-        $request->validate([
-            'kpi_title' => 'required|string|max:255',
-            'score'     => 'nullable|string|max:20',
-            'comment'   => 'required|string|max:2000',
-        ]);
-
-        try {
-
-            $rephrased = $this->ai->rephraseAppraiserScoreJustification(
-                $request->kpi_title,
-                $request->score ?? '—',
-                $request->comment
-            );
-
-            return response()->json([
-                'success' => true,
-                'comment' => $rephrased,
-            ]);
-
-        } catch (\Throwable $e) {
-
-            return response()->json([
-                'success' => false,
-                'message' => 'AI rephrase failed. Please try again.',
-            ], 500);
-        }
-    }
-
-    /*
-    |--------------------------------------------------------------------------
     | SUGGEST QUARTERLY TARGETS
     |--------------------------------------------------------------------------
     */
