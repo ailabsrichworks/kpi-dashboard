@@ -1,8 +1,9 @@
 import { router, useForm } from '@inertiajs/react';
+import axios from 'axios';
 import { FormEventHandler, useEffect, useMemo, useRef, useState } from 'react';
 import PlatformLayout from '@/Components/Platform/PlatformLayout';
 import { Badge, Card, EmptyState, InfoTooltip, PrimaryButton, StatCard } from '@/Components/Platform/ui';
-import { CalendarIcon, ChecklistIcon, ChevronRightIcon, ClockIcon, PlusIcon, ViewColumnsIcon } from '@/Components/Platform/Icons';
+import { CalendarIcon, ChecklistIcon, ChevronRightIcon, ClockIcon, PlusIcon, SparklesIcon, ViewColumnsIcon } from '@/Components/Platform/Icons';
 
 interface Company {
     id: string;
@@ -19,7 +20,7 @@ interface Task {
     id: string;
     title: string;
     description: string | null;
-    status: 'open' | 'in_progress' | 'done' | 'cancelled';
+    status: 'open' | 'in_progress' | 'blocked' | 'done' | 'cancelled';
     priority: 'low' | 'medium' | 'high';
     due_date: string | null;
     // A meeting is a task with a specific time-of-day rather than just a
@@ -50,18 +51,33 @@ interface Member {
     users: Person;
 }
 
+interface TaskScore {
+    score: number | null;
+    status: 'on_track' | 'at_risk' | 'critical' | 'insufficient_data';
+    breakdown: Record<string, number | null>;
+}
+
 interface TasksPageProps {
     company: Company;
     tasks: Task[];
     links: TaskKpiLink[];
     kpis: Kpi[];
     members: Member[];
+    taskScore: TaskScore;
     [key: string]: unknown;
 }
+
+const TASK_SCORE_STATUS: Record<TaskScore['status'], { label: string; tone: 'success' | 'warning' | 'danger' | 'default' }> = {
+    on_track: { label: 'On Track', tone: 'success' },
+    at_risk: { label: 'At Risk', tone: 'warning' },
+    critical: { label: 'Critical', tone: 'danger' },
+    insufficient_data: { label: 'Not enough data yet', tone: 'default' },
+};
 
 const STATUS_COLUMNS: { key: Task['status']; label: string; dot: string }[] = [
     { key: 'open', label: 'To Do', dot: 'bg-slate-400' },
     { key: 'in_progress', label: 'In Progress', dot: 'bg-sky-500' },
+    { key: 'blocked', label: 'Blocked', dot: 'bg-amber-500' },
     { key: 'done', label: 'Done', dot: 'bg-emerald-500' },
     { key: 'cancelled', label: 'Cancelled', dot: 'bg-red-400' },
 ];
@@ -106,6 +122,76 @@ function fmtDateShort(iso: string): string {
     return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
+function TaskAiSummaryBox({ companyId }: { companyId: string }) {
+    const [open, setOpen] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [narrative, setNarrative] = useState<string | null>(null);
+    const [recommendations, setRecommendations] = useState<string[]>([]);
+    const [error, setError] = useState<string | null>(null);
+
+    const generate = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const response = await axios.post(`/platform/companies/${companyId}/tasks/ai-summary`);
+            if (response.data.success) {
+                setNarrative(response.data.narrative);
+                setRecommendations(response.data.recommendations ?? []);
+            } else {
+                setError(response.data.message ?? "Couldn't generate a summary right now.");
+            }
+        } catch (err: unknown) {
+            const message = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Couldn't generate a summary right now.";
+            setError(message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <>
+            <button
+                onClick={() => setOpen((v) => !v)}
+                className="inline-flex items-center gap-1.5 text-[10px] font-black text-[#1a1408] bg-[#D4AF37] px-3 py-1.5 rounded-full shrink-0 hover:opacity-90"
+            >
+                <SparklesIcon className="w-3 h-3" /> AI Summary
+            </button>
+            {open && (
+                <div className="mt-3 pt-3 border-t border-slate-200 w-full">
+                    {loading ? (
+                        <p className="text-[11px] text-slate-500">Generating…</p>
+                    ) : error ? (
+                        <p className="text-[11px] text-red-600">{error}</p>
+                    ) : narrative ? (
+                        <div>
+                            <p className="text-[12px] text-slate-700 leading-relaxed">{narrative}</p>
+                            {recommendations.length > 0 && (
+                                <ul className="mt-2 space-y-1">
+                                    {recommendations.map((r, i) => (
+                                        <li key={i} className="text-[11px] text-slate-500 flex items-start gap-1.5">
+                                            <span className="text-brand-800">•</span> {r}
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                            <button onClick={generate} className="mt-2 text-[10px] font-bold text-slate-400 hover:underline">
+                                Regenerate
+                            </button>
+                        </div>
+                    ) : (
+                        <div>
+                            <p className="text-[11px] text-slate-500">No summary generated yet for this week.</p>
+                            <button onClick={generate} className="mt-2 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-[10px] font-black">
+                                Generate now
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+        </>
+    );
+}
+
 function KpiCheckboxList({ kpis, selected, onToggle }: { kpis: Kpi[]; selected: string[]; onToggle: (kpiId: string) => void }) {
     if (kpis.length === 0) {
         return <p className="text-xs text-slate-400">No KPIs exist for this company yet.</p>;
@@ -123,8 +209,19 @@ function KpiCheckboxList({ kpis, selected, onToggle }: { kpis: Kpi[]; selected: 
     );
 }
 
-function CreateTaskPanel({ companyId, kpis, members }: { companyId: string; kpis: Kpi[]; members: Member[] }) {
-    const [open, setOpen] = useState(false);
+function CreateTaskPanel({
+    companyId,
+    kpis,
+    members,
+    open,
+    setOpen,
+}: {
+    companyId: string;
+    kpis: Kpi[];
+    members: Member[];
+    open: boolean;
+    setOpen: (v: boolean) => void;
+}) {
     const [isMeeting, setIsMeeting] = useState(false);
     const { data, setData, post, processing, reset } = useForm({
         title: '',
@@ -152,11 +249,7 @@ function CreateTaskPanel({ companyId, kpis, members }: { companyId: string; kpis
     };
 
     if (!open) {
-        return (
-            <PrimaryButton onClick={() => setOpen(true)} className="inline-flex items-center gap-1.5">
-                <PlusIcon className="w-4 h-4" /> New task
-            </PrimaryButton>
-        );
+        return null;
     }
 
     return (
@@ -291,6 +384,7 @@ function EditTaskForm({ companyId, task, onDone }: { companyId: string; task: Ta
                 <select value={data.status} onChange={(e) => setData('status', e.target.value as Task['status'])} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
                     <option value="open">To Do</option>
                     <option value="in_progress">In progress</option>
+                    <option value="blocked">Blocked</option>
                     <option value="done">Done</option>
                     <option value="cancelled">Cancelled</option>
                 </select>
@@ -408,7 +502,8 @@ function TaskCard({
             id={`task-${task.id}`}
             draggable={draggable}
             onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}
-            className={`bg-white rounded-xl border border-slate-200 shadow-sm px-3.5 py-3 border-l-4 ${PRIORITY_BORDER[task.priority]} ${draggable ? 'cursor-grab active:cursor-grabbing' : ''} ${expanded ? 'ring-2 ring-brand-100' : ''}`}
+            onClick={() => !expanded && onToggleEdit()}
+            className={`bg-white rounded-xl border border-slate-200 shadow-sm px-3.5 py-3 border-l-4 ${PRIORITY_BORDER[task.priority]} ${draggable ? 'cursor-grab active:cursor-grabbing' : ''} ${expanded ? 'ring-2 ring-brand-100' : 'cursor-pointer hover:shadow-md'}`}
         >
             <p className="text-[13px] font-bold text-slate-800 leading-snug">{task.title}</p>
             {task.description && <p className="text-xs text-slate-500 mt-1">{task.description}</p>}
@@ -447,27 +542,30 @@ function TaskCard({
                 </div>
             )}
 
-            <div className="flex items-center gap-3 mt-2.5 pt-2 border-t border-dashed border-slate-100">
-                <button onClick={onToggleLinks} className="text-[11px] font-semibold text-brand-800 hover:underline">
-                    {expandedLinks ? 'Close links' : 'KPI links'}
-                </button>
-                <button onClick={onToggleEdit} className="text-[11px] font-semibold text-brand-800 hover:underline">
-                    {expanded ? 'Close' : 'Edit'}
-                </button>
-                <button onClick={destroy} className="text-[11px] font-semibold text-red-600 hover:underline">
-                    Delete
-                </button>
-            </div>
-
-            {expanded && <EditTaskForm companyId={company.id} task={task} onDone={onToggleEdit} />}
-            {expandedLinks && (
-                <EditKpiLinksForm
-                    companyId={company.id}
-                    task={task}
-                    kpis={kpis}
-                    linkedKpiIds={taskLinks.map((l) => l.kpi_id)}
-                    onDone={onToggleLinks}
-                />
+            {expanded && (
+                <div onClick={(e) => e.stopPropagation()}>
+                    <EditTaskForm companyId={company.id} task={task} onDone={onToggleEdit} />
+                    <div className="flex items-center gap-3 mt-1 pt-2 border-t border-dashed border-slate-100">
+                        <button onClick={onToggleLinks} className="text-[11px] font-semibold text-brand-800 hover:underline">
+                            {expandedLinks ? 'Close links' : 'KPI links'}
+                        </button>
+                        <button onClick={onToggleEdit} className="text-[11px] font-semibold text-slate-400 hover:underline">
+                            Close
+                        </button>
+                        <button onClick={destroy} className="text-[11px] font-semibold text-red-600 hover:underline">
+                            Delete
+                        </button>
+                    </div>
+                    {expandedLinks && (
+                        <EditKpiLinksForm
+                            companyId={company.id}
+                            task={task}
+                            kpis={kpis}
+                            linkedKpiIds={taskLinks.map((l) => l.kpi_id)}
+                            onDone={onToggleLinks}
+                        />
+                    )}
+                </div>
             )}
         </div>
     );
@@ -530,21 +628,21 @@ function Board({
                             const task = tasks.find((t) => t.id === id);
                             if (task) moveTask(task, col.key);
                         }}
-                        className={`rounded-2xl border p-3 flex flex-col gap-2.5 min-h-40 transition-colors ${dragOverCol === col.key ? 'border-brand-800 bg-brand-50' : 'border-slate-200 bg-slate-50'}`}
+                        className={`rounded-2xl p-2 flex flex-col gap-2.5 min-h-40 transition-colors ${dragOverCol === col.key ? 'bg-brand-50' : ''}`}
                     >
                         <div className="flex items-center justify-between px-1">
                             <span className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-wide text-slate-600">
                                 <span className={`w-2 h-2 rounded-full ${col.dot}`} />
                                 {col.label}
                             </span>
-                            <span className="text-[10px] font-bold text-slate-400 bg-white border border-slate-200 rounded-full px-2 py-0.5 tabular-nums">
+                            <span className="text-[10px] font-bold text-slate-400 bg-slate-100 rounded-full px-2 py-0.5 tabular-nums">
                                 {items.length}
                             </span>
                         </div>
                         <div className="flex flex-col gap-2.5">
                             {items.length === 0 ? (
-                                <div className="text-[11px] text-slate-400 text-center border border-dashed border-slate-300 rounded-lg py-5">
-                                    Nothing here
+                                <div className="text-[11px] text-slate-400 text-center py-5">
+                                    No tasks
                                 </div>
                             ) : (
                                 items.map((t) => (
@@ -666,8 +764,9 @@ function CalendarView({
     );
 }
 
-export default function TasksIndex({ company, tasks, links, kpis, members }: TasksPageProps) {
+export default function TasksIndex({ company, tasks, links, kpis, members, taskScore }: TasksPageProps) {
     const [view, setView] = useState<'board' | 'calendar'>('board');
+    const [creating, setCreating] = useState(false);
     const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
     const [expandedLinksId, setExpandedLinksId] = useState<string | null>(null);
     const focusRef = useRef<string | null>(null);
@@ -704,35 +803,59 @@ export default function TasksIndex({ company, tasks, links, kpis, members }: Tas
     }, [tasks, today, weekEnd]);
 
     return (
-        <PlatformLayout
-            title="Things To Do"
-            description="Day-to-day work and meetings for this company, optionally linked to a KPI for visibility — linking never changes a KPI's value."
-            company={company}
-        >
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5">
-                <StatCard label="Open items" value={stats.openCount} />
-                <StatCard label="Due today" value={stats.dueToday} tone={stats.dueToday > 0 ? 'warning' : 'default'} />
-                <StatCard label="Overdue" value={stats.overdue} tone={stats.overdue > 0 ? 'danger' : 'default'} />
-                <StatCard label="Meetings this week" value={stats.meetings} />
-            </div>
-
+        <PlatformLayout title="Things To Do" company={company}>
             <Card>
-                <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
-                    <CreateTaskPanel companyId={company.id} kpis={kpis} members={members} />
-                    <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 gap-0.5">
-                        <button
-                            onClick={() => setView('board')}
-                            className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${view === 'board' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500'}`}
-                        >
-                            <ViewColumnsIcon className="w-3.5 h-3.5" /> Board
-                        </button>
-                        <button
-                            onClick={() => setView('calendar')}
-                            className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${view === 'calendar' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500'}`}
-                        >
-                            <CalendarIcon className="w-3.5 h-3.5" /> Calendar
-                        </button>
+                <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
+                    <div>
+                        <h1 className="text-2xl font-black text-slate-900 leading-tight">Things To Do</h1>
+                        <p className="text-sm text-slate-500 mt-1 max-w-xl">
+                            Day-to-day work and meetings — drag a card between stages, or switch to Calendar to see everything by date and time.
+                        </p>
                     </div>
+                    <div className="flex items-center gap-2 flex-none">
+                        <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 gap-0.5">
+                            <button
+                                onClick={() => setView('board')}
+                                className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${view === 'board' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500'}`}
+                            >
+                                <ViewColumnsIcon className="w-3.5 h-3.5" /> Board
+                            </button>
+                            <button
+                                onClick={() => setView('calendar')}
+                                className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${view === 'calendar' ? 'bg-white text-brand-900 shadow-sm' : 'text-slate-500'}`}
+                            >
+                                <CalendarIcon className="w-3.5 h-3.5" /> Calendar
+                            </button>
+                        </div>
+                        <PrimaryButton onClick={() => setCreating((v) => !v)} className="inline-flex items-center gap-1.5">
+                            <PlusIcon className="w-4 h-4" /> {creating ? 'Close' : 'New task'}
+                        </PrimaryButton>
+                    </div>
+                </div>
+
+                <CreateTaskPanel companyId={company.id} kpis={kpis} members={members} open={creating} setOpen={setCreating} />
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5">
+                    <StatCard label="Open items" value={stats.openCount} />
+                    <StatCard label="Due today" value={stats.dueToday} tone={stats.dueToday > 0 ? 'warning' : 'default'} />
+                    <StatCard label="Overdue" value={stats.overdue} tone={stats.overdue > 0 ? 'danger' : 'default'} />
+                    <StatCard label="Meetings this week" value={stats.meetings} />
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 px-4 py-3.5 mb-5 flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1">This week's task score</p>
+                        <p className="text-2xl font-bold text-slate-900 tabular-nums">
+                            {taskScore.score ?? '—'}
+                            <span className="text-sm font-semibold text-slate-400">/100</span>
+                        </p>
+                        <div className="mt-1.5">
+                            <Badge tone={TASK_SCORE_STATUS[taskScore.status].tone === 'default' ? 'neutral' : TASK_SCORE_STATUS[taskScore.status].tone}>
+                                {TASK_SCORE_STATUS[taskScore.status].label}
+                            </Badge>
+                        </div>
+                    </div>
+                    <TaskAiSummaryBox companyId={company.id} />
                 </div>
 
                 {tasks.length === 0 ? (

@@ -50,6 +50,7 @@ class AccessAnotherCompanysApiEndpointTest extends TenantIsolationTestCase
             'PATCH task update' => ['PATCH', '/platform/companies/company-b/tasks/task-b'],
             'DELETE task destroy' => ['DELETE', '/platform/companies/company-b/tasks/task-b'],
             'PUT task kpi links update' => ['PUT', '/platform/companies/company-b/tasks/task-b/kpi-links'],
+            'POST task ai summary' => ['POST', '/platform/companies/company-b/tasks/ai-summary'],
         ];
     }
 

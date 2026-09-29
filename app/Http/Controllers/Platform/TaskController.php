@@ -5,8 +5,11 @@ namespace App\Http\Controllers\Platform;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Platform\Concerns\LogsAdminActions;
 use App\Http\Controllers\Platform\Concerns\PlatformAuthorization;
+use App\Services\AiService;
+use App\Services\PlatformTaskScoreCalculator;
 use App\Services\SupabaseUserService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Inertia\Inertia;
 
 /**
@@ -86,12 +89,19 @@ class TaskController extends Controller
             'select' => 'user_id,users(name,email)',
         ]);
 
+        $callerId = $request->attributes->get('platformUser')['id'];
+        $myTasks = collect($tasks)->where('assignee_user_id', $callerId)->values()->all();
+        $weekStart = now()->startOfWeek(Carbon::MONDAY);
+        $weekEnd = now()->endOfWeek(Carbon::SUNDAY);
+        $taskScore = (new PlatformTaskScoreCalculator())->calculate($myTasks, $weekStart, $weekEnd);
+
         return Inertia::render('Platform/Tasks/Index', [
             'company' => $companyRow,
             'tasks' => $tasks,
             'links' => $links,
             'kpis' => $kpis,
             'members' => $members,
+            'taskScore' => $taskScore,
         ]);
     }
 
@@ -102,7 +112,7 @@ class TaskController extends Controller
         $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'status' => 'nullable|in:open,in_progress,done,cancelled',
+            'status' => 'nullable|in:open,in_progress,blocked,done,cancelled',
             'priority' => 'nullable|in:low,medium,high',
             'due_date' => 'nullable|date',
             'meeting_time' => 'nullable|date_format:H:i',
@@ -174,7 +184,7 @@ class TaskController extends Controller
         $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'status' => 'required|in:open,in_progress,done,cancelled',
+            'status' => 'required|in:open,in_progress,blocked,done,cancelled',
             'priority' => 'required|in:low,medium,high',
             'due_date' => 'nullable|date',
             'meeting_time' => 'nullable|date_format:H:i',
@@ -296,5 +306,67 @@ class TaskController extends Controller
         ], 'task', $task);
 
         return back()->with('success', 'KPI links updated.');
+    }
+
+    /**
+     * On-demand AI narrative of the caller's own current weekly task score —
+     * the Platform equivalent of the legacy Telegram Mini App's "AI Summary"
+     * button (PerformixInsightsController::regenerate(), scope=employee).
+     * Deliberately not persisted anywhere (that legacy feature keeps a full
+     * ai_summaries history table keyed by the legacy employee/company_code
+     * schema, which has no Platform equivalent) — a fresh call every time
+     * the button is pressed, same "recompute fresh for one person" choice
+     * PerformixInsightsController itself already documents for a single
+     * employee's own score.
+     */
+    public function aiSummary(Request $request, string $company)
+    {
+        $this->ensureCompanyMember($request, $company);
+
+        /** @var SupabaseUserService $supabase */
+        $supabase = $request->attributes->get('platformSupabase');
+        $caller = $request->attributes->get('platformUser');
+
+        $myTasks = $supabase->get('tasks', [
+            'company_id' => 'eq.' . $company,
+            'assignee_user_id' => 'eq.' . $caller['id'],
+            'select' => 'status,priority,due_date,created_at,updated_at',
+        ]) ?? [];
+
+        $weekStart = now()->startOfWeek(Carbon::MONDAY);
+        $weekEnd = now()->endOfWeek(Carbon::SUNDAY);
+        $taskScore = (new PlatformTaskScoreCalculator())->calculate($myTasks, $weekStart, $weekEnd);
+
+        $today = now()->toDateString();
+        $inScope = collect($myTasks)->reject(fn ($t) => ($t['status'] ?? null) === 'cancelled');
+
+        $facts = [
+            'score' => $taskScore['score'],
+            'status' => $taskScore['status'],
+            'scored_task_count' => $inScope->count(),
+            'completed_count' => $inScope->where('status', 'done')->count(),
+            'overdue_count' => $inScope->filter(fn ($t) => !empty($t['due_date']) && $t['due_date'] < $today && $t['status'] !== 'done')->count(),
+            'blocked_count' => $inScope->where('status', 'blocked')->count(),
+            'on_time_pct' => $taskScore['breakdown']['on_time'] ?? null,
+            'update_consistency_pct' => null,
+        ];
+
+        $periodLabel = $weekStart->toDateString() . ' to ' . $weekEnd->toDateString();
+
+        try {
+            $result = app(AiService::class)->generateTaskSummary($caller['name'] ?? 'You', 'employee', 'weekly', $periodLabel, $facts);
+        } catch (\Throwable $e) {
+            return response()->json(['success' => false, 'message' => "Couldn't generate a summary right now."], 502);
+        }
+
+        $this->logBestEffort($request, 'generate_task_ai_summary', $company, null, [
+            'score' => $taskScore['score'],
+        ], 'task_ai_summary', null);
+
+        return response()->json([
+            'success' => true,
+            'narrative' => $result['narrative'],
+            'recommendations' => $result['recommendations'] ?? [],
+        ]);
     }
 }

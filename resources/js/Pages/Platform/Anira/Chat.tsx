@@ -2,6 +2,7 @@ import axios from 'axios';
 import { FormEventHandler, useState } from 'react';
 import PlatformLayout from '@/Components/Platform/PlatformLayout';
 import { SparklesIcon } from '@/Components/Platform/Icons';
+import { PrimaryButton } from '@/Components/Platform/ui';
 
 interface Me {
     id: string;
@@ -118,9 +119,9 @@ export default function AniraChat({ me, companies }: AniraChatPageProps) {
                     placeholder="How is my Customer Satisfaction KPI trending?"
                     className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 />
-                <button type="submit" disabled={sending || !input.trim()} className="rounded-lg bg-brand-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                <PrimaryButton type="submit" disabled={sending || !input.trim()}>
                     Send
-                </button>
+                </PrimaryButton>
             </form>
         </PlatformLayout>
     );

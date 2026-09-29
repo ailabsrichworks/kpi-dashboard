@@ -13,10 +13,6 @@ interface Company {
     display_name: string | null;
     primary_color: string | null;
     secondary_color: string | null;
-    subdomain: string | null;
-    subscription_plan_id: string | null;
-    subscription_status: string | null;
-    subscription_current_period_end: string | null;
 }
 
 interface AdminRow {
@@ -24,27 +20,15 @@ interface AdminRow {
     users: { name: string; email: string };
 }
 
-interface Plan {
-    id: string;
-    name: string;
-    is_active: boolean;
-}
-
 interface CompaniesPageProps {
     companies: Company[];
     admins: AdminRow[];
-    plans: Plan[];
     [key: string]: unknown;
 }
 
 function CreateCompanyForm() {
     const [open, setOpen] = useState(false);
-    const { data, setData, post, processing, reset } = useForm({
-        legal_name: '', display_name: '', registration_number: '', industry: '', country: '', timezone: 'Asia/Kuala_Lumpur',
-        financial_year_start: 'January', financial_year_end: 'December', estimated_employee_count: '', primary_contact_name: '',
-        primary_contact_email: '', primary_contact_phone: '', company_admin_name: '', company_admin_email: '', cam_name: '',
-        subscription_plan: 'Standard', contract_start_date: '', contract_end_date: '', user_limit: '', subdomain: '',
-    });
+    const { data, setData, post, processing, reset } = useForm({ name: '', code: '' });
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
@@ -64,26 +48,37 @@ function CreateCompanyForm() {
         );
     }
 
-    const fields = [
-        ['legal_name', 'Legal company name', 'Andalusia Travel & Tours Sdn Bhd'], ['display_name', 'Display name', 'Andalusia'],
-        ['subdomain', 'Requested subdomain', 'andalusia'], ['registration_number', 'Registration number', 'Optional'],
-        ['industry', 'Industry', 'Travel & Tourism'], ['country', 'Country', 'Malaysia'], ['timezone', 'Timezone', 'Asia/Kuala_Lumpur'],
-        ['estimated_employee_count', 'Estimated employees', '482'], ['primary_contact_name', 'Primary contact', 'Full name'],
-        ['primary_contact_email', 'Primary contact email', 'name@company.com'], ['primary_contact_phone', 'Primary contact phone', 'Optional'],
-        ['company_admin_name', 'Company Admin name', 'Full name'], ['company_admin_email', 'Company Admin email', 'admin@company.com'],
-        ['cam_name', 'CAM', 'Assigned CAM'], ['subscription_plan', 'Subscription plan', 'Enterprise'], ['user_limit', 'User limit', '500'],
-        ['contract_start_date', 'Contract starts', ''], ['contract_end_date', 'Contract ends', ''],
-    ] as const;
-
-    return <form onSubmit={submit} className="mb-5 rounded-xl bg-slate-50 p-4">
-        <p className="mb-3 text-sm font-bold text-slate-800">New client onboarding</p>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {fields.map(([key, label, placeholder]) => <label key={key} className="block text-xs font-medium text-slate-600">
-                {label}<input type={key.includes('date') ? 'date' : key.includes('email') ? 'email' : 'text'} value={data[key]} onChange={(e) => setData(key, e.target.value)} placeholder={placeholder} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" required={!['registration_number', 'primary_contact_phone', 'cam_name', 'contract_start_date', 'contract_end_date'].includes(key)} />
-            </label>)}
-        </div>
-        <div className="mt-4 flex items-center gap-3"><PrimaryButton type="submit" disabled={processing}>Create onboarding</PrimaryButton><button type="button" onClick={() => setOpen(false)} className="text-sm text-slate-400">Cancel</button></div>
-    </form>;
+    return (
+        <form onSubmit={submit} className="flex flex-wrap items-end gap-3 mb-5 bg-slate-50 rounded-xl p-4">
+            <div className="flex-1 min-w-48">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Company name</label>
+                <input
+                    value={data.name}
+                    onChange={(e) => setData('name', e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    placeholder="Andalusia"
+                    required
+                    autoFocus
+                />
+            </div>
+            <div className="w-40">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Code</label>
+                <input
+                    value={data.code}
+                    onChange={(e) => setData('code', e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    placeholder="ANDALUSIA"
+                    required
+                />
+            </div>
+            <PrimaryButton type="submit" disabled={processing}>
+                Create
+            </PrimaryButton>
+            <button type="button" onClick={() => setOpen(false)} className="text-sm text-slate-400 pb-2.5">
+                Cancel
+            </button>
+        </form>
+    );
 }
 
 function InviteAdminForm({ companyId }: { companyId: string }) {
@@ -112,9 +107,9 @@ function InviteAdminForm({ companyId }: { companyId: string }) {
         <form onSubmit={submit} className="flex items-end gap-2 mt-2">
             <input value={data.name} onChange={(e) => setData('name', e.target.value)} placeholder="Full name" className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs" required />
             <input type="email" value={data.email} onChange={(e) => setData('email', e.target.value)} placeholder="Email" className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs" required />
-            <button type="submit" disabled={processing} className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">
+            <PrimaryButton type="submit" disabled={processing}>
                 Send
-            </button>
+            </PrimaryButton>
             <button type="button" onClick={() => setOpen(false)} className="text-xs text-slate-400">
                 Cancel
             </button>
@@ -209,9 +204,9 @@ function BrandingForm({ company }: { company: Company }) {
             <input value={data.display_name} onChange={(e) => setData('display_name', e.target.value)} placeholder="Display name" className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs" />
             <input value={data.primary_color} onChange={(e) => setData('primary_color', e.target.value)} placeholder="Primary color (#06142f)" className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs" />
             <input value={data.secondary_color} onChange={(e) => setData('secondary_color', e.target.value)} placeholder="Secondary color (#D4AF37)" className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs" />
-            <button type="submit" disabled={processing} className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">
+            <PrimaryButton type="submit" disabled={processing}>
                 Save
-            </button>
+            </PrimaryButton>
             <button type="button" onClick={() => setOpen(false)} className="text-xs text-slate-400">
                 Cancel
             </button>
@@ -219,72 +214,7 @@ function BrandingForm({ company }: { company: Company }) {
     );
 }
 
-function SubscriptionForm({ company, plans }: { company: Company; plans: Plan[] }) {
-    const [open, setOpen] = useState(false);
-    const { data, setData, post, processing } = useForm({
-        subscription_plan_id: company.subscription_plan_id ?? '',
-        subscription_status: company.subscription_status ?? '',
-        subscription_current_period_end: company.subscription_current_period_end ?? '',
-    });
-
-    const submit: FormEventHandler = (e) => {
-        e.preventDefault();
-        post(`/platform/companies/${company.id}/subscription`, { onSuccess: () => setOpen(false) });
-    };
-
-    const currentPlanName = plans.find((p) => p.id === company.subscription_plan_id)?.name;
-
-    if (!open) {
-        return (
-            <button onClick={() => setOpen(true)} className="text-xs font-semibold text-brand-800 hover:underline">
-                {currentPlanName ? `Plan: ${currentPlanName}${company.subscription_status ? ` (${company.subscription_status})` : ''} — change` : 'Assign plan'}
-            </button>
-        );
-    }
-
-    return (
-        <form onSubmit={submit} className="flex items-end gap-2 mt-2 flex-wrap">
-            <select
-                value={data.subscription_plan_id}
-                onChange={(e) => setData('subscription_plan_id', e.target.value)}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs"
-            >
-                <option value="">No plan</option>
-                {plans.map((plan) => (
-                    <option key={plan.id} value={plan.id} disabled={!plan.is_active && plan.id !== company.subscription_plan_id}>
-                        {plan.name}
-                        {!plan.is_active ? ' (inactive)' : ''}
-                    </option>
-                ))}
-            </select>
-            <select
-                value={data.subscription_status}
-                onChange={(e) => setData('subscription_status', e.target.value)}
-                className="rounded-lg border border-slate-300 px-2 py-1.5 text-xs"
-            >
-                <option value="">No status</option>
-                <option value="trialing">Trialing</option>
-                <option value="active">Active</option>
-                <option value="past_due">Past due</option>
-                <option value="canceled">Canceled</option>
-            </select>
-            <input
-                type="date"
-                value={data.subscription_current_period_end}
-                onChange={(e) => setData('subscription_current_period_end', e.target.value)}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs"
-            />
-            <button type="submit" disabled={processing} className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">
-                Save
-            </button>
-            <button type="button" onClick={() => setOpen(false)} className="text-xs text-slate-400">
-                Cancel
-            </button>
-        </form>
-    );
-}
-
-export default function CompaniesIndex({ companies, admins, plans }: CompaniesPageProps) {
+export default function CompaniesIndex({ companies, admins }: CompaniesPageProps) {
     const adminsByCompany = admins.reduce<Record<string, AdminRow[]>>((acc, row) => {
         (acc[row.company_id] ??= []).push(row);
         return acc;
@@ -304,7 +234,7 @@ export default function CompaniesIndex({ companies, admins, plans }: CompaniesPa
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                     <div>
                                         <p className="text-sm font-bold text-slate-800">{company.name}</p>
-                                        <p className="text-xs text-slate-400">{company.code}{company.subdomain ? ` · ${company.subdomain}.performix.ai` : ''}</p>
+                                        <p className="text-xs text-slate-400">{company.code}</p>
                                     </div>
                                     <div className="flex items-center gap-4">
                                         <Link href={`/platform/companies/${company.id}/onboarding`} className="text-xs font-semibold text-brand-800 hover:underline">
@@ -326,7 +256,6 @@ export default function CompaniesIndex({ companies, admins, plans }: CompaniesPa
                                 <div className="mt-2.5 flex items-center gap-3">
                                     <StatusActions company={company} />
                                     <BrandingForm company={company} />
-                                    <SubscriptionForm company={company} plans={plans} />
                                 </div>
 
                                 <div className="mt-2.5 space-y-1">

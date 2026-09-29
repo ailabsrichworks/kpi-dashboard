@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    <title inertia>{{ config('app.name', 'Performix') }}</title>
+    <title inertia>{{ config('app.name', 'RGHB KPI') }}</title>
 
     {{-- The following theme <style> blocks are HOISTED verbatim from
          partials/sidebar.blade.php (lines 16-473 as of the React AppLayout

@@ -54,6 +54,21 @@ class HandleInertiaRequests extends Middleware
             // on every page without each controller remembering to pass its
             // own copy of "who is this and what can they do."
             'platformUser' => fn () => $request->attributes->get('platformUser'),
+            // Set by Platform\ViewAsController::start()/stop() — while true,
+            // `platformUser` above has already resolved to the IMPERSONATED
+            // target's own real identity/role (their minted token replaced
+            // the admin's in `platform_access_token`), which is also why the
+            // banner this drives is the only reliable way back: the sidebar's
+            // Super-Admin-only section correctly disappears along with it.
+            'platformImpersonating' => fn () => (bool) session('admin_impersonating'),
+            // Deliberately separate from `layout.unreadNotificationCount`
+            // below, which queries the legacy, differently-shaped
+            // `recipient_employee_id`-keyed notifications concept via the
+            // service-role client. This uses the caller's own
+            // SupabaseUserService (RLS: notifications_select scopes to
+            // `user_id = auth_current_user_id()`) against the Platform's
+            // real `user_id`/`company_id`-shaped notifications table.
+            'platformUnreadNotificationCount' => fn () => $this->platformUnreadNotificationCount($request),
             'layout' => fn () => [
                 'companyCode' => session('company_code'),
                 'companyDisplayName' => session('company_display_name'),
@@ -143,6 +158,25 @@ class HandleInertiaRequests extends Middleware
             return count(array_filter($rows, fn ($row) => empty($row['is_read'])));
         } catch (\Throwable $e) {
             Log::warning('Failed to fetch unread notification count for layout props: ' . $e->getMessage());
+
+            return 0;
+        }
+    }
+
+    private function platformUnreadNotificationCount(Request $request): int
+    {
+        $supabase = $request->attributes->get('platformSupabase');
+
+        if (!$supabase) {
+            return 0;
+        }
+
+        try {
+            $rows = $supabase->get('notifications', ['select' => 'is_read']) ?? [];
+
+            return count(array_filter($rows, fn ($row) => empty($row['is_read'])));
+        } catch (\Throwable $e) {
+            Log::warning('Failed to fetch Platform unread notification count: ' . $e->getMessage());
 
             return 0;
         }

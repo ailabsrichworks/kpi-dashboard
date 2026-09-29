@@ -3,13 +3,13 @@
 namespace App\Http\Controllers\Platform;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Platform\Concerns\ComputesFinancialYear;
 use App\Http\Controllers\Platform\Concerns\LogsAdminActions;
 use App\Http\Controllers\Platform\Concerns\PlatformAuthorization;
-use App\Services\KpiCalculationService;
-use App\Services\PerformancePeriodService;
 use App\Services\SupabaseUserService;
+use App\Services\WeightedScoreService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 
 /**
@@ -21,10 +21,11 @@ use Inertia\Inertia;
  */
 class KpiController extends Controller
 {
+    use ComputesFinancialYear;
     use LogsAdminActions;
     use PlatformAuthorization;
 
-    public function index(Request $request, string $company, KpiCalculationService $calc)
+    public function index(Request $request, string $company)
     {
         $this->ensureCompanyMember($request, $company);
 
@@ -35,7 +36,7 @@ class KpiController extends Controller
 
         $companyRow = $supabase->first('companies', [
             'id' => 'eq.' . $company,
-            'select' => 'id,name,code,financial_year_start_month',
+            'select' => 'id,name,code',
         ]);
 
         $categories = $supabase->get('kpi_categories', [
@@ -50,23 +51,67 @@ class KpiController extends Controller
             'order' => 'created_at.desc',
         ]);
 
-        $goals = $supabase->get('company_goals', [
-            'company_id' => 'eq.' . $company,
-            'status' => 'in.(draft,active,at_risk)',
-            'select' => 'id,title',
-            'order' => 'title.asc',
-        ]);
-
         $kpiIds = array_column($kpis, 'id');
+
+        // Only fetched for `quarterly`-frequency KPIs' current-year targets —
+        // used purely to prefill the Edit form's 4 quarter-target inputs, not
+        // to show any achievement/progress here (that's Quarterly Progress's
+        // own page).
+        $quarterlyKpiIds = collect($kpis)->where('frequency', 'quarterly')->pluck('id')->all();
+        $quarters = empty($quarterlyKpiIds)
+            ? []
+            : $supabase->get('kpi_quarters', [
+                'kpi_id' => 'in.(' . implode(',', $quarterlyKpiIds) . ')',
+                'financial_year' => 'eq.' . $this->currentFinancialYear(),
+                'select' => 'kpi_id,quarter,target,actual,status',
+            ]);
+        $quarterTargetsByKpi = collect($quarters)->groupBy('kpi_id')->map(
+            fn ($group) => $group->pluck('target', 'quarter')->all()
+        );
+        $quartersByKpiId = collect($quarters)->groupBy('kpi_id')->map(fn ($group) => $group->all())->all();
+
+        $kpis = collect($kpis)->map(function ($kpi) use ($quarterTargetsByKpi) {
+            $kpi['quarter_targets'] = $quarterTargetsByKpi->get($kpi['id'], (object) []);
+
+            return $kpi;
+        })->values();
+
+        // The summary strip at the top of this page mirrors legacy's KPI
+        // List header (KPI Score / Financial Year / Total KPI / Weightage /
+        // Quarter Score) — scoped to the CALLER's own assigned KPIs, same as
+        // legacy's `$individualKpiRows` filter, but reusing
+        // WeightedScoreService (same formula DashboardController and every
+        // other "my score" surface already use) instead of legacy's
+        // page-local Blade calculation.
+        $meId = $request->attributes->get('platformUser')['id'];
+        $myKpis = $kpis->where('assigned_user_id', $meId)->all();
+        $latestByKpiId = empty($kpiIds) ? [] : collect($supabase->get('kpi_submissions', [
+            'kpi_id' => 'in.(' . implode(',', $kpiIds) . ')',
+            'select' => 'kpi_id,value,submission_date',
+            'order' => 'submission_date.desc',
+        ]))->groupBy('kpi_id')->map(fn ($g) => $g->first())->all();
+
+        $myScore = app(WeightedScoreService::class)->summarize($myKpis, $latestByKpiId, $quartersByKpiId);
 
         // Only fetched for KPIs that could possibly have one — 'company'
         // visibility (the default) never checks this table at read time, so
         // there is nothing here to show for the common case.
+        //
+        // `users!kpi_access_grants_user_id_foreign` (not a bare `users(...)`)
+        // is required: `kpi_access_grants` has TWO foreign keys into `users`
+        // (`user_id` and `granted_by`), so an unqualified embed is ambiguous.
+        // PostgREST returns 300 Multiple Choices with an error payload in
+        // that case — and Laravel's HTTP client doesn't treat 300 as a
+        // failure (`failed()` only checks 4xx/5xx), so `->throw()` silently
+        // let that error object through as if it were the real `grants`
+        // array. Confirmed live: every load of this page for a company with
+        // at least one KPI returned that PGRST201 error object as `grants`
+        // instead of the actual per-KPI access-grant rows.
         $grants = empty($kpiIds)
             ? []
             : $supabase->get('kpi_access_grants', [
                 'kpi_id' => 'in.(' . implode(',', $kpiIds) . ')',
-                'select' => 'id,kpi_id,user_id,department_id,users(name,email),departments(name)',
+                'select' => 'id,kpi_id,user_id,department_id,users!kpi_access_grants_user_id_foreign(name,email),departments(name)',
             ]);
 
         $departments = $supabase->get('departments', [
@@ -96,19 +141,6 @@ class KpiController extends Controller
                 'select' => 'id,template_id,category_name,name',
             ]);
 
-        $kpis = $this->attachComputedPerformance($supabase, $kpis, $companyRow, $calc);
-
-        // Pending target revisions (spec Part 7): shown alongside each KPI so
-        // "a change is proposed but not yet in effect" is visible without a
-        // separate page — the KPI's own `target` field above is untouched
-        // until this is approved.
-        $pendingTargetRevisions = $supabase->get('kpi_target_revisions', [
-            'company_id' => 'eq.' . $company,
-            'status' => 'eq.pending',
-            'select' => 'id,kpi_id,old_target,new_target,reason,effective_financial_year,requested_at,requested_by,users(name)',
-            'order' => 'requested_at.desc',
-        ]);
-
         return Inertia::render('Platform/Kpis/Index', [
             'company' => $companyRow,
             'categories' => $categories,
@@ -116,146 +148,11 @@ class KpiController extends Controller
             'templates' => $templates,
             'templateItems' => $templateItems,
             'grants' => $grants,
-            'goals' => $goals,
             'departments' => $departments,
             'members' => $members,
-            'pendingTargetRevisions' => $pendingTargetRevisions,
+            'myScore' => $myScore,
+            'financialYear' => $this->currentFinancialYear(),
         ]);
-    }
-
-    /**
-     * Attaches server-computed `computed_achievement`/`computed_status`/
-     * `computed_expected_progress` (from each KPI's own most recent
-     * submission) and, for KPIs with children, `rollup_achievement` (the
-     * weighted roll-up of those children) — spec §11/§18: a single,
-     * reusable calculation engine instead of per-page ad-hoc formulas.
-     *
-     * Bounded, not deeply recursive: rolls up exactly one level (children
-     * into their direct parent). A KPI three cascade levels deep would need
-     * its own children rolled up first — fine for the common
-     * Company KPI <- Department KPI shape this pass targets, worth
-     * revisiting if a real 4-level cascade shows up in practice.
-     */
-    private function attachComputedPerformance(SupabaseUserService $supabase, array $kpis, array $companyRow, KpiCalculationService $calc): array
-    {
-        if (empty($kpis)) {
-            return $kpis;
-        }
-
-        $periods = new PerformancePeriodService((int) ($companyRow['financial_year_start_month'] ?? 1));
-        $now = Carbon::now();
-        $currentFy = $periods->financialYearFor($now);
-        $currentQuarter = $periods->quarterFor($now);
-        [$fyStart, $fyEnd] = $periods->financialYearBounds($currentFy);
-        $elapsedFraction = $periods->periodElapsedFraction($fyStart, $fyEnd, $now);
-
-        $kpiIds = array_column($kpis, 'id');
-
-        // Latest APPROVED submission per KPI this financial year — reduced in
-        // PHP from one ordered query rather than one query per KPI. Spec
-        // Part 4: official calculations (dashboards, reports, ANIRA) use
-        // approved performance only, never a pending/unreviewed revision —
-        // this is the one place that guarantee is enforced for every reader
-        // of `computed_achievement`/`computed_status`/`rollup_achievement`.
-        $submissions = $supabase->get('kpi_submissions', [
-            'kpi_id' => 'in.(' . implode(',', $kpiIds) . ')',
-            'submission_date' => 'gte.' . $fyStart->toDateString(),
-            'status' => 'eq.approved',
-            'select' => 'kpi_id,value,submission_date',
-            'order' => 'submission_date.desc',
-        ]);
-
-        $latestValueByKpi = [];
-        foreach ($submissions as $submission) {
-            $latestValueByKpi[$submission['kpi_id']] ??= (float) $submission['value'];
-        }
-
-        // A separate, purely informational "there's a pending revision
-        // awaiting approval" flag — the KPI list can show this next to the
-        // approved figure without ever letting it influence the approved
-        // achievement/status/roll-up computed above.
-        $pendingSubmissions = $supabase->get('kpi_submissions', [
-            'kpi_id' => 'in.(' . implode(',', $kpiIds) . ')',
-            'status' => 'eq.pending_review',
-            'select' => 'kpi_id,value,submission_date',
-            'order' => 'submission_date.desc',
-        ]);
-
-        $pendingValueByKpi = [];
-        foreach ($pendingSubmissions as $submission) {
-            $pendingValueByKpi[$submission['kpi_id']] ??= (float) $submission['value'];
-        }
-
-        // This FY's quarterly period targets, if any were set — used for a
-        // precise "expected progress to date" instead of a linear estimate
-        // when the company has actually split the target unevenly.
-        $periodTargets = $supabase->get('kpi_period_targets', [
-            'kpi_id' => 'in.(' . implode(',', $kpiIds) . ')',
-            'financial_year' => 'eq.' . $currentFy,
-            'period_type' => 'eq.quarter',
-            'select' => 'kpi_id,period_number,target',
-        ]);
-
-        $quarterTargetsByKpi = [];
-        foreach ($periodTargets as $pt) {
-            $quarterTargetsByKpi[$pt['kpi_id']][(int) $pt['period_number']] = (float) $pt['target'];
-        }
-
-        $computed = [];
-
-        foreach ($kpis as $kpi) {
-            $target = $kpi['target'] !== null ? (float) $kpi['target'] : null;
-            $stretch = $kpi['stretch_target'] !== null ? (float) $kpi['stretch_target'] : null;
-            $direction = $kpi['measurement_direction'] ?? 'higher_is_better';
-            $latest = $latestValueByKpi[$kpi['id']] ?? null;
-
-            $achievement = $latest !== null ? $calc->achievement($latest, $target, $stretch, $direction) : null;
-
-            $expectedProgress = null;
-            if (isset($quarterTargetsByKpi[$kpi['id']]) && $target !== null && $target != 0) {
-                $allocatedToDate = 0.0;
-                for ($q = 1; $q <= $currentQuarter; $q++) {
-                    $allocatedToDate += $quarterTargetsByKpi[$kpi['id']][$q] ?? 0.0;
-                }
-                $expectedProgress = min(100.0, ($allocatedToDate / $target) * 100);
-            } elseif ($target !== null) {
-                $expectedProgress = $calc->expectedProgressPct($elapsedFraction);
-            }
-
-            $status = $calc->status($achievement, $expectedProgress);
-
-            $computed[$kpi['id']] = $kpi + [
-                'computed_achievement' => $achievement,
-                'computed_expected_progress' => $expectedProgress,
-                'computed_status' => $status,
-                'rollup_achievement' => null,
-                // Informational only (spec Part 4): a pending revision never
-                // feeds into computed_achievement/computed_status/rollup_achievement
-                // above — it's surfaced here purely so the UI can show
-                // "Approved: X — Pending: Y (awaiting approval)" side by side.
-                'pending_value' => $pendingValueByKpi[$kpi['id']] ?? null,
-            ];
-        }
-
-        $childrenByParent = [];
-        foreach ($computed as $kpi) {
-            if ($kpi['parent_kpi_id']) {
-                $childrenByParent[$kpi['parent_kpi_id']][] = $kpi;
-            }
-        }
-
-        foreach ($childrenByParent as $parentId => $children) {
-            if (!isset($computed[$parentId])) {
-                continue;
-            }
-
-            $computed[$parentId]['rollup_achievement'] = $calc->weightedRollup(array_map(
-                fn ($c) => ['achievement' => $c['computed_achievement'], 'weightage' => $c['weightage'] !== null ? (float) $c['weightage'] : null],
-                $children,
-            ));
-        }
-
-        return array_values($computed);
     }
 
     /**
@@ -375,27 +272,29 @@ class KpiController extends Controller
             'description' => 'nullable|string',
             'target' => 'nullable|numeric',
             'unit' => 'nullable|string|max:50',
+            'weight' => 'nullable|numeric|min:0|max:100',
             'frequency' => 'required|in:daily,weekly,monthly,quarterly,custom',
             'visibility' => 'nullable|in:company,department,restricted',
-            'company_goal_id' => 'nullable|uuid',
-            'parent_kpi_id' => 'nullable|uuid',
-            'department_id' => 'nullable|uuid',
-            'owner_user_id' => 'nullable|uuid',
-            'measurement_unit' => 'nullable|in:number,currency,percentage,ratio,days,hours,score,binary,custom',
-            'measurement_direction' => 'nullable|in:higher_is_better,lower_is_better,target_range,on_or_before,binary_completion',
-            'stretch_target' => 'nullable|numeric',
-            'weightage' => 'nullable|numeric|min:0|max:100',
+            'assigned_user_id' => 'nullable|uuid',
+            'quarter_targets' => 'nullable|array',
+            'quarter_targets.Q1' => 'nullable|numeric|min:0',
+            'quarter_targets.Q2' => 'nullable|numeric|min:0',
+            'quarter_targets.Q3' => 'nullable|numeric|min:0',
+            'quarter_targets.Q4' => 'nullable|numeric|min:0',
         ]);
 
         /** @var SupabaseUserService $supabase */
         $supabase = $request->attributes->get('platformSupabase');
 
-        if ($request->filled('weightage')) {
-            $error = $this->weightageOverageError($supabase, $company, (float) $request->weightage, $request->parent_kpi_id ?: null, $request->company_goal_id ?: null);
-            if ($error) {
-                return back()->withInput()->with('error', $error);
-            }
+        if ($request->assigned_user_id) {
+            $this->ensureCompanyMemberExists($supabase, $company, $request->assigned_user_id);
         }
+
+        // Generated here (rather than left to the DB default) so the new
+        // KPI's id is known immediately, without a follow-up SELECT — the
+        // insert below deliberately uses return=minimal (see comment) so
+        // there's no RETURNING row to read it back from otherwise.
+        $kpiId = (string) Str::uuid();
 
         try {
             // return=minimal (3rd arg false): `kpis_select`'s policy calls
@@ -408,25 +307,32 @@ class KpiController extends Controller
             // was a real bug: every KPI created by anyone other than a Super
             // Admin failed. Nothing here uses the returned row anyway.
             $supabase->insert('kpis', [
+                'id' => $kpiId,
                 'company_id' => $company,
                 'category_id' => $request->category_id ?: null,
                 'name' => $request->name,
                 'description' => $request->description,
                 'target' => $request->target,
                 'unit' => $request->unit,
+                'weight' => $request->weight,
                 'frequency' => $request->frequency,
                 'visibility' => $request->input('visibility', 'company'),
-                'company_goal_id' => $request->company_goal_id ?: null,
-                'parent_kpi_id' => $request->parent_kpi_id ?: null,
-                'department_id' => $request->department_id ?: null,
-                'owner_user_id' => $request->owner_user_id ?: null,
-                'measurement_unit' => $request->input('measurement_unit', 'number'),
-                'measurement_direction' => $request->input('measurement_direction', 'higher_is_better'),
-                'stretch_target' => $request->stretch_target,
-                'weightage' => $request->weightage,
+                'assigned_user_id' => $request->assigned_user_id ?: null,
             ], false);
         } catch (\Throwable $e) {
             return back()->withInput()->with('error', 'Could not create KPI: ' . $e->getMessage());
+        }
+
+        $quarterSyncFailed = false;
+        if ($request->frequency === 'quarterly') {
+            try {
+                $this->syncQuarterTargets($supabase, $company, $kpiId, $request->input('quarter_targets', []));
+            } catch (\Throwable) {
+                // The KPI itself was created successfully — a hiccup saving
+                // its quarter targets shouldn't undo that or block the audit
+                // log below. Targets can be filled in afterward via Edit.
+                $quarterSyncFailed = true;
+            }
         }
 
         try {
@@ -441,43 +347,60 @@ class KpiController extends Controller
             return back()->with('error', 'KPI was created, but the action could not be logged — contact support before continuing.');
         }
 
+        if ($quarterSyncFailed) {
+            return back()->with('error', 'KPI "' . $request->name . '" created, but its quarterly targets could not be saved — edit the KPI to set them.');
+        }
+
         return back()->with('success', 'KPI "' . $request->name . '" created.');
     }
 
     /**
-     * Sums the weightage of this KPI's siblings — other KPIs sharing the
-     * same `parent_kpi_id` (Department/Individual KPI cascade level), or
-     * failing that the same `company_goal_id` (top-level Company KPI), or
-     * failing that unset entirely (no natural 100% bucket to check against,
-     * so nothing is validated) — and rejects outright if the incoming
-     * weightage would push the group's total over 100. Spec §15/§56: "do not
-     * silently accept invalid total weightage."
+     * Upserts the 4 `kpi_quarters` rows for a `quarterly`-frequency KPI —
+     * `financial_year`/`start_date`/`end_date` are always computed here, on
+     * the server, never taken from the client (see the quarterly-tracking
+     * migration's own docblock for why: no custom fiscal-year offset, no
+     * client-controlled quarter windows). Only `target` comes from the
+     * caller, defaulting to whatever the row already had (or 0 for a brand
+     * new one) when left blank — the same "keep the previous value if the
+     * form didn't send one" rule legacy's own `upsertQuarters()` uses.
+     *
+     * PostgREST has no upsert-by-unique-key without an `on_conflict` param
+     * this client doesn't build, so this reads-then-writes per quarter
+     * instead — fine at 4 rows, called only from an admin-gated action.
+     *
+     * @param array<string, float|null> $targets keyed by 'Q1'..'Q4'
      */
-    private function weightageOverageError(SupabaseUserService $supabase, string $company, float $incoming, ?string $parentKpiId, ?string $companyGoalId, ?string $excludeKpiId = null): ?string
+    private function syncQuarterTargets(SupabaseUserService $supabase, string $company, string $kpiId, array $targets): void
     {
-        if (!$parentKpiId && !$companyGoalId) {
-            return null;
+        $financialYear = $this->currentFinancialYear();
+
+        foreach (['Q1', 'Q2', 'Q3', 'Q4'] as $quarter) {
+            $existing = $supabase->first('kpi_quarters', [
+                'kpi_id' => 'eq.' . $kpiId,
+                'financial_year' => 'eq.' . $financialYear,
+                'quarter' => 'eq.' . $quarter,
+                'select' => 'id,target',
+            ]);
+
+            $target = $targets[$quarter] ?? ($existing['target'] ?? 0);
+
+            if ($existing) {
+                $supabase->update('kpi_quarters', ['id' => 'eq.' . $existing['id']], ['target' => $target], false);
+                continue;
+            }
+
+            [$startDate, $endDate] = $this->quarterDateRange($financialYear, $quarter);
+
+            $supabase->insert('kpi_quarters', [
+                'company_id' => $company,
+                'kpi_id' => $kpiId,
+                'financial_year' => $financialYear,
+                'quarter' => $quarter,
+                'target' => $target,
+                'start_date' => $startDate->toDateString(),
+                'end_date' => $endDate->toDateString(),
+            ], false);
         }
-
-        $siblings = $parentKpiId
-            ? $supabase->get('kpis', ['parent_kpi_id' => 'eq.' . $parentKpiId, 'select' => 'id,weightage'])
-            : $supabase->get('kpis', ['company_goal_id' => 'eq.' . $companyGoalId, 'parent_kpi_id' => 'is.null', 'select' => 'id,weightage']);
-
-        $existingTotal = collect($siblings)
-            ->when($excludeKpiId, fn ($c) => $c->reject(fn ($k) => $k['id'] === $excludeKpiId))
-            ->sum(fn ($k) => (float) ($k['weightage'] ?? 0));
-
-        $newTotal = $existingTotal + $incoming;
-
-        if ($newTotal > 100) {
-            return sprintf(
-                'Total weightage among these sibling KPIs would be %s%% (exceeds 100%% by %s%%). Adjust another KPI weightage first, or lower this one.',
-                rtrim(rtrim(number_format($newTotal, 2), '0'), '.'),
-                rtrim(rtrim(number_format($newTotal - 100, 2), '0'), '.'),
-            );
-        }
-
-        return null;
     }
 
     /**
@@ -505,43 +428,32 @@ class KpiController extends Controller
             'description' => 'nullable|string',
             'target' => 'nullable|numeric',
             'unit' => 'nullable|string|max:50',
+            'weight' => 'nullable|numeric|min:0|max:100',
             'frequency' => 'required|in:daily,weekly,monthly,quarterly,custom',
             'visibility' => 'nullable|in:company,department,restricted',
-            'company_goal_id' => 'nullable|uuid',
-            'parent_kpi_id' => 'nullable|uuid',
-            'department_id' => 'nullable|uuid',
-            'owner_user_id' => 'nullable|uuid',
-            'measurement_unit' => 'nullable|in:number,currency,percentage,ratio,days,hours,score,binary,custom',
-            'measurement_direction' => 'nullable|in:higher_is_better,lower_is_better,target_range,on_or_before,binary_completion',
-            'stretch_target' => 'nullable|numeric',
-            'weightage' => 'nullable|numeric|min:0|max:100',
+            'assigned_user_id' => 'nullable|uuid',
+            'quarter_targets' => 'nullable|array',
+            'quarter_targets.Q1' => 'nullable|numeric|min:0',
+            'quarter_targets.Q2' => 'nullable|numeric|min:0',
+            'quarter_targets.Q3' => 'nullable|numeric|min:0',
+            'quarter_targets.Q4' => 'nullable|numeric|min:0',
         ]);
 
         /** @var SupabaseUserService $supabase */
         $supabase = $request->attributes->get('platformSupabase');
 
+        if ($request->assigned_user_id) {
+            $this->ensureCompanyMemberExists($supabase, $company, $request->assigned_user_id);
+        }
+
         $before = $supabase->first('kpis', [
             'id' => 'eq.' . $kpi,
             'company_id' => 'eq.' . $company,
-            'select' => '*',
+            'select' => 'id,name,description,target,unit,weight,frequency,visibility,category_id,assigned_user_id',
         ]);
 
         if (!$before) {
             abort(404, 'That KPI does not belong to this company.');
-        }
-
-        if ($kpi === $request->parent_kpi_id) {
-            return back()->withInput()->with('error', 'A KPI cannot be its own parent.');
-        }
-
-        if ($request->filled('weightage') && (float) $request->weightage !== (float) ($before['weightage'] ?? -1)) {
-            $error = $this->weightageOverageError(
-                $supabase, $company, (float) $request->weightage,
-                $request->parent_kpi_id ?: null, $request->company_goal_id ?: null, $kpi,
-            );
-            if ($error) {
-                return back()->withInput()->with('error', $error);
-            }
         }
 
         $after = [
@@ -550,22 +462,25 @@ class KpiController extends Controller
             'description' => $request->description,
             'target' => $request->target,
             'unit' => $request->unit,
+            'weight' => $request->weight,
             'frequency' => $request->frequency,
             'visibility' => $request->input('visibility', $before['visibility']),
-            'company_goal_id' => $request->company_goal_id ?: null,
-            'parent_kpi_id' => $request->parent_kpi_id ?: null,
-            'department_id' => $request->department_id ?: null,
-            'owner_user_id' => $request->owner_user_id ?: null,
-            'measurement_unit' => $request->input('measurement_unit', $before['measurement_unit'] ?? 'number'),
-            'measurement_direction' => $request->input('measurement_direction', $before['measurement_direction'] ?? 'higher_is_better'),
-            'stretch_target' => $request->stretch_target,
-            'weightage' => $request->weightage,
+            'assigned_user_id' => $request->assigned_user_id ?: null,
         ];
 
         try {
             $supabase->update('kpis', ['id' => 'eq.' . $kpi], $after, false);
         } catch (\Throwable $e) {
             return back()->withInput()->with('error', 'Could not update KPI: ' . $e->getMessage());
+        }
+
+        $quarterSyncFailed = false;
+        if ($after['frequency'] === 'quarterly') {
+            try {
+                $this->syncQuarterTargets($supabase, $company, $kpi, $request->input('quarter_targets', []));
+            } catch (\Throwable) {
+                $quarterSyncFailed = true;
+            }
         }
 
         try {
@@ -582,6 +497,10 @@ class KpiController extends Controller
             }
         } catch (\Throwable) {
             return back()->with('error', 'KPI was updated, but the action could not be logged — contact support before continuing.');
+        }
+
+        if ($quarterSyncFailed) {
+            return back()->with('error', 'KPI "' . $request->name . '" updated, but its quarterly targets could not be saved — try again.');
         }
 
         return back()->with('success', 'KPI "' . $request->name . '" updated.');
@@ -661,5 +580,27 @@ class KpiController extends Controller
         }
 
         return back()->with('success', 'Access revoked.');
+    }
+
+    /**
+     * kpis.assigned_user_id references the global `users` table, which has
+     * no company-membership constraint of its own — without this check, a
+     * Company Admin could (accidentally, via a stale form, or via a raw API
+     * call) assign a KPI to a user who isn't even a member of this company.
+     * restrict_kpi_owner_weight_update() also re-checks this at write time
+     * as the real boundary; this is only for a clean redirect at the point
+     * of assignment instead of a confusing failure later when that person
+     * tries to allocate weight on a KPI that silently refuses them.
+     */
+    private function ensureCompanyMemberExists(SupabaseUserService $supabase, string $company, string $userId): void
+    {
+        $member = $supabase->first('company_users', [
+            'company_id' => 'eq.' . $company,
+            'user_id' => 'eq.' . $userId,
+            'status' => 'eq.active',
+            'select' => 'user_id',
+        ]);
+
+        abort_unless($member, 422, 'The assigned user is not an active member of this company.');
     }
 }

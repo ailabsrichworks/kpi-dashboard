@@ -91,9 +91,9 @@ function CompanyDetailsForm({ company }: { company: Company }) {
                 placeholder="Secondary color (#D4AF37)"
                 className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs"
             />
-            <button type="submit" disabled={processing} className="col-span-3 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">
+            <PrimaryButton type="submit" disabled={processing} className="col-span-3">
                 Save
-            </button>
+            </PrimaryButton>
         </form>
     );
 }
