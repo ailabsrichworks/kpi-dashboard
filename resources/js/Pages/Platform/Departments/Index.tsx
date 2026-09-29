@@ -36,6 +36,8 @@ interface MemberStatusRow {
     user_id: string;
     role: string;
     status: string;
+    manager_user_id: string | null;
+    users: { name: string; email: string };
 }
 
 interface DepartmentsPageProps {
@@ -62,6 +64,30 @@ function SuspendMemberToggle({ companyId, userId, status }: { companyId: string;
         <button onClick={toggle} className={`text-xs font-semibold hover:underline ${isSuspended ? 'text-emerald-600' : 'text-slate-400'}`}>
             {isSuspended ? 'Reactivate' : 'Suspend'}
         </button>
+    );
+}
+
+function ManagerSelect({ companyId, userId, currentManagerId, allMembers }: { companyId: string; userId: string; currentManagerId: string | null; allMembers: MemberStatusRow[] }) {
+    const candidates = allMembers.filter((m) => m.user_id !== userId);
+
+    const change = (managerUserId: string) => {
+        router.patch(`/platform/companies/${companyId}/users/${userId}/manager`, { manager_user_id: managerUserId || null }, { preserveScroll: true });
+    };
+
+    return (
+        <select
+            value={currentManagerId ?? ''}
+            onChange={(e) => change(e.target.value)}
+            title="Who this person reports to — used by Performance Reviews and Target Linkages"
+            className="rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-500 max-w-32"
+        >
+            <option value="">No manager set</option>
+            {candidates.map((m) => (
+                <option key={m.user_id} value={m.user_id}>
+                    Reports to: {m.users.name}
+                </option>
+            ))}
+        </select>
     );
 }
 
@@ -265,6 +291,8 @@ function RolesManager({ companyId, departmentId, roles }: { companyId: string; d
 }
 
 export default function DepartmentsIndex({ company, departments, members, roles, memberStatus }: DepartmentsPageProps) {
+    const allMembers = Object.values(memberStatus);
+
     const membersByDepartment = members.reduce<Record<string, MemberRow[]>>((acc, row) => {
         (acc[row.department_id] ??= []).push(row);
         return acc;
@@ -316,6 +344,12 @@ export default function DepartmentsIndex({ company, departments, members, roles,
                                                     {row.role === 'executive' ? 'Executive' : 'Employee'}
                                                 </Badge>
                                                 {status === 'suspended' && <Badge tone="danger">Suspended</Badge>}
+                                                <ManagerSelect
+                                                    companyId={company.id}
+                                                    userId={row.user_id}
+                                                    currentManagerId={memberStatus[row.user_id]?.manager_user_id ?? null}
+                                                    allMembers={allMembers}
+                                                />
                                                 <SuspendMemberToggle companyId={company.id} userId={row.user_id} status={status} />
                                             </div>
                                         );

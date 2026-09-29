@@ -206,6 +206,7 @@ function buildSections(platformUser: PlatformUser | null, contextCompany: Compan
         ];
         if (platformUser?.is_super_admin) admin.push({ label: 'Import Data', href: `${base}/import`, icon: 'attendance' });
         admin.push(
+            { label: 'Attendance', href: `${base}/attendance`, icon: 'attendance' },
             { label: 'Audit Log', href: `${base}/audit-log`, icon: 'report' },
             { label: 'Quarter Control', href: `${base}/quarter-control`, icon: 'calendar' },
             { label: 'Company Settings', href: `${base}/settings`, icon: 'settings' },

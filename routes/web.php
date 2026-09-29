@@ -229,6 +229,9 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::patch('/companies/{company}/departments/{department}/users/{user}/role', [\App\Http\Controllers\Platform\DepartmentController::class, 'updateUserRole'])
         ->name('platform.departments.users.role.update');
 
+    Route::patch('/companies/{company}/users/{user}/manager', [\App\Http\Controllers\Platform\DepartmentController::class, 'updateUserManager'])
+        ->name('platform.users.manager.update');
+
     Route::post('/companies/{company}/users/{user}/suspend', [\App\Http\Controllers\Platform\DepartmentController::class, 'suspendUser'])
         ->name('platform.companies.users.suspend');
 
@@ -316,11 +319,23 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::post('/notifications/read-all', [\App\Http\Controllers\Platform\NotificationController::class, 'markAllRead'])
         ->name('platform.notifications.read-all');
 
-    Route::get('/companies/{company}/target-linkages', [\App\Http\Controllers\Platform\PlaceholderController::class, 'targetLinkages'])
+    Route::get('/companies/{company}/target-linkages', [\App\Http\Controllers\Platform\TargetLinkageController::class, 'index'])
         ->name('platform.target-linkages');
 
-    Route::get('/companies/{company}/job-description', [\App\Http\Controllers\Platform\PlaceholderController::class, 'jobDescription'])
+    Route::post('/companies/{company}/target-linkages', [\App\Http\Controllers\Platform\TargetLinkageController::class, 'store'])
+        ->name('platform.target-linkages.store');
+
+    Route::delete('/companies/{company}/target-linkages/{linkage}', [\App\Http\Controllers\Platform\TargetLinkageController::class, 'destroy'])
+        ->name('platform.target-linkages.destroy');
+
+    Route::get('/companies/{company}/job-description', [\App\Http\Controllers\Platform\JobDescriptionController::class, 'index'])
         ->name('platform.job-description');
+
+    Route::post('/companies/{company}/job-description', [\App\Http\Controllers\Platform\JobDescriptionController::class, 'save'])
+        ->name('platform.job-description.save');
+
+    Route::post('/companies/{company}/job-descriptions/{jobDescription}/decision', [\App\Http\Controllers\Platform\JobDescriptionController::class, 'decide'])
+        ->name('platform.job-description.decide');
 
     Route::get('/companies/{company}/my-department-kpi', [\App\Http\Controllers\Platform\DepartmentKpiController::class, 'index'])
         ->name('platform.department-kpi');
@@ -328,9 +343,36 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::get('/companies/{company}/activity-log', [\App\Http\Controllers\Platform\ActivityLogController::class, 'index'])
         ->name('platform.activity-log');
 
-    Route::get('/companies/{company}/performance/{quarter}', [\App\Http\Controllers\Platform\PlaceholderController::class, 'performanceEvaluation'])
+    Route::get('/companies/{company}/attendance', [\App\Http\Controllers\Platform\AttendanceController::class, 'index'])
+        ->name('platform.attendance.index');
+
+    Route::post('/companies/{company}/attendance/import', [\App\Http\Controllers\Platform\AttendanceController::class, 'import'])
+        ->name('platform.attendance.import');
+
+    Route::post('/companies/{company}/attendance/save', [\App\Http\Controllers\Platform\AttendanceController::class, 'save'])
+        ->name('platform.attendance.save');
+
+    Route::post('/companies/{company}/attendance/holidays', [\App\Http\Controllers\Platform\AttendanceController::class, 'storeHoliday'])
+        ->name('platform.attendance.holidays.store');
+
+    Route::delete('/companies/{company}/attendance/holidays/{holiday}', [\App\Http\Controllers\Platform\AttendanceController::class, 'destroyHoliday'])
+        ->name('platform.attendance.holidays.destroy');
+
+    Route::get('/companies/{company}/performance/{quarter}', [\App\Http\Controllers\Platform\PerformanceController::class, 'index'])
         ->where('quarter', 'q1|q2|q3|q4')
-        ->name('platform.performance-evaluation');
+        ->name('platform.performance.index');
+
+    Route::post('/companies/{company}/performance/{quarter}/save', [\App\Http\Controllers\Platform\PerformanceController::class, 'save'])
+        ->where('quarter', 'q1|q2|q3|q4')
+        ->name('platform.performance.save');
+
+    Route::post('/companies/{company}/performance/{quarter}/appraise/{user}', [\App\Http\Controllers\Platform\PerformanceController::class, 'appraise'])
+        ->where('quarter', 'q1|q2|q3|q4')
+        ->name('platform.performance.appraise');
+
+    Route::post('/companies/{company}/performance/{quarter}/acknowledge', [\App\Http\Controllers\Platform\PerformanceController::class, 'acknowledge'])
+        ->where('quarter', 'q1|q2|q3|q4')
+        ->name('platform.performance.acknowledge');
 
     Route::get('/companies/{company}/quarter-control', [\App\Http\Controllers\Platform\PlaceholderController::class, 'quarterControl'])
         ->name('platform.quarter-control');

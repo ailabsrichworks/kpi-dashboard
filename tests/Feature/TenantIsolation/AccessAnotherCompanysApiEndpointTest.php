@@ -51,6 +51,23 @@ class AccessAnotherCompanysApiEndpointTest extends TenantIsolationTestCase
             'DELETE task destroy' => ['DELETE', '/platform/companies/company-b/tasks/task-b'],
             'PUT task kpi links update' => ['PUT', '/platform/companies/company-b/tasks/task-b/kpi-links'],
             'POST task ai summary' => ['POST', '/platform/companies/company-b/tasks/ai-summary'],
+            'GET kpis create' => ['GET', '/platform/companies/company-b/kpis/create'],
+            'GET job description index' => ['GET', '/platform/companies/company-b/job-description'],
+            'POST job description save' => ['POST', '/platform/companies/company-b/job-description'],
+            'POST job description decision' => ['POST', '/platform/companies/company-b/job-descriptions/jd-b/decision'],
+            'GET attendance index' => ['GET', '/platform/companies/company-b/attendance'],
+            'POST attendance import' => ['POST', '/platform/companies/company-b/attendance/import'],
+            'POST attendance save' => ['POST', '/platform/companies/company-b/attendance/save'],
+            'POST attendance holiday store' => ['POST', '/platform/companies/company-b/attendance/holidays'],
+            'DELETE attendance holiday destroy' => ['DELETE', '/platform/companies/company-b/attendance/holidays/holiday-b'],
+            'GET performance index' => ['GET', '/platform/companies/company-b/performance/q2'],
+            'POST performance save' => ['POST', '/platform/companies/company-b/performance/q2/save'],
+            'POST performance appraise' => ['POST', '/platform/companies/company-b/performance/q2/appraise/user-b'],
+            'POST performance acknowledge' => ['POST', '/platform/companies/company-b/performance/q2/acknowledge'],
+            'PATCH user manager update' => ['PATCH', '/platform/companies/company-b/users/user-b/manager'],
+            'GET target linkages index' => ['GET', '/platform/companies/company-b/target-linkages'],
+            'POST target linkages store' => ['POST', '/platform/companies/company-b/target-linkages'],
+            'DELETE target linkages destroy' => ['DELETE', '/platform/companies/company-b/target-linkages/link-b'],
         ];
     }
 

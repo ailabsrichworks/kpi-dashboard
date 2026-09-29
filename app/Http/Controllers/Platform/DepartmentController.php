@@ -69,7 +69,7 @@ class DepartmentController extends Controller
         // list can show each person's actual membership status.
         $memberStatus = $supabase->get('company_users', [
             'company_id' => 'eq.' . $company,
-            'select' => 'user_id,role,status',
+            'select' => 'user_id,role,status,manager_user_id,users(name,email)',
         ]);
 
         return Inertia::render('Platform/Departments/Index', [
@@ -319,6 +319,49 @@ class DepartmentController extends Controller
         }
 
         return back()->with('success', 'Role updated.');
+    }
+
+    /**
+     * Sets who a company member reports to — the one manager-hierarchy edge
+     * (`company_users.manager_user_id`) both Performance/Appraisal's
+     * appraiser chain and Target Linkages' target cascade need. Lives here,
+     * not on either of those feature's own controllers, since it's really a
+     * company-membership attribute (same reasoning as role) and this is the
+     * one page that already edits `company_users` rows. `null` clears it —
+     * `validate_manager_same_company()` is the real tenant/self-reference
+     * guard, this just turns its rejection into a clean redirect.
+     */
+    public function updateUserManager(Request $request, string $company, string $user)
+    {
+        $this->ensureCompanyAdmin($request, $company);
+
+        $request->validate(['manager_user_id' => 'nullable|uuid']);
+
+        /** @var SupabaseUserService $supabase */
+        $supabase = $request->attributes->get('platformSupabase');
+
+        $before = $supabase->first('company_users', [
+            'company_id' => 'eq.' . $company,
+            'user_id' => 'eq.' . $user,
+            'select' => 'manager_user_id',
+        ]);
+
+        try {
+            $supabase->update('company_users', [
+                'company_id' => 'eq.' . $company,
+                'user_id' => 'eq.' . $user,
+            ], ['manager_user_id' => $request->manager_user_id ?: null]);
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Could not set that manager: ' . $e->getMessage());
+        }
+
+        try {
+            $this->logCompanyAction($request, 'update_user_manager', $company, $user, [], 'company_user', $user, $before, ['manager_user_id' => $request->manager_user_id ?: null]);
+        } catch (\Throwable) {
+            return back()->with('error', 'Manager was set, but the action could not be logged — contact support before continuing.');
+        }
+
+        return back()->with('success', 'Manager updated.');
     }
 
     /**
