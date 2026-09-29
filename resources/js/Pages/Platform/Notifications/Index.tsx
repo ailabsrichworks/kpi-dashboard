@@ -1,8 +1,6 @@
-import { Link, router } from '@inertiajs/react';
+import { router } from '@inertiajs/react';
 import { useState } from 'react';
 import PlatformLayout from '@/Components/Platform/PlatformLayout';
-import { Card, EmptyState, PrimaryButton } from '@/Components/Platform/ui';
-import { BellIcon } from '@/Components/Platform/Icons';
 import { CATEGORY_META, DEFAULT_TYPE_META, NotificationCategory, typeMetaFor } from '@/config/notificationMeta';
 
 interface Notification {
@@ -23,27 +21,31 @@ interface NotificationsPageProps {
     [key: string]: unknown;
 }
 
+/**
+ * Matches legacy's own `timeAgo()` (resources/js/Pages/Notifications.tsx)
+ * exactly — abbreviated units (`6d ago`, not `6 days ago`), no week/month/
+ * year buckets. A previous version of this page used full-word units; kept
+ * in sync now that both pages are meant to read identically.
+ */
 function timeAgo(iso: string): string {
-    const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-    const units: [string, number][] = [
-        ['year', 31536000],
-        ['month', 2592000],
-        ['week', 604800],
-        ['day', 86400],
-        ['hour', 3600],
-        ['minute', 60],
-    ];
-    for (const [label, secondsPerUnit] of units) {
-        const value = Math.floor(seconds / secondsPerUnit);
-        if (value >= 1) return `${value} ${label}${value > 1 ? 's' : ''} ago`;
-    }
-    return 'just now';
+    const diffMs = Date.now() - new Date(iso).getTime();
+    const minutes = Math.round(diffMs / 60000);
+    if (minutes < 1) return 'just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.round(hours / 24);
+    return `${days}d ago`;
 }
 
 function isToday(iso: string): boolean {
     const d = new Date(iso);
     const now = new Date();
     return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+}
+
+function csrfToken(): string {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
 }
 
 type FilterKey = 'all' | NotificationCategory | 'appraisal_needed' | 'appraisal_ready' | 'appraisal_completed';
@@ -54,20 +56,31 @@ const APPRAISAL_FILTER_TYPES: Partial<Record<FilterKey, string>> = {
     appraisal_completed: 'appraisal_completed',
 };
 
+/**
+ * Matches legacy's `handleRowClick()` exactly: the WHOLE row is the click
+ * target, not just the "Open →" badge (that badge is an inert `<span>` in
+ * legacy, not its own link) — clicking anywhere marks the notification read
+ * first, then navigates only if a link exists. Marking read fires on every
+ * click, read or unread already, same as legacy (idempotent on the backend).
+ */
+function handleRowClick(notification: Notification) {
+    fetch(`/platform/notifications/${notification.id}/read`, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
+    }).finally(() => {
+        if (notification.link) window.location.href = notification.link;
+    });
+}
+
 function NotificationRow({ notification }: { notification: Notification }) {
     const unread = !notification.is_read;
     const meta = notification.type ? typeMetaFor(notification.type) : DEFAULT_TYPE_META;
     const cat = CATEGORY_META[meta.category];
     const catColor = cat.bg === '#D4AF37' ? '#8a6d00' : cat.bg;
-    const href = notification.link;
-
-    const markRead = () => {
-        if (unread) router.post(`/platform/notifications/${notification.id}/read`, {}, { preserveScroll: true });
-    };
 
     return (
         <div
-            onClick={markRead}
+            onClick={() => handleRowClick(notification)}
             className={`bg-white rounded-2xl border border-[#E5E7EB] shadow-sm hover:shadow-md hover:-translate-y-px transition p-4 flex items-start gap-3 cursor-pointer ${unread ? 'border-l-4' : ''}`}
             style={unread ? { borderLeftColor: cat.bg } : undefined}
         >
@@ -84,18 +97,21 @@ function NotificationRow({ notification }: { notification: Notification }) {
                     <span className="text-[9px] font-black uppercase tracking-wide px-2 py-0.5 rounded-full" style={{ background: `${cat.bg}18`, color: catColor }}>
                         {meta.label}
                     </span>
+                    {notification.quarter && (
+                        <span className="text-[9px] font-black uppercase tracking-wide px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+                            {notification.quarter} {notification.financial_year}
+                        </span>
+                    )}
                     {unread && <span className="text-[9px] font-black uppercase tracking-wide px-2 py-0.5 rounded-full bg-red-50 text-red-600">New</span>}
                 </div>
             </div>
-            {href && (
-                <Link
-                    href={href}
-                    onClick={(e) => e.stopPropagation()}
+            {notification.link && (
+                <span
                     className="shrink-0 self-center text-[10px] font-black px-2.5 py-1.5 rounded-lg"
                     style={{ background: `${cat.bg}18`, color: catColor }}
                 >
                     Open →
-                </Link>
+                </span>
             )}
         </div>
     );
@@ -123,23 +139,33 @@ export default function NotificationsIndex({ notifications }: NotificationsPageP
 
     return (
         <PlatformLayout title="Notifications">
-            <div className="flex items-center justify-between gap-3 mb-4">
-                <div className="flex items-center gap-2">
-                    {unreadCount > 0 && <span className="text-[11px] font-black bg-[#D4AF37] text-[#1a1a1a] px-2 py-0.5 rounded-full">{unreadCount} new</span>}
+            {/* Matches legacy's own maroon/gold gradient banner exactly (resources/js/Pages/Notifications.tsx) — this page's one deliberate departure from the plain white PlatformLayout header, since it's the one place legacy itself breaks its own page convention too. */}
+            <div className="relative overflow-hidden rounded-[18px] bg-gradient-to-r from-[#1A0A0A] to-[#7A0019] text-white px-6 py-5 shadow-[0_10px_35px_rgba(122,0,25,0.45)] flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#D4AF37] via-[#D4AF37] to-[#D4AF37]/10" />
+                <div className="relative">
+                    {unreadCount > 0 && (
+                        <span className="text-[11px] font-black bg-[#D4AF37] text-[#1a1a1a] px-2 py-0.5 rounded-full">{unreadCount} new</span>
+                    )}
                 </div>
                 {unreadCount > 0 && (
-                    <PrimaryButton onClick={() => router.post('/platform/notifications/read-all')}>Mark all as read</PrimaryButton>
+                    <button
+                        type="button"
+                        onClick={() => router.post('/platform/notifications/read-all')}
+                        className="relative text-xs font-black bg-white/10 hover:bg-white/20 text-white px-3.5 py-2 rounded-xl border border-white/20 transition"
+                    >
+                        Mark all as read
+                    </button>
                 )}
             </div>
 
             {notifications.length === 0 ? (
-                <Card>
-                    <EmptyState
-                        icon={<BellIcon className="w-10 h-10" />}
-                        title="No notifications yet"
-                        description="You'll see updates here as things happen on your own KPIs, weight-change requests, and quarterly sign-offs."
-                    />
-                </Card>
+                <div className="bg-white rounded-2xl shadow-sm border border-[#E5E7EB] p-12 text-center">
+                    <div className="text-4xl mb-3">🔔</div>
+                    <p className="text-slate-500 font-bold text-sm">No notifications yet</p>
+                    <p className="text-slate-400 text-xs mt-1 max-w-sm mx-auto">
+                        You'll see something here as soon as someone who reports to you submits a Job Description, an appraisal, or requests your approval on a KPI.
+                    </p>
+                </div>
             ) : (
                 <div className="space-y-3">
                     <div className="flex flex-wrap gap-2">
