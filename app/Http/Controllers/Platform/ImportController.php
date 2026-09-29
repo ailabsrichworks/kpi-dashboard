@@ -102,7 +102,7 @@ class ImportController extends Controller
         $existingEmails = isset($parsed['employees'])
             ? collect($supabase->get('company_users', [
                 'company_id' => 'eq.' . $company,
-                'select' => 'users(email)',
+                'select' => 'users!company_users_user_id_foreign(email)',
             ]))->pluck('users.email')->filter()->map(fn ($e) => strtolower($e))->all()
             : [];
 

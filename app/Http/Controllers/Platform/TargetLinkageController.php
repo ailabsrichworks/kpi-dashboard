@@ -63,7 +63,7 @@ class TargetLinkageController extends Controller
             'company_id' => 'eq.' . $company,
             'manager_user_id' => 'eq.' . $meId,
             'status' => 'eq.active',
-            'select' => 'user_id,users(name,email)',
+            'select' => 'user_id,users!company_users_user_id_foreign(name,email)',
         ]);
 
         $incoming = $supabase->get('kpi_target_linkages', [
@@ -145,7 +145,7 @@ class TargetLinkageController extends Controller
             'user_id' => 'eq.' . $request->assignee_user_id,
             'manager_user_id' => 'eq.' . $meId,
             'status' => 'eq.active',
-            'select' => 'user_id,users(name)',
+            'select' => 'user_id,users!company_users_user_id_foreign(name)',
         ]);
 
         if (!$report) {

@@ -86,7 +86,7 @@ class TaskController extends Controller
         $members = $supabase->get('company_users', [
             'company_id' => 'eq.' . $company,
             'status' => 'eq.active',
-            'select' => 'user_id,users(name,email)',
+            'select' => 'user_id,users!company_users_user_id_foreign(name,email)',
         ]);
 
         $callerId = $request->attributes->get('platformUser')['id'];

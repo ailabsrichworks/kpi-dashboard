@@ -127,7 +127,7 @@ class PerformanceController extends Controller
             'company_id' => 'eq.' . $company,
             'manager_user_id' => 'eq.' . $meId,
             'status' => 'eq.active',
-            'select' => 'user_id,users(name,email)',
+            'select' => 'user_id,users!company_users_user_id_foreign(name,email)',
         ]);
 
         $reportIds = array_column($reports, 'user_id');
@@ -167,7 +167,7 @@ class PerformanceController extends Controller
                 'company_id' => 'eq.' . $company,
                 'financial_year' => 'eq.' . $financialYear,
                 'quarter' => 'eq.' . $quarter,
-                'select' => '*,users(name,email)',
+                'select' => '*,users!performance_reviews_user_id_foreign(name,email)',
                 'order' => 'updated_at.desc',
             ]);
         }

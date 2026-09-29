@@ -91,7 +91,7 @@ class CompanyController extends Controller
             : $supabase->get('company_users', [
                 'company_id' => 'in.(' . implode(',', $companyIds) . ')',
                 'role' => 'eq.company_admin',
-                'select' => 'company_id,users(name,email)',
+                'select' => 'company_id,users!company_users_user_id_foreign(name,email)',
             ]);
 
         return Inertia::render('Platform/Companies/Index', [

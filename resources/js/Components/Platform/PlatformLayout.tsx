@@ -172,8 +172,7 @@ function buildSections(platformUser: PlatformUser | null, contextCompany: Compan
     sections.push({ title: 'Overview', items: overview });
 
     if (c && isMember) {
-        const kpiWork: NavItem[] = [];
-        if (isAdmin) kpiWork.push({ label: 'Create New KPI', href: `${base}/kpis/create`, icon: 'plus' });
+        const kpiWork: NavItem[] = [{ label: 'Create New KPI', href: `${base}/kpis/create`, icon: 'plus' }];
         kpiWork.push(
             { label: 'View My KPI', href: `${base}/kpis`, icon: 'list' },
             { label: 'Manage Weightage', href: `${base}/weightage`, icon: 'weightage' },

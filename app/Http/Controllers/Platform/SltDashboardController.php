@@ -49,7 +49,7 @@ class SltDashboardController extends Controller
         $members = $supabase->get('company_users', [
             'company_id' => 'eq.' . $company,
             'status' => 'eq.active',
-            'select' => 'user_id,role,users(name,email)',
+            'select' => 'user_id,role,users!company_users_user_id_foreign(name,email)',
         ]);
 
         // One row per (department_users) membership -- a user with more than

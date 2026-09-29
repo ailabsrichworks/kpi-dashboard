@@ -69,7 +69,7 @@ class DepartmentController extends Controller
         // list can show each person's actual membership status.
         $memberStatus = $supabase->get('company_users', [
             'company_id' => 'eq.' . $company,
-            'select' => 'user_id,role,status,manager_user_id,users(name,email)',
+            'select' => 'user_id,role,status,manager_user_id,users!company_users_user_id_foreign(name,email)',
         ]);
 
         return Inertia::render('Platform/Departments/Index', [

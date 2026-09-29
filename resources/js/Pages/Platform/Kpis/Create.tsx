@@ -24,6 +24,7 @@ interface CreateKpiPageProps {
     company: Company;
     categories: Category[];
     members: Member[];
+    isAdmin: boolean;
     [key: string]: unknown;
 }
 
@@ -111,7 +112,7 @@ function AddCategoryForm({ companyId }: { companyId: string }) {
     );
 }
 
-export default function CreateKpi({ company, categories, members }: CreateKpiPageProps) {
+export default function CreateKpi({ company, categories, members, isAdmin }: CreateKpiPageProps) {
     const { data, setData, post, processing, errors } = useForm({
         category_id: '',
         name: '',
@@ -158,27 +159,35 @@ export default function CreateKpi({ company, categories, members }: CreateKpiPag
             <form onSubmit={submit}>
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
                     <div className="lg:col-span-8 space-y-5">
-                        <Step number={1} title="Ownership &amp; Visibility" description="Who is responsible for this KPI, and who else is allowed to see it.">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Field label="Assign to" tooltip="Optional. Makes this one person's KPI on their own Weightage page, where they allocate its weight themselves.">
-                                    <select value={data.assigned_user_id} onChange={(e) => setData('assigned_user_id', e.target.value)} className={inputClass}>
-                                        <option value="">Not assigned to anyone</option>
-                                        {members.map((m) => (
-                                            <option key={m.user_id} value={m.user_id}>
-                                                {m.users.name} ({m.users.email})
-                                            </option>
-                                        ))}
-                                    </select>
-                                </Field>
-                                <Field label="Who can see this?" tooltip="Company-wide: any signed-in member. Submitting departments: only the departments that report against it, plus admins/SLT. Restricted: nobody, until access is granted explicitly after creation.">
-                                    <select value={data.visibility} onChange={(e) => setData('visibility', e.target.value)} className={inputClass}>
-                                        <option value="company">Company-wide — any member can see it</option>
-                                        <option value="department">Submitting departments — plus admins/SLT</option>
-                                        <option value="restricted">Restricted — grant access explicitly after creating</option>
-                                    </select>
-                                </Field>
-                            </div>
-                        </Step>
+                        {isAdmin ? (
+                            <Step number={1} title="Ownership &amp; Visibility" description="Who is responsible for this KPI, and who else is allowed to see it.">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <Field label="Assign to" tooltip="Optional. Makes this one person's KPI on their own Weightage page, where they allocate its weight themselves.">
+                                        <select value={data.assigned_user_id} onChange={(e) => setData('assigned_user_id', e.target.value)} className={inputClass}>
+                                            <option value="">Not assigned to anyone</option>
+                                            {members.map((m) => (
+                                                <option key={m.user_id} value={m.user_id}>
+                                                    {m.users.name} ({m.users.email})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </Field>
+                                    <Field label="Who can see this?" tooltip="Company-wide: any signed-in member. Submitting departments: only the departments that report against it, plus admins/SLT. Restricted: nobody, until access is granted explicitly after creation.">
+                                        <select value={data.visibility} onChange={(e) => setData('visibility', e.target.value)} className={inputClass}>
+                                            <option value="company">Company-wide — any member can see it</option>
+                                            <option value="department">Submitting departments — plus admins/SLT</option>
+                                            <option value="restricted">Restricted — grant access explicitly after creating</option>
+                                        </select>
+                                    </Field>
+                                </div>
+                            </Step>
+                        ) : (
+                            <Step number={1} title="Ownership" description="This KPI will be created under your name and visible to everyone in your company.">
+                                <p className="text-xs text-slate-500">
+                                    Only a Company Admin can assign a KPI to someone else or restrict who can see it. To allocate weight or share ownership later, ask your admin.
+                                </p>
+                            </Step>
+                        )}
 
                         <Step number={2} title="Category" description="Groups this KPI with related ones on the KPI List and dashboards.">
                             <Field label="Category">
@@ -191,7 +200,7 @@ export default function CreateKpi({ company, categories, members }: CreateKpiPag
                                     ))}
                                 </select>
                             </Field>
-                            <AddCategoryForm companyId={company.id} />
+                            {isAdmin && <AddCategoryForm companyId={company.id} />}
                         </Step>
 
                         <Step number={3} title="KPI Details" description="What this KPI is called, and what it actually measures.">
@@ -291,7 +300,7 @@ export default function CreateKpi({ company, categories, members }: CreateKpiPag
 
                             <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2">
                                 <p className="text-[10px] text-slate-400">Owner</p>
-                                <p className="font-black text-sm text-slate-800 mt-0.5">{owner ? owner.users.name : 'Not assigned yet'}</p>
+                                <p className="font-black text-sm text-slate-800 mt-0.5">{isAdmin ? (owner ? owner.users.name : 'Not assigned yet') : 'You'}</p>
                             </div>
 
                             <div className="mt-2.5">

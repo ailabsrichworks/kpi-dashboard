@@ -123,7 +123,7 @@ class KpiController extends Controller
         $members = $supabase->get('company_users', [
             'company_id' => 'eq.' . $company,
             'status' => 'eq.active',
-            'select' => 'user_id,users(name,email)',
+            'select' => 'user_id,users!company_users_user_id_foreign(name,email)',
         ]);
 
         $templates = $supabase->get('kpi_templates', [
@@ -161,10 +161,16 @@ class KpiController extends Controller
      * panel bolted onto the list view). This existed only as a collapsible
      * form embedded in `index()`'s "KPI List" page before; nothing here
      * changes what `store()` accepts, only where the form to reach it lives.
+     *
+     * Open to any active company member, not just admins — see
+     * 2026_09_29_070000_allow_self_service_kpi_creation.php for the matching
+     * RLS widening. A non-admin's create form is a narrower view of the same
+     * page (no assign-to-someone-else, no visibility choice — see `store()`
+     * for why), not a separate page.
      */
     public function create(Request $request, string $company)
     {
-        $this->ensureCompanyAdmin($request, $company);
+        $this->ensureCompanyMember($request, $company);
 
         /** @var SupabaseUserService $supabase */
         $supabase = $request->attributes->get('platformSupabase');
@@ -180,16 +186,23 @@ class KpiController extends Controller
             'order' => 'name.asc',
         ]);
 
-        $members = $supabase->get('company_users', [
-            'company_id' => 'eq.' . $company,
-            'status' => 'eq.active',
-            'select' => 'user_id,users(name,email)',
-        ]);
+        $isAdmin = $this->canAdministerCompany($request, $company);
+
+        // Only an admin can assign a KPI to someone else, so the member
+        // picker is only worth fetching for them.
+        $members = $isAdmin
+            ? $supabase->get('company_users', [
+                'company_id' => 'eq.' . $company,
+                'status' => 'eq.active',
+                'select' => 'user_id,users!company_users_user_id_foreign(name,email)',
+            ])
+            : [];
 
         return Inertia::render('Platform/Kpis/Create', [
             'company' => $companyRow,
             'categories' => $categories,
             'members' => $members,
+            'isAdmin' => $isAdmin,
         ]);
     }
 
@@ -300,9 +313,20 @@ class KpiController extends Controller
         return back()->with('success', 'Category "' . $request->name . '" created.');
     }
 
+    /**
+     * Open to any active company member (2026_09_29_070000's matching RLS
+     * widening) — not just admins. A non-admin may only ever create a KPI
+     * for THEMSELVES with 'company' visibility: `assigned_user_id` and
+     * `visibility` from the request are silently ignored for anyone who
+     * isn't an admin, rather than validated-and-rejected, since the create
+     * form itself never shows those fields to a non-admin (see
+     * Platform/Kpis/Create.tsx) — this is a defensive second gate, not the
+     * primary UX. An admin's behavior is completely unchanged.
+     */
     public function store(Request $request, string $company)
     {
-        $this->ensureCompanyAdmin($request, $company);
+        $this->ensureCompanyMember($request, $company);
+        $isAdmin = $this->canAdministerCompany($request, $company);
 
         $request->validate([
             'category_id' => 'nullable|uuid',
@@ -324,7 +348,11 @@ class KpiController extends Controller
         /** @var SupabaseUserService $supabase */
         $supabase = $request->attributes->get('platformSupabase');
 
-        if ($request->assigned_user_id) {
+        $meId = $request->attributes->get('platformUser')['id'];
+        $assignedUserId = $isAdmin ? ($request->assigned_user_id ?: null) : $meId;
+        $visibility = $isAdmin ? $request->input('visibility', 'company') : 'company';
+
+        if ($isAdmin && $request->assigned_user_id) {
             $this->ensureCompanyMemberExists($supabase, $company, $request->assigned_user_id);
         }
 
@@ -354,8 +382,8 @@ class KpiController extends Controller
                 'unit' => $request->unit,
                 'weight' => $request->weight,
                 'frequency' => $request->frequency,
-                'visibility' => $request->input('visibility', 'company'),
-                'assigned_user_id' => $request->assigned_user_id ?: null,
+                'visibility' => $visibility,
+                'assigned_user_id' => $assignedUserId,
             ], false);
         } catch (\Throwable $e) {
             return back()->withInput()->with('error', 'Could not create KPI: ' . $e->getMessage());
@@ -374,12 +402,12 @@ class KpiController extends Controller
         }
 
         try {
-            $this->logCompanyAction($request, 'create_kpi', $company, null, [], 'kpi', null, null, [
+            $this->logCompanyAction($request, 'create_kpi', $company, $assignedUserId, [], 'kpi', null, null, [
                 'name' => $request->name,
                 'target' => $request->target,
                 'unit' => $request->unit,
                 'frequency' => $request->frequency,
-                'visibility' => $request->input('visibility', 'company'),
+                'visibility' => $visibility,
             ]);
         } catch (\Throwable) {
             return back()->with('error', 'KPI was created, but the action could not be logged — contact support before continuing.');
