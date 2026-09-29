@@ -84,6 +84,7 @@ class KpiController extends Controller
         // other "my score" surface already use) instead of legacy's
         // page-local Blade calculation.
         $meId = $request->attributes->get('platformUser')['id'];
+        $isAdmin = $this->canAdministerCompany($request, $company);
         $myKpis = $kpis->where('assigned_user_id', $meId)->all();
         $latestByKpiId = empty($kpiIds) ? [] : collect($supabase->get('kpi_submissions', [
             'kpi_id' => 'in.(' . implode(',', $kpiIds) . ')',
@@ -152,6 +153,7 @@ class KpiController extends Controller
             'members' => $members,
             'myScore' => $myScore,
             'financialYear' => $this->currentFinancialYear(),
+            'isAdmin' => $isAdmin,
         ]);
     }
 
@@ -668,5 +670,132 @@ class KpiController extends Controller
         ]);
 
         abort_unless($member, 422, 'The assigned user is not an active member of this company.');
+    }
+
+    /**
+     * Self-service target-change request — the Platform equivalent of
+     * legacy's `kpi_target_change_requests` (minus the `[[WC]]`-tagged
+     * weightage variant, which already has its own clean table/flow via
+     * WeightageController). `kpis_update` has no owner-direct-target branch
+     * at all — a non-admin can never write `target` themselves, only ever
+     * through this request + a Company Admin's decision in
+     * Platform\ApprovalController. Mirrors
+     * WeightageController::requestChange()'s exact shape: same soft-skip on
+     * an already-pending request, same 20-char reason minimum.
+     */
+    public function requestTargetChange(Request $request, string $company, string $kpi)
+    {
+        $this->ensureCompanyMember($request, $company);
+
+        $request->validate([
+            'new_target' => 'required|numeric|min:0',
+            'reason' => 'required|string|min:20',
+        ]);
+
+        /** @var SupabaseUserService $supabase */
+        $supabase = $request->attributes->get('platformSupabase');
+        $meId = $request->attributes->get('platformUser')['id'];
+
+        $kpiRow = $supabase->first('kpis', [
+            'id' => 'eq.' . $kpi,
+            'company_id' => 'eq.' . $company,
+            'select' => 'id,name,target,assigned_user_id',
+        ]);
+
+        if (!$kpiRow || $kpiRow['assigned_user_id'] !== $meId) {
+            return back()->with('error', 'You can only request a target change on a KPI assigned to you.');
+        }
+
+        $existing = $supabase->first('kpi_target_change_requests', [
+            'kpi_id' => 'eq.' . $kpi,
+            'status' => 'eq.pending',
+            'select' => 'id',
+        ]);
+
+        if ($existing) {
+            return back()->with('error', 'This KPI already has a pending target-change request.');
+        }
+
+        try {
+            $created = $supabase->insert('kpi_target_change_requests', [
+                'company_id' => $company,
+                'kpi_id' => $kpi,
+                'requested_by' => $meId,
+                'old_target' => $kpiRow['target'],
+                'new_target' => $request->new_target,
+                'reason' => $request->reason,
+            ]);
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Could not submit request: ' . $e->getMessage());
+        }
+
+        try {
+            $this->logCompanyAction($request, 'request_kpi_target_change', $company, null, [
+                'old_target' => $kpiRow['target'], 'new_target' => $request->new_target,
+            ], 'kpi_target_change_request', $created[0]['id'] ?? null);
+        } catch (\Throwable) {
+            return back()->with('error', 'Request was submitted, but the action could not be logged — contact support before continuing.');
+        }
+
+        return back()->with('success', 'Target-change request submitted for approval.');
+    }
+
+    /**
+     * Self-service delete request — the Platform equivalent of legacy's
+     * `kpi_delete_requests`. There is no owner-direct delete path at all;
+     * `kpis_delete` (2026_09_29_080000) is admin-only, matching legacy's own
+     * rule that only the top of the approval chain deletes without going
+     * through a request first.
+     */
+    public function requestDelete(Request $request, string $company, string $kpi)
+    {
+        $this->ensureCompanyMember($request, $company);
+
+        $request->validate(['reason' => 'required|string|min:10']);
+
+        /** @var SupabaseUserService $supabase */
+        $supabase = $request->attributes->get('platformSupabase');
+        $meId = $request->attributes->get('platformUser')['id'];
+
+        $kpiRow = $supabase->first('kpis', [
+            'id' => 'eq.' . $kpi,
+            'company_id' => 'eq.' . $company,
+            'select' => 'id,name,assigned_user_id',
+        ]);
+
+        if (!$kpiRow || $kpiRow['assigned_user_id'] !== $meId) {
+            return back()->with('error', 'You can only request deletion of a KPI assigned to you.');
+        }
+
+        $existing = $supabase->first('kpi_delete_requests', [
+            'kpi_id' => 'eq.' . $kpi,
+            'status' => 'eq.pending',
+            'select' => 'id',
+        ]);
+
+        if ($existing) {
+            return back()->with('error', 'This KPI already has a pending deletion request.');
+        }
+
+        try {
+            $created = $supabase->insert('kpi_delete_requests', [
+                'company_id' => $company,
+                'kpi_id' => $kpi,
+                'requested_by' => $meId,
+                'reason' => $request->reason,
+            ]);
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Could not submit request: ' . $e->getMessage());
+        }
+
+        try {
+            $this->logCompanyAction($request, 'request_kpi_delete', $company, null, [
+                'kpi_name' => $kpiRow['name'],
+            ], 'kpi_delete_request', $created[0]['id'] ?? null);
+        } catch (\Throwable) {
+            return back()->with('error', 'Request was submitted, but the action could not be logged — contact support before continuing.');
+        }
+
+        return back()->with('success', 'Deletion request submitted for approval.');
     }
 }

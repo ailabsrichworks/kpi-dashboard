@@ -68,6 +68,21 @@ interface AdminQueueItem extends Review {
     users: { name: string; email: string } | null;
 }
 
+interface ManagerOption {
+    user_id: string;
+    name: string;
+    email: string;
+    delegate_candidate: string | null;
+}
+
+interface Delegation {
+    id: string;
+    manager_user_id: string;
+    delegate_user_id: string;
+    reason: string | null;
+    created_at: string;
+}
+
 interface PerformancePageProps {
     company: Company;
     quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4';
@@ -79,6 +94,8 @@ interface PerformancePageProps {
     mine: Review | null;
     reviewQueue: ReviewQueueItem[];
     adminQueue: AdminQueueItem[] | null;
+    managers: ManagerOption[] | null;
+    delegations: Delegation[] | null;
     [key: string]: unknown;
 }
 
@@ -461,8 +478,85 @@ function CompanyReviewsSection({ adminQueue }: { adminQueue: AdminQueueItem[] | 
     );
 }
 
+// Ports legacy's Appraiser Delegation (see appraiser_delegations migration's
+// own docblock for the design adaptation) — Company-Admin-only, embedded
+// here rather than on a dedicated page, mirroring legacy's own choice to put
+// it on an existing admin screen (Quarter Control) instead of a standalone
+// one. The delegate is always computed server-side from the manager's own
+// manager_user_id (shown here only as a preview, `delegate_candidate`) —
+// never picked by the admin.
+function AppraiserDelegationPanel({ company, managers, delegations }: { company: Company; managers: ManagerOption[] | null; delegations: Delegation[] | null }) {
+    const [reasons, setReasons] = useState<Record<string, string>>({});
+
+    if (managers === null || delegations === null) return null;
+
+    const delegationsByManager = Object.fromEntries(delegations.map((d) => [d.manager_user_id, d]));
+    const managerById = Object.fromEntries(managers.map((m) => [m.user_id, m]));
+
+    const delegate = (managerId: string) => {
+        router.post(
+            `/platform/companies/${company.id}/appraiser-delegations`,
+            { manager_user_id: managerId, reason: reasons[managerId] || undefined },
+            { preserveScroll: true, onSuccess: () => setReasons((prev) => ({ ...prev, [managerId]: '' })) },
+        );
+    };
+
+    const endDelegation = (managerId: string) => {
+        if (!confirm('End this delegation? The manager resumes appraising their own reports immediately.')) return;
+        router.delete(`/platform/companies/${company.id}/appraiser-delegations/${managerId}`, { preserveScroll: true });
+    };
+
+    return (
+        <Card title="Appraiser Delegation" description="Let a manager's own manager stand in as appraiser for their reports while they're away.">
+            {managers.length === 0 ? (
+                <EmptyState icon={<ClipboardCheckIcon className="w-8 h-8" />} title="No one currently manages anyone yet" description="Set up the reporting hierarchy on the Departments page first." />
+            ) : (
+                <div className="space-y-3">
+                    {managers.map((m) => {
+                        const delegation = delegationsByManager[m.user_id];
+                        return (
+                            <div key={m.user_id} className="rounded-xl border border-slate-200 p-4">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div>
+                                        <p className="text-sm font-bold text-slate-900">{m.name}</p>
+                                        <p className="text-xs text-slate-400">{m.email}</p>
+                                    </div>
+                                    {delegation ? (
+                                        <Badge tone="warning">Delegated to {managerById[delegation.delegate_user_id]?.name ?? 'someone'}</Badge>
+                                    ) : m.delegate_candidate ? (
+                                        <Badge tone="neutral">Delegate: {m.delegate_candidate}</Badge>
+                                    ) : (
+                                        <Badge tone="danger">No one above them to delegate to</Badge>
+                                    )}
+                                </div>
+
+                                {delegation ? (
+                                    <div className="mt-2 flex items-center justify-between gap-3">
+                                        {delegation.reason && <p className="text-xs text-slate-500">{delegation.reason}</p>}
+                                        <SecondaryButton onClick={() => endDelegation(m.user_id)}>End delegation</SecondaryButton>
+                                    </div>
+                                ) : m.delegate_candidate ? (
+                                    <div className="mt-2 flex items-center gap-2">
+                                        <input
+                                            value={reasons[m.user_id] ?? ''}
+                                            onChange={(e) => setReasons((prev) => ({ ...prev, [m.user_id]: e.target.value }))}
+                                            placeholder="Reason (optional)"
+                                            className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs"
+                                        />
+                                        <PrimaryButton onClick={() => delegate(m.user_id)}>Delegate</PrimaryButton>
+                                    </div>
+                                ) : null}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </Card>
+    );
+}
+
 export default function PerformanceIndex(props: PerformancePageProps) {
-    const { company, quarter, financialYear, isQ4, assessmentAreas, cultureValues, attendanceLabels, mine, reviewQueue, adminQueue } = props;
+    const { company, quarter, financialYear, isQ4, assessmentAreas, cultureValues, attendanceLabels, mine, reviewQueue, adminQueue, managers, delegations } = props;
 
     return (
         <PlatformLayout
@@ -487,6 +581,7 @@ export default function PerformanceIndex(props: PerformancePageProps) {
                 <SelfAssessmentSection company={company} quarter={quarter} isQ4={isQ4} assessmentAreas={assessmentAreas} cultureValues={cultureValues} mine={mine} />
                 <TeamReviewSection company={company} quarter={quarter} isQ4={isQ4} assessmentAreas={assessmentAreas} cultureValues={cultureValues} attendanceLabels={attendanceLabels} reviewQueue={reviewQueue} />
                 <CompanyReviewsSection adminQueue={adminQueue} />
+                <AppraiserDelegationPanel company={company} managers={managers} delegations={delegations} />
             </div>
         </PlatformLayout>
     );

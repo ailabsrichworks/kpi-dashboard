@@ -82,6 +82,7 @@ interface KpisPageProps {
     members: Member[];
     myScore: MyScore;
     financialYear: string;
+    isAdmin: boolean;
     [key: string]: unknown;
 }
 
@@ -510,8 +511,119 @@ function KpiVisibilityGrants({ kpi, companyId, grants, departments, members }: {
     );
 }
 
-function KpiRow({ kpi, company, categories, grants, departments, members }: { kpi: Kpi; company: Company; categories: Category[]; grants: Grant[]; departments: Department[]; members: Member[] }) {
+// Self-service for the KPI's own owner — a non-admin can never write
+// `target` directly (no owner-direct branch exists for it, unlike weight's
+// "new allocation" case) nor delete a KPI at all; both always go through a
+// Company Admin's decision in the Approval Center. See KpiController::
+// requestTargetChange()/requestDelete().
+function OwnerRequestForm({ companyId, kpi, onDone }: { companyId: string; kpi: Kpi; onDone: () => void }) {
+    const [mode, setMode] = useState<'target' | 'delete'>('target');
+    const targetForm = useForm({ new_target: kpi.target !== null ? String(kpi.target) : '', reason: '' });
+    const deleteForm = useForm({ reason: '' });
+
+    const submitTarget: FormEventHandler = (e) => {
+        e.preventDefault();
+        targetForm.post(`/platform/companies/${companyId}/kpis/${kpi.id}/target-change-requests`, { onSuccess: onDone });
+    };
+
+    const submitDelete: FormEventHandler = (e) => {
+        e.preventDefault();
+        if (!confirm('Request deletion of this KPI? A Company Admin must approve before it is removed.')) return;
+        deleteForm.post(`/platform/companies/${companyId}/kpis/${kpi.id}/delete-requests`, { onSuccess: onDone });
+    };
+
+    return (
+        <div className="mt-3 bg-slate-50 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+                <button
+                    type="button"
+                    onClick={() => setMode('target')}
+                    className={`text-xs font-semibold px-2.5 py-1 rounded-lg ${mode === 'target' ? 'bg-white shadow-sm text-brand-800' : 'text-slate-400'}`}
+                >
+                    Request target change
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setMode('delete')}
+                    className={`text-xs font-semibold px-2.5 py-1 rounded-lg ${mode === 'delete' ? 'bg-white shadow-sm text-red-700' : 'text-slate-400'}`}
+                >
+                    Request deletion
+                </button>
+                <button type="button" onClick={onDone} className="ml-auto text-xs text-slate-400">
+                    Cancel
+                </button>
+            </div>
+
+            {mode === 'target' ? (
+                <form onSubmit={submitTarget} className="space-y-2">
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">New target</label>
+                        <input
+                            value={targetForm.data.new_target}
+                            onChange={(e) => targetForm.setData('new_target', e.target.value)}
+                            type="number"
+                            step="any"
+                            min="0"
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Reason (minimum 20 characters)</label>
+                        <textarea
+                            value={targetForm.data.reason}
+                            onChange={(e) => targetForm.setData('reason', e.target.value)}
+                            rows={2}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                            required
+                        />
+                    </div>
+                    <PrimaryButton type="submit" disabled={targetForm.processing || targetForm.data.reason.trim().length < 20}>
+                        Submit for approval
+                    </PrimaryButton>
+                </form>
+            ) : (
+                <form onSubmit={submitDelete} className="space-y-2">
+                    <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Reason (minimum 10 characters)</label>
+                        <textarea
+                            value={deleteForm.data.reason}
+                            onChange={(e) => deleteForm.setData('reason', e.target.value)}
+                            rows={2}
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                            required
+                        />
+                    </div>
+                    <PrimaryButton type="submit" disabled={deleteForm.processing || deleteForm.data.reason.trim().length < 10}>
+                        Submit deletion request
+                    </PrimaryButton>
+                </form>
+            )}
+        </div>
+    );
+}
+
+function KpiRow({
+    kpi,
+    company,
+    categories,
+    grants,
+    departments,
+    members,
+    isAdmin,
+    isOwner,
+}: {
+    kpi: Kpi;
+    company: Company;
+    categories: Category[];
+    grants: Grant[];
+    departments: Department[];
+    members: Member[];
+    isAdmin: boolean;
+    isOwner: boolean;
+}) {
     const [editing, setEditing] = useState(false);
+    const [requesting, setRequesting] = useState(false);
 
     return (
         <li className="py-4">
@@ -538,13 +650,21 @@ function KpiRow({ kpi, company, categories, grants, departments, members }: { kp
                     </div>
                 </div>
                 <div className="flex-none flex items-center gap-3">
-                    <button onClick={() => setEditing((v) => !v)} className="text-xs font-semibold text-brand-800 hover:underline">
-                        {editing ? 'Close' : 'Edit'}
-                    </button>
+                    {isAdmin && (
+                        <button onClick={() => setEditing((v) => !v)} className="text-xs font-semibold text-brand-800 hover:underline">
+                            {editing ? 'Close' : 'Edit'}
+                        </button>
+                    )}
+                    {!isAdmin && isOwner && (
+                        <button onClick={() => setRequesting((v) => !v)} className="text-xs font-semibold text-brand-800 hover:underline">
+                            {requesting ? 'Close' : 'Request change'}
+                        </button>
+                    )}
                     <Badge tone={kpi.status === 'active' ? 'success' : 'neutral'}>{kpi.status}</Badge>
                 </div>
             </div>
-            {editing && <EditKpiForm companyId={company.id} kpi={kpi} categories={categories} members={members} onDone={() => setEditing(false)} />}
+            {isAdmin && editing && <EditKpiForm companyId={company.id} kpi={kpi} categories={categories} members={members} onDone={() => setEditing(false)} />}
+            {!isAdmin && isOwner && requesting && <OwnerRequestForm companyId={company.id} kpi={kpi} onDone={() => setRequesting(false)} />}
             <KpiVisibilityGrants kpi={kpi} companyId={company.id} grants={grants} departments={departments} members={members} />
         </li>
     );
@@ -665,7 +785,7 @@ function KpiFilterBar({
     );
 }
 
-export default function KpisIndex({ company, categories, kpis, templates, templateItems, grants, departments, members, myScore, financialYear }: KpisPageProps) {
+export default function KpisIndex({ company, categories, kpis, templates, templateItems, grants, departments, members, myScore, financialYear, isAdmin }: KpisPageProps) {
     const { platformUser } = usePage<{ platformUser: PlatformUserShape | null }>().props;
     const [search, setSearch] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('');
@@ -716,8 +836,8 @@ export default function KpisIndex({ company, categories, kpis, templates, templa
             />
 
             <Card className="mt-4">
-                <ApplyTemplateForm companyId={company.id} templates={templates} templateItems={templateItems} />
-                <CreateCategoryForm companyId={company.id} />
+                {isAdmin && <ApplyTemplateForm companyId={company.id} templates={templates} templateItems={templateItems} />}
+                {isAdmin && <CreateCategoryForm companyId={company.id} />}
 
                 {kpis.length === 0 ? (
                     <div className="bg-white border border-dashed border-slate-300 rounded-2xl p-10 text-center">
@@ -740,6 +860,8 @@ export default function KpisIndex({ company, categories, kpis, templates, templa
                                 grants={grants.filter((g) => g.kpi_id === kpi.id)}
                                 departments={departments}
                                 members={members}
+                                isAdmin={isAdmin}
+                                isOwner={kpi.assigned_user_id === platformUser?.id}
                             />
                         ))}
                     </ul>

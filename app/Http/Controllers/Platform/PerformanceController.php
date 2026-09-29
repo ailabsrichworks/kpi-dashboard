@@ -122,12 +122,24 @@ class PerformanceController extends Controller
         $isAdmin = $this->canAdministerCompany($request, $company);
 
         // Who I need to appraise: company members whose manager_user_id is
-        // me, with their review status for this quarter (if any exists yet).
+        // me, PLUS any reports of a manager who has delegated their
+        // appraisal duty to me (see appraiser_delegations /
+        // 2026_09_29_090000) — a delegate picks up the delegating manager's
+        // full report list, not a hand-picked subset, matching legacy's own
+        // "delegate takes over the whole chain hop" behavior.
+        $delegatedFromManagerIds = array_column($supabase->get('appraiser_delegations', [
+            'company_id' => 'eq.' . $company,
+            'delegate_user_id' => 'eq.' . $meId,
+            'select' => 'manager_user_id',
+        ]), 'manager_user_id');
+
+        $managerIds = array_unique([$meId, ...$delegatedFromManagerIds]);
+
         $reports = $supabase->get('company_users', [
             'company_id' => 'eq.' . $company,
-            'manager_user_id' => 'eq.' . $meId,
+            'manager_user_id' => 'in.(' . implode(',', $managerIds) . ')',
             'status' => 'eq.active',
-            'select' => 'user_id,users!company_users_user_id_foreign(name,email)',
+            'select' => 'user_id,manager_user_id,users!company_users_user_id_foreign(name,email)',
         ]);
 
         $reportIds = array_column($reports, 'user_id');
@@ -162,6 +174,8 @@ class PerformanceController extends Controller
         })->values()->all();
 
         $adminQueue = [];
+        $managers = [];
+        $delegations = [];
         if ($isAdmin) {
             $adminQueue = $supabase->get('performance_reviews', [
                 'company_id' => 'eq.' . $company,
@@ -169,6 +183,36 @@ class PerformanceController extends Controller
                 'quarter' => 'eq.' . $quarter,
                 'select' => '*,users!performance_reviews_user_id_foreign(name,email)',
                 'order' => 'updated_at.desc',
+            ]);
+
+            // Appraiser Delegation admin panel (2026_09_29_090000) — anyone
+            // currently named as someone's manager is a candidate to
+            // delegate away; their own manager_user_id (if any) is who
+            // store() will compute as the delegate.
+            $allMembers = $supabase->get('company_users', [
+                'company_id' => 'eq.' . $company,
+                'status' => 'eq.active',
+                'select' => 'user_id,manager_user_id,users!company_users_user_id_foreign(name,email)',
+            ]);
+            $membersByUserId = collect($allMembers)->keyBy('user_id');
+            $managerIdsInUse = collect($allMembers)->pluck('manager_user_id')->filter()->unique();
+
+            $managers = $managerIdsInUse->map(function ($managerId) use ($membersByUserId) {
+                $row = $membersByUserId->get($managerId);
+
+                return [
+                    'user_id' => $managerId,
+                    'name' => $row['users']['name'] ?? 'Unknown',
+                    'email' => $row['users']['email'] ?? '',
+                    'delegate_candidate' => $row['manager_user_id']
+                        ? ($membersByUserId->get($row['manager_user_id'])['users']['name'] ?? 'Unknown')
+                        : null,
+                ];
+            })->values()->all();
+
+            $delegations = $supabase->get('appraiser_delegations', [
+                'company_id' => 'eq.' . $company,
+                'select' => 'id,manager_user_id,delegate_user_id,reason,created_at',
             ]);
         }
 
@@ -183,6 +227,8 @@ class PerformanceController extends Controller
             'mine' => $mine,
             'reviewQueue' => $reviewQueue,
             'adminQueue' => $isAdmin ? $adminQueue : null,
+            'managers' => $isAdmin ? $managers : null,
+            'delegations' => $isAdmin ? $delegations : null,
         ]);
     }
 
@@ -341,15 +387,30 @@ class PerformanceController extends Controller
         $isAdmin = $this->canAdministerCompany($request, $company);
 
         if (!$isAdmin) {
+            $meId = $request->attributes->get('platformUser')['id'];
+
             $membership = $supabase->first('company_users', [
                 'company_id' => 'eq.' . $company,
                 'user_id' => 'eq.' . $user,
-                'manager_user_id' => 'eq.' . $request->attributes->get('platformUser')['id'],
                 'status' => 'eq.active',
-                'select' => 'user_id',
+                'select' => 'manager_user_id',
             ]);
 
-            abort_unless($membership, 403, 'You are not this employee\'s manager.');
+            $isDirectManager = $membership && $membership['manager_user_id'] === $meId;
+
+            // Or I've been delegated this employee's actual manager's
+            // appraisal duty (appraiser_delegations) — see index()'s own
+            // reviewQueue for the matching "who do I need to appraise" build.
+            $isDelegate = !$isDirectManager && $membership && $membership['manager_user_id']
+                ? (bool) $supabase->first('appraiser_delegations', [
+                    'company_id' => 'eq.' . $company,
+                    'manager_user_id' => 'eq.' . $membership['manager_user_id'],
+                    'delegate_user_id' => 'eq.' . $meId,
+                    'select' => 'id',
+                ])
+                : false;
+
+            abort_unless($isDirectManager || $isDelegate, 403, 'You are not this employee\'s manager.');
         }
 
         $request->validate([

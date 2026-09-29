@@ -76,6 +76,7 @@ class PerformanceControllerTest extends TestCase
             '*/rest/v1/platform_admin_assignments*' => Http::response([], 200),
             '*/rest/v1/companies*' => Http::response([['id' => 'company-a', 'name' => 'Company A', 'code' => 'COA']], 200),
             '*/rest/v1/performance_reviews*' => Http::response([], 200),
+            '*/rest/v1/appraiser_delegations*' => Http::response([], 200), // nobody has delegated to me
         ]);
 
         $response = $this->withSession(['platform_access_token' => $this->fakeToken('member-auth-id')])
@@ -157,7 +158,7 @@ class PerformanceControllerTest extends TestCase
             ]], 200),
             '*/rest/v1/company_users*' => Http::sequence()
                 ->push([['company_id' => 'company-a', 'role' => 'executive', 'status' => 'active']], 200) // PlatformAuth's own membership lookup
-                ->push([['user_id' => 'employee-id']], 200), // "is this caller the employee's manager" check
+                ->push([['manager_user_id' => 'manager-id']], 200), // "is this caller the employee's manager" check
             '*/rest/v1/platform_admin_assignments*' => Http::response([], 200),
             '*/rest/v1/performance_reviews*' => Http::sequence()
                 ->push([['id' => 'rev-1', 'status' => 'submitted']], 200) // existing review lookup

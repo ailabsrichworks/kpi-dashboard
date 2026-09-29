@@ -68,6 +68,15 @@ class AccessAnotherCompanysApiEndpointTest extends TenantIsolationTestCase
             'GET target linkages index' => ['GET', '/platform/companies/company-b/target-linkages'],
             'POST target linkages store' => ['POST', '/platform/companies/company-b/target-linkages'],
             'DELETE target linkages destroy' => ['DELETE', '/platform/companies/company-b/target-linkages/link-b'],
+            'POST kpi target change request' => ['POST', '/platform/companies/company-b/kpis/kpi-b/target-change-requests'],
+            'POST kpi delete request' => ['POST', '/platform/companies/company-b/kpis/kpi-b/delete-requests'],
+            'GET approval center index' => ['GET', '/platform/companies/company-b/approvals'],
+            'POST target change approve' => ['POST', '/platform/companies/company-b/target-change-requests/tcr-b/approve'],
+            'POST target change reject' => ['POST', '/platform/companies/company-b/target-change-requests/tcr-b/reject'],
+            'POST delete request approve' => ['POST', '/platform/companies/company-b/delete-requests/dr-b/approve'],
+            'POST delete request reject' => ['POST', '/platform/companies/company-b/delete-requests/dr-b/reject'],
+            'POST appraiser delegation store' => ['POST', '/platform/companies/company-b/appraiser-delegations'],
+            'DELETE appraiser delegation destroy' => ['DELETE', '/platform/companies/company-b/appraiser-delegations/manager-b'],
         ];
     }
 

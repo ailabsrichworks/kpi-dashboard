@@ -121,6 +121,9 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::post('/profile/password', [\App\Http\Controllers\Platform\ProfileController::class, 'updatePassword'])
         ->name('platform.profile.password');
 
+    Route::post('/profile/theme', [\App\Http\Controllers\Platform\ProfileController::class, 'updateTheme'])
+        ->name('platform.profile.theme');
+
     Route::post('/telegram/link-code', [\App\Http\Controllers\Platform\TelegramLinkController::class, 'generateCode'])
         ->name('platform.telegram.link-code');
 
@@ -267,6 +270,33 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
 
     Route::delete('/companies/{company}/kpis/{kpi}/grants/{grant}', [\App\Http\Controllers\Platform\KpiController::class, 'destroyGrant'])
         ->name('platform.kpis.grants.destroy');
+
+    Route::post('/companies/{company}/kpis/{kpi}/target-change-requests', [\App\Http\Controllers\Platform\KpiController::class, 'requestTargetChange'])
+        ->name('platform.kpis.request-target-change');
+
+    Route::post('/companies/{company}/kpis/{kpi}/delete-requests', [\App\Http\Controllers\Platform\KpiController::class, 'requestDelete'])
+        ->name('platform.kpis.request-delete');
+
+    Route::get('/companies/{company}/approvals', [\App\Http\Controllers\Platform\ApprovalController::class, 'index'])
+        ->name('platform.approvals.index');
+
+    Route::post('/companies/{company}/target-change-requests/{targetChangeRequest}/approve', [\App\Http\Controllers\Platform\ApprovalController::class, 'approveTarget'])
+        ->name('platform.approvals.approve-target');
+
+    Route::post('/companies/{company}/target-change-requests/{targetChangeRequest}/reject', [\App\Http\Controllers\Platform\ApprovalController::class, 'rejectTarget'])
+        ->name('platform.approvals.reject-target');
+
+    Route::post('/companies/{company}/delete-requests/{deleteRequest}/approve', [\App\Http\Controllers\Platform\ApprovalController::class, 'approveDelete'])
+        ->name('platform.approvals.approve-delete');
+
+    Route::post('/companies/{company}/delete-requests/{deleteRequest}/reject', [\App\Http\Controllers\Platform\ApprovalController::class, 'rejectDelete'])
+        ->name('platform.approvals.reject-delete');
+
+    Route::post('/companies/{company}/appraiser-delegations', [\App\Http\Controllers\Platform\AppraiserDelegationController::class, 'store'])
+        ->name('platform.appraiser-delegations.store');
+
+    Route::delete('/companies/{company}/appraiser-delegations/{manager}', [\App\Http\Controllers\Platform\AppraiserDelegationController::class, 'destroy'])
+        ->name('platform.appraiser-delegations.destroy');
 
     Route::get('/companies/{company}/weightage', [\App\Http\Controllers\Platform\WeightageController::class, 'index'])
         ->name('platform.weightage.index');

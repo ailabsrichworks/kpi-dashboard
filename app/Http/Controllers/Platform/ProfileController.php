@@ -17,6 +17,11 @@ use Inertia\Inertia;
  */
 class ProfileController extends Controller
 {
+    private const THEME_FIELDS = [
+        'theme_bg', 'theme_card', 'theme_accent', 'theme_accent2', 'theme_border', 'theme_text',
+        'theme_sidebar_bg', 'theme_sidebar_accent', 'theme_sidebar_text', 'theme_font_family', 'theme_font_size',
+    ];
+
     public function index(Request $request)
     {
         $me = $request->attributes->get('platformUser');
@@ -26,17 +31,18 @@ class ProfileController extends Controller
         // unfiltered — a Super Admin or Company Admin can see other users'
         // rows under RLS, so an unfiltered lookup here isn't guaranteed to be
         // "yourself." See SupabaseUserService::currentAuthUserId()'s docblock.
-        $telegram = $supabase->first('users', [
+        $row = $supabase->first('users', [
             'id' => 'eq.' . $me['id'],
-            'select' => 'telegram_username,telegram_linked_at',
+            'select' => 'telegram_username,telegram_linked_at,' . implode(',', self::THEME_FIELDS),
         ]);
 
         return Inertia::render('Platform/Profile', [
             'me' => $me,
             'telegram' => [
-                'linked' => !empty($telegram['telegram_linked_at']),
-                'username' => $telegram['telegram_username'] ?? null,
+                'linked' => !empty($row['telegram_linked_at']),
+                'username' => $row['telegram_username'] ?? null,
             ],
+            'theme' => array_intersect_key($row ?? [], array_flip(self::THEME_FIELDS)),
         ]);
     }
 
@@ -53,5 +59,47 @@ class ProfileController extends Controller
         }
 
         return back()->with('success', 'Password updated.');
+    }
+
+    /**
+     * Ports legacy's Account Settings appearance theme (ProfileController::
+     * updateTheme(), persisted on `employees`) — see the migration's own
+     * docblock (2026_09_29_100000_add_theme_preferences_to_users.php) for why
+     * no new RLS was needed. Every field is nullable and independently
+     * clearable (sending an empty string resets that one field to the
+     * Platform's own default), matching legacy's own "any field can be
+     * unset" behavior.
+     */
+    public function updateTheme(Request $request)
+    {
+        $validated = $request->validate([
+            'theme_bg' => 'nullable|regex:/^#[0-9A-Fa-f]{6}$/',
+            'theme_card' => 'nullable|regex:/^#[0-9A-Fa-f]{6}$/',
+            'theme_accent' => 'nullable|regex:/^#[0-9A-Fa-f]{6}$/',
+            'theme_accent2' => 'nullable|regex:/^#[0-9A-Fa-f]{6}$/',
+            'theme_border' => 'nullable|regex:/^#[0-9A-Fa-f]{6}$/',
+            'theme_text' => 'nullable|regex:/^#[0-9A-Fa-f]{6}$/',
+            'theme_sidebar_bg' => 'nullable|regex:/^#[0-9A-Fa-f]{6}$/',
+            'theme_sidebar_accent' => 'nullable|regex:/^#[0-9A-Fa-f]{6}$/',
+            'theme_sidebar_text' => 'nullable|regex:/^#[0-9A-Fa-f]{6}$/',
+            'theme_font_family' => 'nullable|in:Inter,Poppins,Roboto,Nunito,Merriweather,Fira Code',
+            'theme_font_size' => 'nullable|in:sm,md,lg',
+        ]);
+
+        $me = $request->attributes->get('platformUser');
+        $supabase = $request->attributes->get('platformSupabase');
+
+        $payload = [];
+        foreach (self::THEME_FIELDS as $field) {
+            $payload[$field] = $validated[$field] ?: null;
+        }
+
+        try {
+            $supabase->update('users', ['id' => 'eq.' . $me['id']], $payload, false);
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Could not save your theme: ' . $e->getMessage());
+        }
+
+        return back()->with('success', 'Appearance updated.');
     }
 }
