@@ -244,6 +244,9 @@ Route::middleware(['platform.auth', 'platform.audit'])->prefix('platform')->grou
     Route::get('/companies/{company}/kpis', [\App\Http\Controllers\Platform\KpiController::class, 'index'])
         ->name('platform.kpis.index');
 
+    Route::get('/companies/{company}/kpis/create', [\App\Http\Controllers\Platform\KpiController::class, 'create'])
+        ->name('platform.kpis.create');
+
     Route::post('/companies/{company}/kpi-categories', [\App\Http\Controllers\Platform\KpiController::class, 'storeCategory'])
         ->name('platform.kpi-categories.store');
 

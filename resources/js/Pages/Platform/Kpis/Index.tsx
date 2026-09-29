@@ -1,4 +1,4 @@
-import { router, useForm, usePage } from '@inertiajs/react';
+import { Link, router, useForm, usePage } from '@inertiajs/react';
 import { FormEventHandler, useMemo, useState } from 'react';
 import PlatformLayout from '@/Components/Platform/PlatformLayout';
 import { Badge, Card, EmptyState, InfoTooltip, PrimaryButton, SecondaryButton } from '@/Components/Platform/ui';
@@ -382,59 +382,16 @@ function KpiFormFields({
     );
 }
 
-function CreateKpiPanel({ companyId, categories, members }: { companyId: string; categories: Category[]; members: Member[] }) {
-    // Opened straight away when arriving from the sidebar's "Create New KPI" link.
-    const [open, setOpen] = useState(() => new URLSearchParams(window.location.search).has('create'));
-    const { data, setData, post, processing, reset } = useForm({
-        category_id: '',
-        name: '',
-        description: '',
-        target: '',
-        unit: '',
-        weight: '',
-        assigned_user_id: '',
-        frequency: 'monthly',
-        visibility: 'company',
-        quarter_targets: { Q1: '', Q2: '', Q3: '', Q4: '' } as Record<'Q1' | 'Q2' | 'Q3' | 'Q4', string>,
-    });
-
-    const submit: FormEventHandler = (e) => {
-        e.preventDefault();
-        post(`/platform/companies/${companyId}/kpis`, {
-            onSuccess: () => {
-                reset();
-                setOpen(false);
-            },
-        });
-    };
-
-    if (!open) {
-        return (
-            <PrimaryButton onClick={() => setOpen(true)} className="mb-5 inline-flex items-center gap-1.5">
+// A real, separate page now — see Platform/Kpis/Create.tsx — matching
+// legacy's own dedicated `kpi.create` view instead of a panel bolted onto
+// this list/view page.
+function CreateKpiLink({ companyId }: { companyId: string }) {
+    return (
+        <Link href={`/platform/companies/${companyId}/kpis/create`} className="mb-5 inline-flex">
+            <PrimaryButton className="inline-flex items-center gap-1.5">
                 <PlusIcon className="w-4 h-4" /> New KPI
             </PrimaryButton>
-        );
-    }
-
-    return (
-        <form onSubmit={submit} className="grid grid-cols-2 gap-3 mb-5 bg-slate-50 rounded-xl p-4">
-            <KpiFormFields
-                data={data}
-                setData={setData}
-                categories={categories}
-                members={members}
-                quarterTargets={data.quarter_targets}
-                setQuarterTarget={(q, v) => setData('quarter_targets', { ...data.quarter_targets, [q]: v })}
-            />
-            <div className="col-span-2 flex items-center gap-2">
-                <PrimaryButton type="submit" disabled={processing}>
-                    Create KPI
-                </PrimaryButton>
-                <button type="button" onClick={() => setOpen(false)} className="text-sm text-slate-400">
-                    Cancel
-                </button>
-            </div>
-        </form>
+        </Link>
     );
 }
 
@@ -738,7 +695,7 @@ export default function KpisIndex({ company, categories, kpis, templates, templa
         >
             {kpis.length > 0 && (
                 <div className="flex justify-end mb-3">
-                    <CreateKpiPanel companyId={company.id} categories={categories} members={members} />
+                    <CreateKpiLink companyId={company.id} />
                 </div>
             )}
 
@@ -767,7 +724,7 @@ export default function KpisIndex({ company, categories, kpis, templates, templa
                         <h3 className="text-xl font-black text-slate-900">No KPI Created Yet</h3>
                         <p className="text-sm text-slate-500 mt-2">Start creating KPI for your yearly execution tracking.</p>
                         <div className="mt-4 flex justify-center">
-                            <CreateKpiPanel companyId={company.id} categories={categories} members={members} />
+                            <CreateKpiLink companyId={company.id} />
                         </div>
                     </div>
                 ) : visibleKpis.length === 0 ? (

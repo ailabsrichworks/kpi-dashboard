@@ -156,6 +156,44 @@ class KpiController extends Controller
     }
 
     /**
+     * A real, dedicated Create KPI page — mirrors legacy's own
+     * `kpi.create`/`kpi/create.blade.php` (a full page of its own, not a
+     * panel bolted onto the list view). This existed only as a collapsible
+     * form embedded in `index()`'s "KPI List" page before; nothing here
+     * changes what `store()` accepts, only where the form to reach it lives.
+     */
+    public function create(Request $request, string $company)
+    {
+        $this->ensureCompanyAdmin($request, $company);
+
+        /** @var SupabaseUserService $supabase */
+        $supabase = $request->attributes->get('platformSupabase');
+
+        $companyRow = $supabase->first('companies', [
+            'id' => 'eq.' . $company,
+            'select' => 'id,name,code',
+        ]);
+
+        $categories = $supabase->get('kpi_categories', [
+            'company_id' => 'eq.' . $company,
+            'select' => '*',
+            'order' => 'name.asc',
+        ]);
+
+        $members = $supabase->get('company_users', [
+            'company_id' => 'eq.' . $company,
+            'status' => 'eq.active',
+            'select' => 'user_id,users(name,email)',
+        ]);
+
+        return Inertia::render('Platform/Kpis/Create', [
+            'company' => $companyRow,
+            'categories' => $categories,
+            'members' => $members,
+        ]);
+    }
+
+    /**
      * Copy-on-apply (Blueprint §10): every KPI/category created here is an
      * independent row owned by this company, with no foreign key back to
      * the template it came from. Editing the template afterward can never
