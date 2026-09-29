@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Platform;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Platform\Concerns\LogsAdminActions;
 use App\Http\Controllers\Platform\Concerns\PlatformAuthorization;
+use App\Services\PlatformNotificationService;
 use App\Services\SupabaseUserService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -125,6 +126,38 @@ class JobDescriptionController extends Controller
             }
         } catch (\Throwable $e) {
             return back()->withInput()->with('error', 'Could not save your job description: ' . $e->getMessage());
+        }
+
+        // Legacy notifies a single manager (reports_to_id); the Platform's
+        // Company-Admin-decides model (see this controller's own docblock)
+        // has no single equivalent reviewer, so every active admin is
+        // notified instead — best-effort, matching every other notify() call
+        // in this codebase.
+        if ($isSubmit) {
+            $admins = $supabase->get('company_users', [
+                'company_id' => 'eq.' . $company,
+                'role' => 'eq.company_admin',
+                'status' => 'eq.active',
+                'select' => 'user_id',
+            ]);
+
+            $myName = $request->attributes->get('platformUser')['name'] ?? 'An employee';
+
+            foreach ($admins as $admin) {
+                try {
+                    app(PlatformNotificationService::class)->notify(
+                        $supabase,
+                        $company,
+                        $admin['user_id'],
+                        "{$myName} submitted their Job Description",
+                        'Ready for your review.',
+                        'job_description_submitted',
+                        "/platform/companies/{$company}/job-description",
+                    );
+                } catch (\Throwable) {
+                    // Best-effort — the submission itself already succeeded.
+                }
+            }
         }
 
         return back()->with('success', $isSubmit ? 'Job description submitted for review.' : 'Draft saved.');

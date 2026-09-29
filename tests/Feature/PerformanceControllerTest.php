@@ -221,6 +221,33 @@ class PerformanceControllerTest extends TestCase
             ->post('/platform/companies/company-a/performance/q2/acknowledge', ['acknowledgment' => 'Agreed, thank you.']);
 
         $response->assertSessionHas('success');
+    }
+
+    public function test_acknowledge_notifies_the_appraising_manager(): void
+    {
+        Http::fake([
+            '*/rest/v1/users*' => Http::response([[
+                'id' => 'member-id', 'name' => 'Member', 'email' => 'member@example.com',
+                'role' => 'member', 'status' => 'active',
+            ]], 200),
+            '*/rest/v1/company_users*' => Http::sequence()
+                ->push([['company_id' => 'company-a', 'role' => 'employee', 'status' => 'active']], 200) // PlatformAuth's own membership lookup
+                ->push([['manager_user_id' => 'manager-id']], 200), // "who appraised me" lookup
+            '*/rest/v1/platform_admin_assignments*' => Http::response([], 200),
+            '*/rest/v1/performance_reviews*' => Http::response([['id' => 'rev-1', 'status' => 'appraised']], 200),
+            '*/rest/v1/admin_action_logs*' => Http::response([['id' => 'log-1']], 201),
+            '*/rest/v1/notifications*' => Http::response([['id' => 'n-1']], 201),
+        ]);
+
+        $response = $this->withSession(['platform_access_token' => $this->fakeToken('member-auth-id')])
+            ->post('/platform/companies/company-a/performance/q2/acknowledge', ['acknowledgment' => 'Agreed, thank you.']);
+
+        $response->assertSessionHas('success');
+
+        Http::assertSent(fn ($request) => $request->method() === 'POST'
+            && str_contains($request->url(), '/rest/v1/notifications')
+            && ($request['user_id'] ?? null) === 'manager-id'
+            && ($request['type'] ?? null) === 'appraisal_completed');
 
         Http::assertSent(function ($request) {
             return $request->method() === 'PATCH'

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import PlatformLayout from '@/Components/Platform/PlatformLayout';
 import { Card, EmptyState, PrimaryButton } from '@/Components/Platform/ui';
 import { BellIcon } from '@/Components/Platform/Icons';
-import { CATEGORY_META, DEFAULT_TYPE_META, NotificationCategory, TYPE_META, typeMetaFor } from '@/config/notificationMeta';
+import { CATEGORY_META, DEFAULT_TYPE_META, NotificationCategory, typeMetaFor } from '@/config/notificationMeta';
 
 interface Notification {
     id: string;
@@ -12,6 +12,10 @@ interface Notification {
     message: string;
     is_read: boolean;
     created_at: string;
+    type: string | null;
+    link: string | null;
+    quarter: string | null;
+    financial_year: string | null;
 }
 
 interface NotificationsPageProps {
@@ -42,35 +46,6 @@ function isToday(iso: string): boolean {
     return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
 }
 
-/**
- * `notifications` still has no `type`/`link` column (see the legacy,
- * pre-Platform `notifications` table this mirrors — `resources/js/Pages/
- * Notifications.tsx` + `resources/js/config/notificationMeta.ts`, which
- * *does* have real `type`/`link`/`quarter`/`financial_year` columns behind
- * it) — a migration adding the same 4 columns here is prepared but not yet
- * applied (schema changes to the shared production database need sign-off
- * this session couldn't self-grant; see the accompanying message). Until
- * then, every real Platform notification title is inferred back to one of
- * `notificationMeta.ts`'s own real `type` keys — the same shared config
- * legacy's page imports, not a second, drifting copy of it — so the
- * category/color/icon/label language is identical, and an unrecognized
- * title honestly falls to the same DEFAULT_TYPE_META ("Update", 🔔) legacy
- * itself uses for an unrecognized type, rather than inventing a new bucket.
- */
-function inferType(title: string): string {
-    if (title.startsWith('Quarter sign-off')) return 'kpi_completion_approval';
-    if (title.startsWith('Quarter change')) return 'kpi_actual_approval';
-    if (title.startsWith('Weight change')) return 'kpi_weightage_approval';
-    return '__unknown__';
-}
-
-/** Company-scoped destinations for the 3 real Platform approval types — the closest thing to legacy's stored `link` until that column exists here too. */
-function linkFor(type: string, companyId: string): string | null {
-    if (type === 'kpi_completion_approval' || type === 'kpi_actual_approval') return `/platform/companies/${companyId}/quarterly`;
-    if (type === 'kpi_weightage_approval') return `/platform/companies/${companyId}/weightage`;
-    return null;
-}
-
 type FilterKey = 'all' | NotificationCategory | 'appraisal_needed' | 'appraisal_ready' | 'appraisal_completed';
 
 const APPRAISAL_FILTER_TYPES: Partial<Record<FilterKey, string>> = {
@@ -81,11 +56,10 @@ const APPRAISAL_FILTER_TYPES: Partial<Record<FilterKey, string>> = {
 
 function NotificationRow({ notification }: { notification: Notification }) {
     const unread = !notification.is_read;
-    const type = inferType(notification.title);
-    const meta = type === '__unknown__' ? DEFAULT_TYPE_META : typeMetaFor(type);
+    const meta = notification.type ? typeMetaFor(notification.type) : DEFAULT_TYPE_META;
     const cat = CATEGORY_META[meta.category];
     const catColor = cat.bg === '#D4AF37' ? '#8a6d00' : cat.bg;
-    const href = linkFor(type, notification.company_id);
+    const href = notification.link;
 
     const markRead = () => {
         if (unread) router.post(`/platform/notifications/${notification.id}/read`, {}, { preserveScroll: true });
@@ -130,10 +104,7 @@ function NotificationRow({ notification }: { notification: Notification }) {
 export default function NotificationsIndex({ notifications }: NotificationsPageProps) {
     const [filter, setFilter] = useState<FilterKey>('all');
 
-    const rows = notifications.map((n) => {
-        const type = inferType(n.title);
-        return { ...n, type, meta: type === '__unknown__' ? DEFAULT_TYPE_META : typeMetaFor(type) };
-    });
+    const rows = notifications.map((n) => ({ ...n, meta: n.type ? typeMetaFor(n.type) : DEFAULT_TYPE_META }));
 
     // Unread-only counts on every chip — matches legacy's own Notifications.tsx exactly (a badge counting yesterday's already-seen total no matter how many times "Mark all as read" is pressed looks broken, even when it's technically still correct).
     const unread = rows.filter((n) => !n.is_read);

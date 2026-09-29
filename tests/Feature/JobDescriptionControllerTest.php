@@ -96,6 +96,39 @@ class JobDescriptionControllerTest extends TestCase
         });
     }
 
+    public function test_submitting_notifies_every_active_company_admin(): void
+    {
+        Http::fake([
+            '*/rest/v1/users*' => Http::response([[
+                'id' => 'member-id', 'name' => 'Member', 'email' => 'member@example.com',
+                'role' => 'member', 'status' => 'active',
+            ]], 200),
+            '*/rest/v1/company_users*' => Http::sequence()
+                ->push([['company_id' => 'company-a', 'role' => 'employee', 'status' => 'active']], 200) // PlatformAuth's own membership lookup
+                ->push([['user_id' => 'admin-1'], ['user_id' => 'admin-2']], 200), // active company_admins to notify
+            '*/rest/v1/platform_admin_assignments*' => Http::response([], 200),
+            '*/rest/v1/job_descriptions*' => Http::sequence()
+                ->push([], 200)
+                ->push([['id' => 'jd-1']], 201),
+            '*/rest/v1/notifications*' => Http::response([['id' => 'n-1']], 201),
+        ]);
+
+        $response = $this->withSession(['platform_access_token' => $this->fakeToken('member-auth-id')])
+            ->post('/platform/companies/company-a/job-description', [
+                'summary' => 'Runs the thing.',
+                'action' => 'submit',
+            ]);
+
+        $response->assertSessionHas('success', 'Job description submitted for review.');
+
+        foreach (['admin-1', 'admin-2'] as $adminId) {
+            Http::assertSent(fn ($request) => $request->method() === 'POST'
+                && str_contains($request->url(), '/rest/v1/notifications')
+                && ($request['user_id'] ?? null) === $adminId
+                && ($request['type'] ?? null) === 'job_description_submitted');
+        }
+    }
+
     public function test_editing_is_refused_once_submitted(): void
     {
         Http::fake([

@@ -22,7 +22,7 @@ class NotificationController extends Controller
         $supabase = $request->attributes->get('platformSupabase');
 
         $notifications = $supabase->get('notifications', [
-            'select' => 'id,company_id,title,message,is_read,created_at',
+            'select' => 'id,company_id,title,message,is_read,created_at,type,link,quarter,financial_year',
             'order' => 'created_at.desc',
             'limit' => '50',
         ]);

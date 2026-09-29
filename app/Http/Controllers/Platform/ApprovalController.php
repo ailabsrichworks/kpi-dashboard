@@ -162,6 +162,8 @@ class ApprovalController extends Controller
             $pending['requested_by'],
             'Target change approved',
             'Your request to change "' . ($pending['kpis']['name'] ?? 'a KPI') . '" to ' . $pending['new_target'] . ' was approved.',
+            'kpi_target_change_approval',
+            "/platform/companies/{$company}/kpis",
         );
 
         try {
@@ -213,6 +215,8 @@ class ApprovalController extends Controller
             $pending['requested_by'],
             'Target change rejected',
             'Your request to change "' . ($pending['kpis']['name'] ?? 'a KPI') . '" was rejected.' . ($request->decision_note ? ' Note: ' . $request->decision_note : ''),
+            'kpi_target_change_approval',
+            "/platform/companies/{$company}/kpis",
         );
 
         try {
@@ -265,6 +269,8 @@ class ApprovalController extends Controller
             $pending['requested_by'],
             'Deletion approved',
             'Your request to delete "' . $kpiName . '" was approved — the KPI has been removed.',
+            'kpi_delete_approval',
+            "/platform/companies/{$company}/kpis",
         );
 
         try {
@@ -316,6 +322,8 @@ class ApprovalController extends Controller
             $pending['requested_by'],
             'Deletion rejected',
             'Your request to delete "' . ($pending['kpis']['name'] ?? 'a KPI') . '" was rejected.' . ($request->decision_note ? ' Note: ' . $request->decision_note : ''),
+            'kpi_delete_approval',
+            "/platform/companies/{$company}/kpis",
         );
 
         try {

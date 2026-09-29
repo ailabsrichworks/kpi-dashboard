@@ -356,7 +356,11 @@ class PerformanceController extends Controller
                         $company,
                         $manager['manager_user_id'],
                         'Performance review submitted',
-                        "A {$quarter} self-assessment is ready for your review."
+                        "A {$quarter} self-assessment is ready for your review.",
+                        'appraisal_submitted',
+                        "/platform/companies/{$company}/performance/" . strtolower($quarter),
+                        $quarter,
+                        $financialYear,
                     );
                 } catch (\Throwable) {
                     // Best-effort — the submission itself already succeeded.
@@ -527,7 +531,17 @@ class PerformanceController extends Controller
 
         if ($isSubmit) {
             try {
-                app(PlatformNotificationService::class)->notify($supabase, $company, $user, 'Performance review scored', "Your {$quarter} performance review has been appraised — sign off to complete it.");
+                app(PlatformNotificationService::class)->notify(
+                    $supabase,
+                    $company,
+                    $user,
+                    'Performance review scored',
+                    "Your {$quarter} performance review has been appraised — sign off to complete it.",
+                    'appraisal_appraised',
+                    "/platform/companies/{$company}/performance/" . strtolower($quarter),
+                    $quarter,
+                    $financialYear,
+                );
             } catch (\Throwable) {
                 // Best-effort.
             }
@@ -576,6 +590,33 @@ class PerformanceController extends Controller
             ], false);
         } catch (\Throwable $e) {
             return back()->with('error', 'Could not sign off: ' . $e->getMessage());
+        }
+
+        // Best-effort, unlike the log write below: closes the loop for the
+        // manager who appraised this review, but a notification hiccup here
+        // must never turn a successful sign-off into a user-facing error.
+        $manager = $supabase->first('company_users', [
+            'company_id' => 'eq.' . $company,
+            'user_id' => 'eq.' . $meId,
+            'select' => 'manager_user_id',
+        ]);
+
+        if (!empty($manager['manager_user_id'])) {
+            try {
+                app(PlatformNotificationService::class)->notify(
+                    $supabase,
+                    $company,
+                    $manager['manager_user_id'],
+                    'Performance review completed',
+                    "The {$quarter} performance review you appraised has been signed off.",
+                    'appraisal_completed',
+                    "/platform/companies/{$company}/performance/" . strtolower($quarter),
+                    $quarter,
+                    $financialYear,
+                );
+            } catch (\Throwable) {
+                // Best-effort — the sign-off itself already succeeded.
+            }
         }
 
         try {

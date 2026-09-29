@@ -217,6 +217,9 @@ class QuarterlyController extends Controller
             $pending['completion_submitted_by'],
             'Quarter sign-off approved',
             $pending['quarter'] . ' for "' . ($pending['kpis']['name'] ?? 'a KPI') . '" was signed off.',
+            'kpi_completion_approval',
+            "/platform/companies/{$company}/quarterly",
+            $pending['quarter'],
         );
 
         try {
@@ -266,6 +269,9 @@ class QuarterlyController extends Controller
             $pending['completion_submitted_by'],
             'Quarter sign-off rejected',
             $pending['quarter'] . ' for "' . ($pending['kpis']['name'] ?? 'a KPI') . '" was sent back.' . ($request->decision_note ? ' Note: ' . $request->decision_note : ''),
+            'kpi_completion_approval',
+            "/platform/companies/{$company}/quarterly",
+            $pending['quarter'],
         );
 
         try {
@@ -379,6 +385,9 @@ class QuarterlyController extends Controller
             $pending['requested_by'],
             'Quarter change approved',
             'Your requested change to ' . ($pending['kpi_quarters']['quarter'] ?? 'a quarter') . ' of "' . ($pending['kpis']['name'] ?? 'a KPI') . '" was approved.',
+            'kpi_actual_approval',
+            "/platform/companies/{$company}/quarterly",
+            $pending['kpi_quarters']['quarter'] ?? null,
         );
 
         try {
@@ -431,6 +440,9 @@ class QuarterlyController extends Controller
             $pending['requested_by'],
             'Quarter change rejected',
             'Your requested change to ' . ($pending['kpi_quarters']['quarter'] ?? 'a quarter') . ' of "' . ($pending['kpis']['name'] ?? 'a KPI') . '" was rejected.' . ($request->decision_note ? ' Note: ' . $request->decision_note : ''),
+            'kpi_actual_approval',
+            "/platform/companies/{$company}/quarterly",
+            $pending['kpi_quarters']['quarter'] ?? null,
         );
 
         try {

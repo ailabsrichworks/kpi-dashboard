@@ -240,6 +240,8 @@ class WeightageController extends Controller
             $pending['requested_by'],
             'Weight change approved',
             'Your request to change "' . ($pending['kpis']['name'] ?? 'a KPI') . '" to ' . $pending['new_weight'] . '% was approved.',
+            'kpi_weightage_approval',
+            "/platform/companies/{$company}/weightage",
         );
 
         try {
@@ -292,6 +294,8 @@ class WeightageController extends Controller
             $pending['requested_by'],
             'Weight change rejected',
             'Your request to change "' . ($pending['kpis']['name'] ?? 'a KPI') . '" was rejected.' . ($request->decision_note ? ' Note: ' . $request->decision_note : ''),
+            'kpi_weightage_approval',
+            "/platform/companies/{$company}/weightage",
         );
 
         try {
