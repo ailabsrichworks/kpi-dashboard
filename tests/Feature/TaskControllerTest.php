@@ -106,7 +106,7 @@ class TaskControllerTest extends TestCase
         Http::fake(array_merge($this->fakeEmployeeSessionFakes(), [
             '*/rest/v1/tasks*' => Http::response([[
                 'id' => 'task-1', 'title' => 'Weekly ops sync', 'status' => 'open', 'priority' => 'medium',
-                'due_date' => null, 'meeting_time' => '09:00', 'assignee_user_id' => null,
+                'due_date' => null, 'meeting_time' => '09:00', 'assignee_user_id' => null, 'created_by' => 'employee-id',
             ]], 200),
         ]));
 
@@ -123,6 +123,80 @@ class TaskControllerTest extends TestCase
                 && $request->method() === 'PATCH'
                 && $request['meeting_time'] === '10:30';
         });
+    }
+
+    /**
+     * The real bug behind "why can't I drag a card to another column":
+     * `tasks_update`'s RLS policy (admin/creator/assignee) was the only
+     * gate, and PostgREST returns success with ZERO rows affected when RLS
+     * filters every row -- so anyone who could merely SEE a task (any
+     * SLT/admin on the company-wide board) but didn't create or wasn't
+     * assigned to it could drag its card, get back a "success" flash, and
+     * watch it silently revert to its original column on the next reload.
+     * This proves the app-level check now catches it BEFORE that silent
+     * no-op, with a real error message instead.
+     */
+    public function test_update_is_refused_for_someone_who_is_neither_creator_assignee_nor_admin(): void
+    {
+        Http::fake(array_merge($this->fakeEmployeeSessionFakes(), [
+            '*/rest/v1/tasks*' => Http::response([[
+                'id' => 'task-1', 'title' => 'Someone else\'s task', 'status' => 'open', 'priority' => 'medium',
+                'due_date' => null, 'meeting_time' => null, 'assignee_user_id' => 'someone-else-id',
+                'created_by' => 'someone-else-id',
+            ]], 200),
+        ]));
+
+        $response = $this->withSession(['platform_access_token' => $this->fakeToken()])
+            ->patch('/platform/companies/company-1/tasks/task-1', [
+                'title' => 'Someone else\'s task',
+                'status' => 'in_progress',
+                'priority' => 'medium',
+            ]);
+
+        $response->assertSessionHas('error', 'You can only edit or move a task you created or are assigned to.');
+
+        Http::assertNotSent(fn ($request) => $request->method() === 'PATCH' && str_contains($request->url(), '/rest/v1/tasks'));
+    }
+
+    public function test_update_is_allowed_for_the_tasks_assignee_even_when_they_are_not_the_creator(): void
+    {
+        Http::fake(array_merge($this->fakeEmployeeSessionFakes(), [
+            '*/rest/v1/tasks*' => Http::response([[
+                'id' => 'task-1', 'title' => 'Assigned to me', 'status' => 'open', 'priority' => 'medium',
+                'due_date' => null, 'meeting_time' => null, 'assignee_user_id' => 'employee-id',
+                'created_by' => 'someone-else-id',
+            ]], 200),
+        ]));
+
+        $response = $this->withSession(['platform_access_token' => $this->fakeToken()])
+            ->patch('/platform/companies/company-1/tasks/task-1', [
+                'title' => 'Assigned to me',
+                'status' => 'in_progress',
+                'priority' => 'medium',
+            ]);
+
+        $response->assertSessionHas('success');
+
+        Http::assertSent(fn ($request) => $request->method() === 'PATCH'
+            && str_contains($request->url(), '/rest/v1/tasks')
+            && ($request['status'] ?? null) === 'in_progress');
+    }
+
+    public function test_destroy_is_refused_for_the_assignee_who_did_not_create_it(): void
+    {
+        Http::fake(array_merge($this->fakeEmployeeSessionFakes(), [
+            '*/rest/v1/tasks*' => Http::response([[
+                'id' => 'task-1', 'title' => 'Assigned to me', 'status' => 'open',
+                'assignee_user_id' => 'employee-id', 'created_by' => 'someone-else-id',
+            ]], 200),
+        ]));
+
+        $response = $this->withSession(['platform_access_token' => $this->fakeToken()])
+            ->delete('/platform/companies/company-1/tasks/task-1');
+
+        $response->assertSessionHas('error', 'You can only delete a task you created.');
+
+        Http::assertNotSent(fn ($request) => $request->method() === 'DELETE' && str_contains($request->url(), '/rest/v1/tasks'));
     }
 
     public function test_update_kpi_links_deletes_existing_then_reinserts_the_given_set(): void

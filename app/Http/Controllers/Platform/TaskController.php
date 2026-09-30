@@ -197,11 +197,35 @@ class TaskController extends Controller
         $before = $supabase->first('tasks', [
             'id' => 'eq.' . $task,
             'company_id' => 'eq.' . $company,
-            'select' => 'id,title,description,status,priority,due_date,meeting_time,assignee_user_id',
+            'select' => 'id,title,description,status,priority,due_date,meeting_time,assignee_user_id,created_by',
         ]);
 
         if (!$before) {
             abort(404, 'That task does not belong to this company.');
+        }
+
+        // The docblock above has always claimed this check exists; it never
+        // did — `tasks_update`'s RLS policy (admin/creator/assignee) was the
+        // only real gate, and PostgREST silently returns success with ZERO
+        // rows affected when RLS filters every row a caller tries to touch.
+        // Net effect: anyone who could SEE a task they didn't create or
+        // aren't assigned to (any SLT/admin viewing the company-wide board)
+        // could drag its card to another column, get a "success" response,
+        // and watch it silently revert on reload with no explanation at all
+        // — this is that missing check, matching the RLS boundary exactly.
+        $meId = $request->attributes->get('platformUser')['id'];
+        $isAuthorized = $this->canAdministerCompany($request, $company)
+            || $before['created_by'] === $meId
+            || $before['assignee_user_id'] === $meId;
+
+        // A flash-message redirect, not abort_unless() — matches every other
+        // "declined action" in this codebase (WeightageController,
+        // ApprovalController, etc.) and renders through PlatformLayout's
+        // existing flash.error banner on the very next Inertia visit, rather
+        // than a raw HTTP error Inertia would otherwise show as a jarring
+        // full-page modal.
+        if (!$isAuthorized) {
+            return back()->with('error', 'You can only edit or move a task you created or are assigned to.');
         }
 
         $after = [
@@ -240,8 +264,24 @@ class TaskController extends Controller
         $before = $supabase->first('tasks', [
             'id' => 'eq.' . $task,
             'company_id' => 'eq.' . $company,
-            'select' => 'id,title,status,assignee_user_id',
+            'select' => 'id,title,status,assignee_user_id,created_by',
         ]);
+
+        if (!$before) {
+            abort(404, 'That task does not belong to this company.');
+        }
+
+        // Matches `tasks_delete`'s RLS policy exactly (admin or creator —
+        // narrower than update's admin/creator/assignee, since deleting
+        // isn't something an assignee alone should be able to do to a task
+        // someone else created for them). Same silent-no-op bug as
+        // update()'s missing check above.
+        $meId = $request->attributes->get('platformUser')['id'];
+        $isAuthorized = $this->canAdministerCompany($request, $company) || $before['created_by'] === $meId;
+
+        if (!$isAuthorized) {
+            return back()->with('error', 'You can only delete a task you created.');
+        }
 
         try {
             $supabase->delete('tasks', ['id' => 'eq.' . $task, 'company_id' => 'eq.' . $company]);

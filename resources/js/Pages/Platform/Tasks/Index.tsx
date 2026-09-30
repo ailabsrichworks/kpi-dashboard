@@ -605,6 +605,14 @@ function Board({
                 meeting_time: task.meeting_time ?? '',
                 assignee_user_id: task.assignee_user_id ?? '',
             },
+            // A rejected move (not this task's creator/assignee/admin) now
+            // comes back as a normal flash.error redirect (see
+            // TaskController::update()) -- PlatformLayout's existing banner
+            // renders it, no special handling needed here. Previously this
+            // failed completely silently: the backend reported "success"
+            // with zero rows actually changed, so the card just snapped
+            // back to its old column on the next reload with no
+            // explanation at all.
             { preserveScroll: true },
         );
     };
