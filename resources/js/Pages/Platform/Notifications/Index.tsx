@@ -26,23 +26,24 @@ interface NotificationsPageProps {
  * page's purposes: abbreviated units (`6d ago`, not `6 days ago`), no
  * week/month/year buckets.
  *
- * Filter/count logic below matches resources/views/notifications.blade.php's
- * own `$categoryMeta`/`$typeMeta`/count computation exactly, per that file
- * (confirmed byte-identical to what's checked into this repo, handed over
- * directly rather than inferred from a screenshot): 4 chips (All / Approvals
- * / Appraisals / Job Descriptions — appraisal_submitted/appraised/completed
- * all bucket into one "Appraisals" chip, not three), and every chip counts
- * ALL notifications in that category, not just unread ones — only the top
- * banner's "X new" pill and "Mark all as read" button are unread-scoped.
- *
- * The banner's flat, card-less look is real but comes from a different
- * source than this file's own inline classes: a global CSS override in
- * resources/views/partials/sidebar.blade.php
- * (`.theme-header-banner.theme-page-banner`) strips every full-width
+ * A note on which legacy file is actually authoritative, since this page has
+ * been chased through two wrong answers already: `resources/js/Pages/
+ * Notifications.tsx` is an unshipped Inertia rewrite (CLAUDE.md's own "Views"
+ * section says so). `resources/views/notifications.blade.php` IS live, but
+ * its own markup (4 filter chips, total-not-unread chip counts) turned out to
+ * be a stale snapshot too — a real screenshot of the live page (Suley/RCG,
+ * 2026-09-29) shows 6 chips (Approvals/Needs Appraisal/Ready to
+ * Sign/Completed split out, not one combined "Appraisals") with unread-only
+ * counts (a "Ready to Sign" item is visible in the feed while that chip
+ * reads (0), only possible if it's counting unread, not total — the item is
+ * read). Reverted to that shape. The banner's flat, card-less look in that
+ * same screenshot is real too, but from a different, later source: a global
+ * CSS override in resources/views/partials/sidebar.blade.php
+ * (`.theme-header-banner.theme-page-banner`) that strips every full-width
  * page-top banner's background/border/shadow down to plain text on the page
- * background across the whole legacy app, confirmed directly against a live
- * screenshot. Platform doesn't load that stylesheet, so that end result is
- * baked in directly here instead of via a class name that would do nothing.
+ * background — Platform pages don't include that file at all, so this page
+ * has to bake the same end result in directly rather than relying on a class
+ * name Platform's CSS never loads.
  */
 function timeAgo(iso: string): string {
     const diffMs = Date.now() - new Date(iso).getTime();
@@ -65,7 +66,13 @@ function csrfToken(): string {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
 }
 
-type FilterKey = 'all' | NotificationCategory;
+type FilterKey = 'all' | NotificationCategory | 'appraisal_needed' | 'appraisal_ready' | 'appraisal_completed';
+
+const APPRAISAL_FILTER_TYPES: Partial<Record<FilterKey, string>> = {
+    appraisal_needed: 'appraisal_submitted',
+    appraisal_ready: 'appraisal_appraised',
+    appraisal_completed: 'appraisal_completed',
+};
 
 /**
  * Matches legacy's `handleRowClick()` exactly: the WHOLE row is the click
@@ -133,15 +140,21 @@ export default function NotificationsIndex({ notifications }: NotificationsPageP
 
     const rows = notifications.map((n) => ({ ...n, meta: n.type ? typeMetaFor(n.type) : DEFAULT_TYPE_META }));
 
-    // Matches notifications.blade.php exactly: the top banner's "X new" pill
-    // and "Mark all as read" button are unread-only, but every filter chip
-    // counts ALL notifications in that category (read or not).
-    const unreadCount = rows.filter((n) => !n.is_read).length;
-    const approvalCount = rows.filter((n) => n.meta.category === 'approval').length;
-    const appraisalCount = rows.filter((n) => n.meta.category === 'appraisal').length;
-    const updateCount = rows.filter((n) => n.meta.category === 'update').length;
+    // Unread-only counts on every chip, confirmed against a real screenshot
+    // of the live page: a read "Ready to Sign" item still shows in the feed
+    // while that chip reads (0), which is only possible if every chip counts
+    // unread, not total.
+    const unread = rows.filter((n) => !n.is_read);
+    const unreadCount = unread.length;
+    const approvalCount = unread.filter((n) => n.meta.category === 'approval').length;
+    const appraisalNeededCount = unread.filter((n) => n.type === 'appraisal_submitted').length;
+    const appraisalReadyCount = unread.filter((n) => n.type === 'appraisal_appraised').length;
+    const appraisalCompletedCount = unread.filter((n) => n.type === 'appraisal_completed').length;
+    const updateCount = unread.filter((n) => n.meta.category === 'update').length;
 
-    const visible = filter === 'all' ? rows : rows.filter((n) => n.meta.category === filter);
+    const appraisalFilterType = APPRAISAL_FILTER_TYPES[filter];
+    const visible =
+        filter === 'all' ? rows : appraisalFilterType ? rows.filter((n) => n.type === appraisalFilterType) : rows.filter((n) => n.meta.category === filter);
     const today = visible.filter((n) => isToday(n.created_at));
     const earlier = visible.filter((n) => !isToday(n.created_at));
 
@@ -181,7 +194,7 @@ export default function NotificationsIndex({ notifications }: NotificationsPageP
                             onClick={() => setFilter('all')}
                             className={`px-3 py-1.5 rounded-xl text-[11px] font-black bg-white border border-[#E5E7EB] text-slate-700 transition ${filter === 'all' ? 'outline outline-2 outline-offset-1 outline-slate-800' : ''}`}
                         >
-                            All <span className="opacity-50">({rows.length})</span>
+                            All <span className="opacity-50">({unreadCount})</span>
                         </button>
                         <button
                             type="button"
@@ -193,11 +206,27 @@ export default function NotificationsIndex({ notifications }: NotificationsPageP
                         </button>
                         <button
                             type="button"
-                            onClick={() => setFilter('appraisal')}
+                            onClick={() => setFilter('appraisal_needed')}
                             style={{ background: `${CATEGORY_META.appraisal.bg}18`, color: CATEGORY_META.appraisal.bg }}
-                            className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition ${filter === 'appraisal' ? 'outline outline-2 outline-offset-1 outline-slate-800' : ''}`}
+                            className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition ${filter === 'appraisal_needed' ? 'outline outline-2 outline-offset-1 outline-slate-800' : ''}`}
                         >
-                            📝 Appraisals <span className="opacity-60">({appraisalCount})</span>
+                            📝 Needs Appraisal <span className="opacity-60">({appraisalNeededCount})</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setFilter('appraisal_ready')}
+                            style={{ background: `${CATEGORY_META.appraisal.bg}18`, color: CATEGORY_META.appraisal.bg }}
+                            className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition ${filter === 'appraisal_ready' ? 'outline outline-2 outline-offset-1 outline-slate-800' : ''}`}
+                        >
+                            ✅ Ready to Sign <span className="opacity-60">({appraisalReadyCount})</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setFilter('appraisal_completed')}
+                            style={{ background: `${CATEGORY_META.appraisal.bg}18`, color: CATEGORY_META.appraisal.bg }}
+                            className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition ${filter === 'appraisal_completed' ? 'outline outline-2 outline-offset-1 outline-slate-800' : ''}`}
+                        >
+                            🎉 Completed <span className="opacity-60">({appraisalCompletedCount})</span>
                         </button>
                         <button
                             type="button"
