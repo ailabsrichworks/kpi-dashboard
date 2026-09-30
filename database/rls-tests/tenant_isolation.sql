@@ -40,6 +40,7 @@ declare
   v_company_b uuid;
   v_dept_a uuid;
   v_kpi_a uuid;
+  v_kpi_a2 uuid;
   v_kpi_b uuid;
   v_auth_a uuid := gen_random_uuid();
   v_auth_a2 uuid := gen_random_uuid();
@@ -200,43 +201,43 @@ begin
   raise notice 'PASS (5): cross-company update is a no-op, not a leak';
 
   -- ---------------------------------------------------------------------
-  -- Scenario 6: delete protection. No DELETE policy exists on `kpis` at
-  -- all (confirmed against 2026_08_12_000000_create_platform_foundation_schema.php)
-  -- -- RLS denies by default, so even the owning Company Admin can't
-  -- delete their own KPI today. Documenting this as a confirmed gap
-  -- (Blueprint §16) rather than assuming it's a bug: whether KPIs should
-  -- be soft-deleted via `status` instead of hard-deleted is a product
-  -- decision, not something this test should silently paper over.
+  -- Scenario 6: delete protection. A real `kpis_delete` policy now exists
+  -- (2026_09_29_080000_add_kpi_target_change_and_delete_requests.php,
+  -- `auth_can_administer_company(company_id)`) -- intentional, added
+  -- alongside the self-service target-change/delete-request feature, which
+  -- needed a real admin-decides-deletes path (mirrors every other admin
+  -- write on `kpis`; a non-admin still never deletes directly). This
+  -- scenario now asserts the owning Company Admin CAN delete their own KPI
+  -- (v_rows = 1), not that they can't -- the original "no delete policy
+  -- exists" gap this scenario documented (Blueprint §16) has been closed by
+  -- product decision, not left ambiguous.
   --
   -- IMPORTANT: a missing RLS policy for a given command does NOT raise
   -- `insufficient_privilege` (that's only for table-level GRANT failures).
   -- For DELETE/UPDATE, a table with RLS enabled and zero policies for that
   -- command evaluates its implicit USING clause as `false`, so the DELETE
   -- runs without error and simply matches zero rows — exactly like
-  -- scenario 5's cross-company UPDATE above. An earlier version of this
-  -- scenario caught `insufficient_privilege` and treated "no exception" as
-  -- "delete succeeded," which is wrong: it would have reported a real
-  -- delete policy as absent even when Postgres denied every row. Found by
-  -- actually running this against real Postgres, not by re-reading the
-  -- policy SQL — checking the row count, the same way scenario 5 already
-  -- does, is what actually distinguishes the two cases.
+  -- scenario 5's cross-company UPDATE above. Checking the row count, the
+  -- same way scenario 5 already does, is what actually distinguishes "no
+  -- policy, denied" from "policy exists, allowed" -- an exception alone
+  -- can't tell them apart.
+  --
+  -- This scenario deliberately deletes v_kpi_a, not a fresh row -- it's the
+  -- one place in this file where consuming a shared fixture is the point
+  -- (proving the owner's DELETE reaches the real row). Scenario 7 below
+  -- learned not to assume v_kpi_a still exists after this runs -- it uses
+  -- its own fresh KPI instead, after reproducing the false-FAIL this
+  -- exact interaction caused the first time this suite ever ran for real.
   -- ---------------------------------------------------------------------
   perform set_config('request.jwt.claims', json_build_object('sub', v_auth_a)::text, true);
   execute 'set local role authenticated';
 
-  begin
-    delete from kpis where id = v_kpi_a;
-    get diagnostics v_rows = row_count;
-
-    if v_rows = 0 then
-      raise notice 'CONFIRMED (6): no delete policy on kpis — even the owning Company Admin''s DELETE matched zero rows. Matches Blueprint §16; not treated as a failure.';
-    else
-      raise notice 'NOTE (6): Company A admin WAS able to delete their own KPI (% row(s)) — a delete policy exists now; update this comment and the Blueprint if that''s an intentional change.', v_rows;
-    end if;
-  exception
-    when insufficient_privilege then
-      raise notice 'CONFIRMED (6): no delete policy on kpis — DELETE denied outright (permission denied) for the owning Company Admin. Matches Blueprint §16; not treated as a failure.';
-  end;
+  delete from kpis where id = v_kpi_a;
+  get diagnostics v_rows = row_count;
+  if v_rows <> 1 then
+    raise exception 'FAIL (6): Company A admin could not delete their own KPI (% row(s) affected) — kpis_delete policy regressed', v_rows;
+  end if;
+  raise notice 'PASS (6): Company A admin can delete their own KPI via the real kpis_delete policy';
 
   execute 'reset role';
 
@@ -250,12 +251,25 @@ begin
   -- still attached). Must run before scenario 11 suspends Company A --
   -- once RLS itself excludes the row, this couldn't tell "trigger rejected
   -- it" apart from "RLS never selected it in the first place."
+  --
+  -- Uses its own fresh KPI (v_kpi_a2), not v_kpi_a: scenario 6 may have just
+  -- deleted v_kpi_a (real kpis_delete policy added in
+  -- 2026_09_29_080000_add_kpi_target_change_and_delete_requests.php). An
+  -- UPDATE against an already-deleted row matches zero rows and raises no
+  -- exception at all, which this scenario's own exception-only check would
+  -- have misread as "the trigger rejected it" -- reproduced for real against
+  -- a disposable Postgres instance: v_kpi_a existing vs. already-deleted was
+  -- the entire difference between PASS and a false-positive FAIL here, with
+  -- the actual immutability trigger behaving identically (and correctly)
+  -- either way.
   -- ---------------------------------------------------------------------
+  insert into kpis (company_id, name, target) values (v_company_a, 'RLS Test KPI A2', 100) returning id into v_kpi_a2;
+
   perform set_config('request.jwt.claims', json_build_object('sub', v_auth_a)::text, true);
   execute 'set local role authenticated';
 
   begin
-    update kpis set company_id = v_company_b where id = v_kpi_a;
+    update kpis set company_id = v_company_b where id = v_kpi_a2;
     raise exception 'FAIL (7): Company A''s own KPI was moved to Company B — company_id is not immutable';
   exception
     when others then
