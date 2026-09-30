@@ -22,12 +22,28 @@ interface NotificationsPageProps {
 }
 
 /**
- * Matches legacy's own `diffForHumans()` output (resources/views/
- * notifications.blade.php — the Blade view is what actually renders for
- * legacy today; resources/js/Pages/Notifications.tsx is a separate, unshipped
- * Inertia rewrite of this same page and isn't the thing to match against)
- * closely enough for this page's purposes: abbreviated units (`6d ago`, not
- * `6 days ago`), no week/month/year buckets.
+ * Matches legacy's own `diffForHumans()` output closely enough for this
+ * page's purposes: abbreviated units (`6d ago`, not `6 days ago`), no
+ * week/month/year buckets.
+ *
+ * A note on which legacy file is actually authoritative, since this page has
+ * been chased through two wrong answers already: `resources/js/Pages/
+ * Notifications.tsx` is an unshipped Inertia rewrite (CLAUDE.md's own "Views"
+ * section says so). `resources/views/notifications.blade.php` IS live, but
+ * its own markup (4 filter chips, total-not-unread chip counts) turned out to
+ * be a stale snapshot too — a real screenshot of the live page (Suley/RCG,
+ * 2026-09-29) shows 6 chips (Approvals/Needs Appraisal/Ready to
+ * Sign/Completed split out, not one combined "Appraisals") with unread-only
+ * counts (a "Ready to Sign" item is visible in the feed while that chip
+ * reads (0), only possible if it's counting unread, not total — the item is
+ * read). Reverted to that shape. The banner's flat, card-less look in that
+ * same screenshot is real too, but from a different, later source: a global
+ * CSS override in resources/views/partials/sidebar.blade.php
+ * (`.theme-header-banner.theme-page-banner`) that strips every full-width
+ * page-top banner's background/border/shadow down to plain text on the page
+ * background — Platform pages don't include that file at all, so this page
+ * has to bake the same end result in directly rather than relying on a class
+ * name Platform's CSS never loads.
  */
 function timeAgo(iso: string): string {
     const diffMs = Date.now() - new Date(iso).getTime();
@@ -50,7 +66,13 @@ function csrfToken(): string {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
 }
 
-type FilterKey = 'all' | NotificationCategory;
+type FilterKey = 'all' | NotificationCategory | 'appraisal_needed' | 'appraisal_ready' | 'appraisal_completed';
+
+const APPRAISAL_FILTER_TYPES: Partial<Record<FilterKey, string>> = {
+    appraisal_needed: 'appraisal_submitted',
+    appraisal_ready: 'appraisal_appraised',
+    appraisal_completed: 'appraisal_completed',
+};
 
 /**
  * Matches legacy's `handleRowClick()` exactly: the WHOLE row is the click
@@ -118,41 +140,42 @@ export default function NotificationsIndex({ notifications }: NotificationsPageP
 
     const rows = notifications.map((n) => ({ ...n, meta: n.type ? typeMetaFor(n.type) : DEFAULT_TYPE_META }));
 
-    // Matches legacy's own notifications.blade.php exactly: the top banner's
-    // "X new" pill and "Mark all as read" button are unread-only, but every
-    // filter chip counts ALL notifications in that category (read or not) —
-    // $rows->count() / $rows->where('_type.category', ...)->count() in the
-    // Blade source, not filtered by is_read first.
-    const unreadCount = rows.filter((n) => !n.is_read).length;
-    const approvalCount = rows.filter((n) => n.meta.category === 'approval').length;
-    const appraisalCount = rows.filter((n) => n.meta.category === 'appraisal').length;
-    const updateCount = rows.filter((n) => n.meta.category === 'update').length;
+    // Unread-only counts on every chip, confirmed against a real screenshot
+    // of the live page: a read "Ready to Sign" item still shows in the feed
+    // while that chip reads (0), which is only possible if every chip counts
+    // unread, not total.
+    const unread = rows.filter((n) => !n.is_read);
+    const unreadCount = unread.length;
+    const approvalCount = unread.filter((n) => n.meta.category === 'approval').length;
+    const appraisalNeededCount = unread.filter((n) => n.type === 'appraisal_submitted').length;
+    const appraisalReadyCount = unread.filter((n) => n.type === 'appraisal_appraised').length;
+    const appraisalCompletedCount = unread.filter((n) => n.type === 'appraisal_completed').length;
+    const updateCount = unread.filter((n) => n.meta.category === 'update').length;
 
-    const visible = filter === 'all' ? rows : rows.filter((n) => n.meta.category === filter);
+    const appraisalFilterType = APPRAISAL_FILTER_TYPES[filter];
+    const visible =
+        filter === 'all' ? rows : appraisalFilterType ? rows.filter((n) => n.type === appraisalFilterType) : rows.filter((n) => n.meta.category === filter);
     const today = visible.filter((n) => isToday(n.created_at));
     const earlier = visible.filter((n) => !isToday(n.created_at));
 
     return (
         <PlatformLayout title="Notifications">
-            {/* Matches legacy's own notifications.blade.php exactly: sticky banner (stays pinned while the list scrolls beneath it), same maroon/gold gradient — this page's one deliberate departure from the plain white PlatformLayout header, since it's the one place legacy itself breaks its own page convention too. */}
-            <div className="sticky top-14 z-30 -mt-4 pt-4 pb-2 bg-[#F5F5F3]">
-                <div className="relative overflow-hidden rounded-[18px] bg-gradient-to-r from-[#1A0A0A] to-[#7A0019] text-white px-6 py-5 shadow-[0_10px_35px_rgba(122,0,25,0.45)] flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#D4AF37] via-[#D4AF37] to-[#D4AF37]/10" />
-                    <div className="relative">
-                        {unreadCount > 0 && (
-                            <span className="text-[11px] font-black bg-[#D4AF37] text-[#1a1a1a] px-2 py-0.5 rounded-full">{unreadCount} new</span>
-                        )}
-                    </div>
+            {/* Flat, card-less banner — legacy's global `.theme-header-banner.theme-page-banner` CSS override (partials/sidebar.blade.php) strips every full-width page-top banner's background/border/shadow entirely ("no card at all — plain text/icons directly on the page background, like a school-management-app top bar") and remaps white/translucent-white elements to dark-on-transparent. Platform doesn't load that stylesheet, so the same end result is baked in directly here instead of via a class name that would do nothing. */}
+            <div className="sticky top-14 z-30 -mt-4 py-1 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-[#F5F5F3]">
+                <div>
                     {unreadCount > 0 && (
-                        <button
-                            type="button"
-                            onClick={() => router.post('/platform/notifications/read-all')}
-                            className="relative text-xs font-black bg-white/10 hover:bg-white/20 text-white px-3.5 py-2 rounded-xl border border-white/20 transition"
-                        >
-                            Mark all as read
-                        </button>
+                        <span className="text-[11px] font-black bg-[#D4AF37] text-[#1a1a1a] px-2 py-0.5 rounded-full">{unreadCount} new</span>
                     )}
                 </div>
+                {unreadCount > 0 && (
+                    <button
+                        type="button"
+                        onClick={() => router.post('/platform/notifications/read-all')}
+                        className="text-xs font-black bg-[rgba(15,23,42,0.05)] hover:bg-[rgba(15,23,42,0.1)] text-[#1e293b] px-3.5 py-2 rounded-xl border border-[rgba(15,23,42,0.08)] transition"
+                    >
+                        Mark all as read
+                    </button>
+                )}
             </div>
 
             {notifications.length === 0 ? (
@@ -171,7 +194,7 @@ export default function NotificationsIndex({ notifications }: NotificationsPageP
                             onClick={() => setFilter('all')}
                             className={`px-3 py-1.5 rounded-xl text-[11px] font-black bg-white border border-[#E5E7EB] text-slate-700 transition ${filter === 'all' ? 'outline outline-2 outline-offset-1 outline-slate-800' : ''}`}
                         >
-                            All <span className="opacity-50">({rows.length})</span>
+                            All <span className="opacity-50">({unreadCount})</span>
                         </button>
                         <button
                             type="button"
@@ -183,11 +206,27 @@ export default function NotificationsIndex({ notifications }: NotificationsPageP
                         </button>
                         <button
                             type="button"
-                            onClick={() => setFilter('appraisal')}
+                            onClick={() => setFilter('appraisal_needed')}
                             style={{ background: `${CATEGORY_META.appraisal.bg}18`, color: CATEGORY_META.appraisal.bg }}
-                            className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition ${filter === 'appraisal' ? 'outline outline-2 outline-offset-1 outline-slate-800' : ''}`}
+                            className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition ${filter === 'appraisal_needed' ? 'outline outline-2 outline-offset-1 outline-slate-800' : ''}`}
                         >
-                            📝 Appraisals <span className="opacity-60">({appraisalCount})</span>
+                            📝 Needs Appraisal <span className="opacity-60">({appraisalNeededCount})</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setFilter('appraisal_ready')}
+                            style={{ background: `${CATEGORY_META.appraisal.bg}18`, color: CATEGORY_META.appraisal.bg }}
+                            className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition ${filter === 'appraisal_ready' ? 'outline outline-2 outline-offset-1 outline-slate-800' : ''}`}
+                        >
+                            ✅ Ready to Sign <span className="opacity-60">({appraisalReadyCount})</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setFilter('appraisal_completed')}
+                            style={{ background: `${CATEGORY_META.appraisal.bg}18`, color: CATEGORY_META.appraisal.bg }}
+                            className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition ${filter === 'appraisal_completed' ? 'outline outline-2 outline-offset-1 outline-slate-800' : ''}`}
+                        >
+                            🎉 Completed <span className="opacity-60">({appraisalCompletedCount})</span>
                         </button>
                         <button
                             type="button"
