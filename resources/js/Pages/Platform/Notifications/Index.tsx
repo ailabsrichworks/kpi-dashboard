@@ -26,24 +26,30 @@ interface NotificationsPageProps {
  * page's purposes: abbreviated units (`6d ago`, not `6 days ago`), no
  * week/month/year buckets.
  *
- * A note on which legacy file is actually authoritative, since this page has
- * been chased through two wrong answers already: `resources/js/Pages/
- * Notifications.tsx` is an unshipped Inertia rewrite (CLAUDE.md's own "Views"
- * section says so). `resources/views/notifications.blade.php` IS live, but
- * its own markup (4 filter chips, total-not-unread chip counts) turned out to
- * be a stale snapshot too — a real screenshot of the live page (Suley/RCG,
- * 2026-09-29) shows 6 chips (Approvals/Needs Appraisal/Ready to
- * Sign/Completed split out, not one combined "Appraisals") with unread-only
- * counts (a "Ready to Sign" item is visible in the feed while that chip
- * reads (0), only possible if it's counting unread, not total — the item is
- * read). Reverted to that shape. The banner's flat, card-less look in that
- * same screenshot is real too, but from a different, later source: a global
- * CSS override in resources/views/partials/sidebar.blade.php
- * (`.theme-header-banner.theme-page-banner`) that strips every full-width
- * page-top banner's background/border/shadow down to plain text on the page
- * background — Platform pages don't include that file at all, so this page
- * has to bake the same end result in directly rather than relying on a class
- * name Platform's CSS never loads.
+ * SETTLED, after being chased through wrong answers twice: the repo's own
+ * `resources/views/notifications.blade.php` is a STALE snapshot of this
+ * page, not what's actually live — its inline `$typeMeta`/`$categoryMeta`
+ * only ever produce 4 filter chips (All/Approvals/Appraisals/Job
+ * Descriptions) with total (not unread) counts, which directly contradicts
+ * two independent pieces of live evidence: a real screenshot of the live
+ * page (Suley/RCG, 2026-09-29) showing 6 chips, and the exact live chip text
+ * pasted directly from that page — "Approvals (28) / Needs Appraisal (4) /
+ * Ready to Sign (0) / Completed (10) / Job Descriptions (13)", which sums to
+ * 55 = "All (55)", and where "Ready to Sign (0)" coexists with a visible,
+ * already-read Ready-to-Sign item in the feed — only possible if every chip
+ * counts unread notifications, not all of them. Whatever actually renders
+ * the live page computes a richer per-type split than the blade file
+ * checked into this branch does; that split (not the file) is what this
+ * page matches. `resources/js/Pages/Notifications.tsx` is a separate,
+ * confirmed-unshipped rewrite (CLAUDE.md's own "Views" section) and was
+ * never the thing to match either.
+ *
+ * The banner's flat, card-less look (no gradient/shadow/border, just text on
+ * the page background) is real and unrelated to the above — it comes from a
+ * global CSS override in resources/views/partials/sidebar.blade.php
+ * (`.theme-header-banner.theme-page-banner`) that flattens every full-width
+ * page-top banner across the whole legacy app. Platform doesn't load that
+ * stylesheet, so the same end result is baked in directly here.
  */
 function timeAgo(iso: string): string {
     const diffMs = Date.now() - new Date(iso).getTime();
