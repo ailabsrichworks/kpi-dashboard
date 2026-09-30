@@ -47,7 +47,12 @@ class NotificationController extends Controller
         /** @var SupabaseUserService $supabase */
         $supabase = $request->attributes->get('platformSupabase');
 
-        $supabase->update('notifications', ['is_read' => 'eq.false'], ['is_read' => true], false);
+        // Deliberately no `is_read => eq.false` filter here, matching the
+        // legacy NotificationController exactly — unconditionally setting
+        // `is_read` true for every one of the caller's own rows (RLS already
+        // scopes this to `user_id = auth_current_user_id()`) is idempotent
+        // for already-read rows, so it's safe to drop.
+        $supabase->update('notifications', [], ['is_read' => true], false);
 
         return back();
     }

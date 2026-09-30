@@ -48,13 +48,7 @@ function csrfToken(): string {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
 }
 
-type FilterKey = 'all' | NotificationCategory | 'appraisal_needed' | 'appraisal_ready' | 'appraisal_completed';
-
-const APPRAISAL_FILTER_TYPES: Partial<Record<FilterKey, string>> = {
-    appraisal_needed: 'appraisal_submitted',
-    appraisal_ready: 'appraisal_appraised',
-    appraisal_completed: 'appraisal_completed',
-};
+type FilterKey = 'all' | NotificationCategory;
 
 /**
  * Matches legacy's `handleRowClick()` exactly: the WHOLE row is the click
@@ -81,7 +75,7 @@ function NotificationRow({ notification }: { notification: Notification }) {
     return (
         <div
             onClick={() => handleRowClick(notification)}
-            className={`bg-white rounded-2xl border border-[#E5E7EB] shadow-sm hover:shadow-md hover:-translate-y-px transition p-4 flex items-start gap-3 cursor-pointer ${unread ? 'border-l-4' : ''}`}
+            className={`bg-white rounded-2xl border border-[#E5E7EB] shadow-[0_8px_30px_rgba(15,23,42,0.07)] hover:shadow-[0_10px_30px_rgba(15,23,42,0.10)] hover:-translate-y-px transition p-4 flex items-start gap-3 cursor-pointer ${unread ? 'border-l-4' : ''}`}
             style={unread ? { borderLeftColor: cat.bg } : undefined}
         >
             <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0" style={{ background: unread ? `${cat.bg}18` : '#F8FAFC' }}>
@@ -122,40 +116,41 @@ export default function NotificationsIndex({ notifications }: NotificationsPageP
 
     const rows = notifications.map((n) => ({ ...n, meta: n.type ? typeMetaFor(n.type) : DEFAULT_TYPE_META }));
 
-    // Unread-only counts on every chip — matches legacy's own Notifications.tsx exactly (a badge counting yesterday's already-seen total no matter how many times "Mark all as read" is pressed looks broken, even when it's technically still correct).
-    const unread = rows.filter((n) => !n.is_read);
-    const unreadCount = unread.length;
-    const approvalCount = unread.filter((n) => n.meta.category === 'approval').length;
-    const appraisalNeededCount = unread.filter((n) => n.type === 'appraisal_submitted').length;
-    const appraisalReadyCount = unread.filter((n) => n.type === 'appraisal_appraised').length;
-    const appraisalCompletedCount = unread.filter((n) => n.type === 'appraisal_completed').length;
-    const updateCount = unread.filter((n) => n.meta.category === 'update').length;
+    // Matches legacy's own notifications.blade.php exactly: the top banner's
+    // "X new" pill and "Mark all as read" button are unread-only, but every
+    // filter chip counts ALL notifications in that category (read or not) —
+    // $rows->count() / $rows->where('_type.category', ...)->count() in the
+    // Blade source, not filtered by is_read first.
+    const unreadCount = rows.filter((n) => !n.is_read).length;
+    const approvalCount = rows.filter((n) => n.meta.category === 'approval').length;
+    const appraisalCount = rows.filter((n) => n.meta.category === 'appraisal').length;
+    const updateCount = rows.filter((n) => n.meta.category === 'update').length;
 
-    const appraisalFilterType = APPRAISAL_FILTER_TYPES[filter];
-    const visible =
-        filter === 'all' ? rows : appraisalFilterType ? rows.filter((n) => n.type === appraisalFilterType) : rows.filter((n) => n.meta.category === filter);
+    const visible = filter === 'all' ? rows : rows.filter((n) => n.meta.category === filter);
     const today = visible.filter((n) => isToday(n.created_at));
     const earlier = visible.filter((n) => !isToday(n.created_at));
 
     return (
         <PlatformLayout title="Notifications">
-            {/* Matches legacy's own maroon/gold gradient banner exactly (resources/js/Pages/Notifications.tsx) — this page's one deliberate departure from the plain white PlatformLayout header, since it's the one place legacy itself breaks its own page convention too. */}
-            <div className="relative overflow-hidden rounded-[18px] bg-gradient-to-r from-[#1A0A0A] to-[#7A0019] text-white px-6 py-5 shadow-[0_10px_35px_rgba(122,0,25,0.45)] flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-                <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#D4AF37] via-[#D4AF37] to-[#D4AF37]/10" />
-                <div className="relative">
+            {/* Matches legacy's own notifications.blade.php exactly: sticky banner (stays pinned while the list scrolls beneath it), same maroon/gold gradient — this page's one deliberate departure from the plain white PlatformLayout header, since it's the one place legacy itself breaks its own page convention too. */}
+            <div className="sticky top-14 z-30 -mt-4 pt-4 pb-2 bg-[#F5F5F3]">
+                <div className="relative overflow-hidden rounded-[18px] bg-gradient-to-r from-[#1A0A0A] to-[#7A0019] text-white px-6 py-5 shadow-[0_10px_35px_rgba(122,0,25,0.45)] flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#D4AF37] via-[#D4AF37] to-[#D4AF37]/10" />
+                    <div className="relative">
+                        {unreadCount > 0 && (
+                            <span className="text-[11px] font-black bg-[#D4AF37] text-[#1a1a1a] px-2 py-0.5 rounded-full">{unreadCount} new</span>
+                        )}
+                    </div>
                     {unreadCount > 0 && (
-                        <span className="text-[11px] font-black bg-[#D4AF37] text-[#1a1a1a] px-2 py-0.5 rounded-full">{unreadCount} new</span>
+                        <button
+                            type="button"
+                            onClick={() => router.post('/platform/notifications/read-all')}
+                            className="relative text-xs font-black bg-white/10 hover:bg-white/20 text-white px-3.5 py-2 rounded-xl border border-white/20 transition"
+                        >
+                            Mark all as read
+                        </button>
                     )}
                 </div>
-                {unreadCount > 0 && (
-                    <button
-                        type="button"
-                        onClick={() => router.post('/platform/notifications/read-all')}
-                        className="relative text-xs font-black bg-white/10 hover:bg-white/20 text-white px-3.5 py-2 rounded-xl border border-white/20 transition"
-                    >
-                        Mark all as read
-                    </button>
-                )}
             </div>
 
             {notifications.length === 0 ? (
@@ -174,7 +169,7 @@ export default function NotificationsIndex({ notifications }: NotificationsPageP
                             onClick={() => setFilter('all')}
                             className={`px-3 py-1.5 rounded-xl text-[11px] font-black bg-white border border-[#E5E7EB] text-slate-700 transition ${filter === 'all' ? 'outline outline-2 outline-offset-1 outline-slate-800' : ''}`}
                         >
-                            All <span className="opacity-50">({unreadCount})</span>
+                            All <span className="opacity-50">({rows.length})</span>
                         </button>
                         <button
                             type="button"
@@ -186,27 +181,11 @@ export default function NotificationsIndex({ notifications }: NotificationsPageP
                         </button>
                         <button
                             type="button"
-                            onClick={() => setFilter('appraisal_needed')}
+                            onClick={() => setFilter('appraisal')}
                             style={{ background: `${CATEGORY_META.appraisal.bg}18`, color: CATEGORY_META.appraisal.bg }}
-                            className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition ${filter === 'appraisal_needed' ? 'outline outline-2 outline-offset-1 outline-slate-800' : ''}`}
+                            className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition ${filter === 'appraisal' ? 'outline outline-2 outline-offset-1 outline-slate-800' : ''}`}
                         >
-                            📝 Needs Appraisal <span className="opacity-60">({appraisalNeededCount})</span>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setFilter('appraisal_ready')}
-                            style={{ background: `${CATEGORY_META.appraisal.bg}18`, color: CATEGORY_META.appraisal.bg }}
-                            className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition ${filter === 'appraisal_ready' ? 'outline outline-2 outline-offset-1 outline-slate-800' : ''}`}
-                        >
-                            ✅ Ready to Sign <span className="opacity-60">({appraisalReadyCount})</span>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setFilter('appraisal_completed')}
-                            style={{ background: `${CATEGORY_META.appraisal.bg}18`, color: CATEGORY_META.appraisal.bg }}
-                            className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition ${filter === 'appraisal_completed' ? 'outline outline-2 outline-offset-1 outline-slate-800' : ''}`}
-                        >
-                            🎉 Completed <span className="opacity-60">({appraisalCompletedCount})</span>
+                            📝 Appraisals <span className="opacity-60">({appraisalCount})</span>
                         </button>
                         <button
                             type="button"
