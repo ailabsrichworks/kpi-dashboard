@@ -199,6 +199,51 @@ class TaskControllerTest extends TestCase
         Http::assertNotSent(fn ($request) => $request->method() === 'DELETE' && str_contains($request->url(), '/rest/v1/tasks'));
     }
 
+    /**
+     * The real bug behind "why can't I drag a card with a meeting time set
+     * to another column" -- confirmed live against production. PostgREST
+     * always serializes a Postgres `time` column with seconds ("12:00:00"),
+     * and drag-and-drop's moveTask() resends a task's own current
+     * meeting_time verbatim (it only changes `status`) -- but the
+     * validation rule required exactly `H:i` (no seconds), so every
+     * request carrying a task's own round-tripped meeting_time value was
+     * silently rejected by Laravel's validator. Nothing on this page
+     * renders the generic Inertia `errors` bag (only flash.success/
+     * flash.error), so the failure was completely invisible: the request
+     * "completed", the page reloaded, and the card was simply still in its
+     * old column with no explanation at all.
+     */
+    public function test_update_accepts_a_meeting_time_with_seconds_as_postgrest_actually_returns_it(): void
+    {
+        $employeeId = '11111111-1111-1111-1111-111111111111';
+
+        Http::fake(array_merge($this->fakeEmployeeSessionFakes(), [
+            '*/rest/v1/tasks*' => Http::response([[
+                'id' => 'task-1', 'title' => 'Test TTD', 'status' => 'open', 'priority' => 'medium',
+                'due_date' => '2026-09-29', 'meeting_time' => '12:00:00', 'assignee_user_id' => $employeeId,
+                'created_by' => 'employee-id',
+            ]], 200),
+        ]));
+
+        $response = $this->withSession(['platform_access_token' => $this->fakeToken()])
+            ->patch('/platform/companies/company-1/tasks/task-1', [
+                'title' => 'Test TTD',
+                'status' => 'in_progress',
+                'priority' => 'medium',
+                'due_date' => '2026-09-29',
+                'meeting_time' => '12:00:00',
+                'assignee_user_id' => $employeeId,
+            ]);
+
+        $response->assertSessionHas('success');
+        $response->assertSessionDoesntHaveErrors();
+
+        Http::assertSent(fn ($request) => $request->method() === 'PATCH'
+            && str_contains($request->url(), '/rest/v1/tasks')
+            && ($request['status'] ?? null) === 'in_progress'
+            && ($request['meeting_time'] ?? null) === '12:00:00');
+    }
+
     public function test_update_kpi_links_deletes_existing_then_reinserts_the_given_set(): void
     {
         Http::fake(array_merge($this->fakeEmployeeSessionFakes(), [

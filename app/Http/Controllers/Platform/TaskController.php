@@ -115,7 +115,19 @@ class TaskController extends Controller
             'status' => 'nullable|in:open,in_progress,blocked,done,cancelled',
             'priority' => 'nullable|in:low,medium,high',
             'due_date' => 'nullable|date',
-            'meeting_time' => 'nullable|date_format:H:i',
+            // Accepts BOTH shapes this field is ever actually submitted in:
+            // a fresh <input type="time"> sends `H:i` (no seconds), but
+            // Postgres's `time` column always comes back from PostgREST as
+            // `H:i:s` -- and every write that round-trips a task's own
+            // current value (drag-and-drop's moveTask(), which resends the
+            // whole row unchanged except `status`) sends exactly that. A
+            // single `date_format:H:i` silently rejected the `H:i:s` shape
+            // on every request that included it -- this is the actual
+            // reason dragging (or re-saving) a task that already had a
+            // meeting time set never worked, confirmed live: PostgREST
+            // really does return "12:00:00" for a task whose meeting was
+            // set via this same form.
+            'meeting_time' => 'nullable|date_format:H:i,H:i:s',
             'assignee_user_id' => 'nullable|uuid',
             'kpi_ids' => 'nullable|array',
             'kpi_ids.*' => 'uuid',
@@ -187,7 +199,8 @@ class TaskController extends Controller
             'status' => 'required|in:open,in_progress,blocked,done,cancelled',
             'priority' => 'required|in:low,medium,high',
             'due_date' => 'nullable|date',
-            'meeting_time' => 'nullable|date_format:H:i',
+            // See store()'s matching field for why both formats are needed.
+            'meeting_time' => 'nullable|date_format:H:i,H:i:s',
             'assignee_user_id' => 'nullable|uuid',
         ]);
 
