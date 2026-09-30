@@ -22,10 +22,12 @@ interface NotificationsPageProps {
 }
 
 /**
- * Matches legacy's own `timeAgo()` (resources/js/Pages/Notifications.tsx)
- * exactly — abbreviated units (`6d ago`, not `6 days ago`), no week/month/
- * year buckets. A previous version of this page used full-word units; kept
- * in sync now that both pages are meant to read identically.
+ * Matches legacy's own `diffForHumans()` output (resources/views/
+ * notifications.blade.php — the Blade view is what actually renders for
+ * legacy today; resources/js/Pages/Notifications.tsx is a separate, unshipped
+ * Inertia rewrite of this same page and isn't the thing to match against)
+ * closely enough for this page's purposes: abbreviated units (`6d ago`, not
+ * `6 days ago`), no week/month/year buckets.
  */
 function timeAgo(iso: string): string {
     const diffMs = Date.now() - new Date(iso).getTime();
