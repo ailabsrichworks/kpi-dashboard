@@ -52,7 +52,7 @@ class JobDescriptionController extends Controller
             // session built (Weightage, Quarterly) already uses.
             $team = $supabase->get('job_descriptions', [
                 'company_id' => 'eq.' . $company,
-                'select' => '*,users!job_descriptions_user_id_foreign(name,email)',
+                'select' => '*,users!job_descriptions_user_id_fkey(name,email)',
                 'order' => 'updated_at.desc',
             ]);
         }

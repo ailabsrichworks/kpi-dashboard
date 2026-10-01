@@ -181,7 +181,7 @@ class PerformanceController extends Controller
                 'company_id' => 'eq.' . $company,
                 'financial_year' => 'eq.' . $financialYear,
                 'quarter' => 'eq.' . $quarter,
-                'select' => '*,users!performance_reviews_user_id_foreign(name,email)',
+                'select' => '*,users!performance_reviews_user_id_fkey(name,email)',
                 'order' => 'updated_at.desc',
             ]);
 

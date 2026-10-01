@@ -65,14 +65,14 @@ class ApprovalController extends Controller
         $targetChanges = $supabase->get('kpi_target_change_requests', [
             'company_id' => 'eq.' . $company,
             'status' => 'eq.pending',
-            'select' => 'id,kpi_id,old_target,new_target,reason,created_at,kpis(name),users!kpi_target_change_requests_requested_by_foreign(name,email)',
+            'select' => 'id,kpi_id,old_target,new_target,reason,created_at,kpis(name),users!kpi_target_change_requests_requested_by_fkey(name,email)',
             'order' => 'created_at.asc',
         ]);
 
         $deleteRequests = $supabase->get('kpi_delete_requests', [
             'company_id' => 'eq.' . $company,
             'status' => 'eq.pending',
-            'select' => 'id,kpi_id,reason,created_at,kpis(name),users!kpi_delete_requests_requested_by_foreign(name,email)',
+            'select' => 'id,kpi_id,reason,created_at,kpis(name),users!kpi_delete_requests_requested_by_fkey(name,email)',
             'order' => 'created_at.asc',
         ]);
 

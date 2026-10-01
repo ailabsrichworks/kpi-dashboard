@@ -47,14 +47,14 @@ class TargetLinkageController extends Controller
             'company_id' => 'eq.' . $company,
             'financial_year' => 'eq.' . $financialYear,
             'assignee_user_id' => 'eq.' . $meId,
-            'select' => '*,kpi_categories(name),assigner:users!kpi_target_linkages_assigner_user_id_foreign(name)',
+            'select' => '*,kpi_categories(name),assigner:users!kpi_target_linkages_assigner_user_id_fkey(name)',
         ]);
 
         $outgoing = $supabase->get('kpi_target_linkages', [
             'company_id' => 'eq.' . $company,
             'financial_year' => 'eq.' . $financialYear,
             'assigner_user_id' => 'eq.' . $meId,
-            'select' => '*,kpi_categories(name),assignee:users!kpi_target_linkages_assignee_user_id_foreign(name)',
+            'select' => '*,kpi_categories(name),assignee:users!kpi_target_linkages_assignee_user_id_fkey(name)',
         ]);
 
         // Coverage for incoming: MY OWN KPIs against what was assigned to me.
