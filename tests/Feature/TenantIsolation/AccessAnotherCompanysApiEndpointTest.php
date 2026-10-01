@@ -52,6 +52,7 @@ class AccessAnotherCompanysApiEndpointTest extends TenantIsolationTestCase
             'PUT task kpi links update' => ['PUT', '/platform/companies/company-b/tasks/task-b/kpi-links'],
             'POST task ai summary' => ['POST', '/platform/companies/company-b/tasks/ai-summary'],
             'GET kpis create' => ['GET', '/platform/companies/company-b/kpis/create'],
+            'GET slt dashboard' => ['GET', '/platform/companies/company-b/slt-dashboard'],
             'POST kpis score description' => ['POST', '/platform/companies/company-b/kpis/score-description'],
             'GET job description index' => ['GET', '/platform/companies/company-b/job-description'],
             'POST job description save' => ['POST', '/platform/companies/company-b/job-description'],
