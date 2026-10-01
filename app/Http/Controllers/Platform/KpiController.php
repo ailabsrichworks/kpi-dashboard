@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Platform;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Platform\Concerns\ComputesFinancialYear;
+use App\Http\Controllers\Platform\Concerns\ComputesLinkageCoverage;
 use App\Http\Controllers\Platform\Concerns\LogsAdminActions;
 use App\Http\Controllers\Platform\Concerns\PlatformAuthorization;
+use App\Services\AiService;
 use App\Services\SupabaseUserService;
 use App\Services\WeightedScoreService;
 use Illuminate\Http\Request;
@@ -22,6 +24,7 @@ use Inertia\Inertia;
 class KpiController extends Controller
 {
     use ComputesFinancialYear;
+    use ComputesLinkageCoverage;
     use LogsAdminActions;
     use PlatformAuthorization;
 
@@ -200,12 +203,82 @@ class KpiController extends Controller
             ])
             : [];
 
+        // Cascading-target warning banner, matching legacy's own create()
+        // exactly: scoped to the CREATOR's own incoming linkages (not
+        // whoever ends up assigned), since legacy's primary flow is
+        // self-creation and its linkage banner was never re-scoped per the
+        // assignee dropdown either. Advisory only — never blocks submit,
+        // same as legacy.
+        $meId = $request->attributes->get('platformUser')['id'];
+        $financialYear = $this->currentFinancialYear();
+
+        $incomingLinkages = $supabase->get('kpi_target_linkages', [
+            'company_id' => 'eq.' . $company,
+            'financial_year' => 'eq.' . $financialYear,
+            'assignee_user_id' => 'eq.' . $meId,
+            'select' => '*,kpi_categories(name),assigner:users!kpi_target_linkages_assigner_user_id_foreign(name)',
+        ]);
+
+        $myKpis = empty($incomingLinkages) ? [] : $supabase->get('kpis', [
+            'company_id' => 'eq.' . $company,
+            'assigned_user_id' => 'eq.' . $meId,
+            'select' => 'category_id,unit,target',
+        ]);
+
+        $linkagesWithCoverage = $this->withLinkageCoverage($incomingLinkages, $this->linkageCoverageMap($myKpis));
+
         return Inertia::render('Platform/Kpis/Create', [
             'company' => $companyRow,
             'categories' => $categories,
             'members' => $members,
             'isAdmin' => $isAdmin,
+            'incomingLinkages' => array_values($linkagesWithCoverage),
         ]);
+    }
+
+    /**
+     * Advisory-only AI quality score for a KPI's title/description while
+     * drafting it — mirrors legacy's `AiController::scoreDescription()`
+     * exactly (same request shape, same response shape), reusing the same
+     * `AiService::scoreKpiDescription()` legacy already calls. Never stored,
+     * never required to submit — the create form's own "Score" button is
+     * the only trigger, matching legacy (not automatic, not on blur).
+     */
+    public function scoreDescription(Request $request, string $company, AiService $ai)
+    {
+        $this->ensureCompanyMember($request, $company);
+
+        $request->validate([
+            'kpi_title' => 'required|string|max:255',
+            'kpi_description' => 'required|string',
+            'target' => 'nullable|numeric',
+            'unit' => 'nullable|string|max:50',
+            'weight' => 'nullable|numeric',
+            'category' => 'nullable|string|max:100',
+            'quarter_targets' => 'nullable|array',
+        ]);
+
+        try {
+            $result = $ai->scoreKpiDescription(
+                $request->kpi_title,
+                $request->kpi_description,
+                $request->target,
+                null,
+                $request->unit,
+                $request->weight,
+                $request->category,
+                null,
+                $request->quarter_targets,
+            );
+
+            return response()->json([
+                'success' => true,
+                'score' => $result['score'] ?? 0,
+                'feedback' => $result['feedback'] ?? '',
+            ]);
+        } catch (\Throwable) {
+            return response()->json(['success' => false, 'message' => 'Scoring failed. Please try again.'], 500);
+        }
     }
 
     /**

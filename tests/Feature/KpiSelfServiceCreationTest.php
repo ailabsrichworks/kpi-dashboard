@@ -33,6 +33,7 @@ class KpiSelfServiceCreationTest extends TestCase
                 'company_id' => 'company-a', 'role' => 'employee', 'status' => 'active',
             ]], 200),
             '*/rest/v1/platform_admin_assignments*' => Http::response([], 200),
+            '*/rest/v1/kpi_target_linkages*' => Http::response([], 200),
         ];
     }
 
@@ -50,6 +51,38 @@ class KpiSelfServiceCreationTest extends TestCase
         $response->assertInertia(fn ($page) => $page->component('Platform/Kpis/Create')
             ->where('isAdmin', false)
             ->where('members', []));
+    }
+
+    /**
+     * The Create KPI page's cascading-target warning banner — matches
+     * legacy's own create() exactly (scoped to the creator's own incoming
+     * linkages). Confirms the coverage math reuses the real, already-tested
+     * ComputesLinkageCoverage logic rather than a second, hand-rolled copy.
+     */
+    public function test_create_page_includes_the_callers_incoming_linkage_with_coverage(): void
+    {
+        Http::fake([
+            '*/rest/v1/companies*' => Http::response([['id' => 'company-a', 'name' => 'Company A', 'code' => 'COA']], 200),
+            '*/rest/v1/kpi_categories*' => Http::response([], 200),
+            '*/rest/v1/kpi_target_linkages*' => Http::response([[
+                'id' => 'linkage-1', 'company_id' => 'company-a', 'category_id' => 'cat-1',
+                'unit' => 'currency', 'assigned_target' => 100000,
+                'kpi_categories' => ['name' => 'Financial'], 'assigner' => ['name' => 'Boss'],
+            ]], 200),
+            '*/rest/v1/kpis*' => Http::response([
+                ['category_id' => 'cat-1', 'unit' => 'currency', 'target' => 40000],
+            ], 200),
+        ] + $this->fakeMemberSession());
+
+        $response = $this->withSession(['platform_access_token' => $this->fakeToken('member-auth-id')])
+            ->get('/platform/companies/company-a/kpis/create');
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page->component('Platform/Kpis/Create')
+            ->has('incomingLinkages', 1)
+            ->where('incomingLinkages.0.covered', 40000)
+            ->where('incomingLinkages.0.gap', 60000)
+            ->where('incomingLinkages.0.met', false));
     }
 
     public function test_a_plain_member_creating_a_kpi_is_forced_to_self_and_company_visibility(): void

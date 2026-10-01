@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Platform;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Platform\Concerns\ComputesFinancialYear;
+use App\Http\Controllers\Platform\Concerns\ComputesLinkageCoverage;
 use App\Http\Controllers\Platform\Concerns\PlatformAuthorization;
 use App\Services\SupabaseUserService;
 use Illuminate\Http\Request;
@@ -20,32 +21,8 @@ use Inertia\Inertia;
 class TargetLinkageController extends Controller
 {
     use ComputesFinancialYear;
+    use ComputesLinkageCoverage;
     use PlatformAuthorization;
-
-    /** @return array<string, float> keyed by "category_id|unit" */
-    private function coverageMap(array $kpis): array
-    {
-        $sums = [];
-        foreach ($kpis as $kpi) {
-            $key = ($kpi['category_id'] ?? '') . '|' . ($kpi['unit'] ?? '');
-            $sums[$key] = ($sums[$key] ?? 0) + (float) ($kpi['target'] ?? 0);
-        }
-
-        return $sums;
-    }
-
-    private function withCoverage(array $linkages, array $coverage): array
-    {
-        return array_map(function ($lnk) use ($coverage) {
-            $key = $lnk['category_id'] . '|' . ($lnk['unit'] ?? '');
-            $covered = $coverage[$key] ?? 0.0;
-            $target = (float) $lnk['assigned_target'];
-            $gap = max(0, $target - $covered);
-            $pct = $target > 0 ? min(100, round($covered / $target * 100)) : 100;
-
-            return $lnk + ['covered' => $covered, 'gap' => $gap, 'pct' => $pct, 'met' => $covered >= $target];
-        }, $linkages);
-    }
 
     public function index(Request $request, string $company)
     {
@@ -101,12 +78,12 @@ class TargetLinkageController extends Controller
             $reportKpisByUser[$kpi['assigned_user_id']][] = $kpi;
         }
 
-        $incomingWithCoverage = $this->withCoverage($incoming, $this->coverageMap($myKpis));
+        $incomingWithCoverage = $this->withLinkageCoverage($incoming, $this->linkageCoverageMap($myKpis));
 
         $outgoingWithCoverage = array_map(function ($lnk) use ($reportKpisByUser) {
-            $coverage = $this->coverageMap($reportKpisByUser[$lnk['assignee_user_id']] ?? []);
+            $coverage = $this->linkageCoverageMap($reportKpisByUser[$lnk['assignee_user_id']] ?? []);
 
-            return $this->withCoverage([$lnk], $coverage)[0];
+            return $this->withLinkageCoverage([$lnk], $coverage)[0];
         }, $outgoing);
 
         return Inertia::render('Platform/TargetLinkages/Index', [
