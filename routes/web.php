@@ -790,6 +790,14 @@ Route::middleware(['kpi.auth'])->group(function () {
     Route::post('/attendance/import',     [\App\Http\Controllers\AttendanceController::class, 'import'])->name('attendance.import');
     Route::post('/attendance/save',       [\App\Http\Controllers\AttendanceController::class, 'save'])->name('attendance.save');
 
+    // Talent Tracker: everyone can view; only SLT/BTS can write (enforced in the controller).
+    Route::get('/talent-tracker',               [\App\Http\Controllers\TalentTrackerController::class, 'index'])->name('talent-tracker.index');
+    Route::get('/talent-tracker/app',           [\App\Http\Controllers\TalentTrackerController::class, 'app'])->name('talent-tracker.app');
+    Route::get('/talent-tracker/data',          [\App\Http\Controllers\TalentTrackerController::class, 'data'])->name('talent-tracker.data');
+    Route::post('/talent-tracker/records',      [\App\Http\Controllers\TalentTrackerController::class, 'store'])->name('talent-tracker.store');
+    Route::patch('/talent-tracker/records/{id}',  [\App\Http\Controllers\TalentTrackerController::class, 'update'])->name('talent-tracker.update');
+    Route::delete('/talent-tracker/records/{id}', [\App\Http\Controllers\TalentTrackerController::class, 'destroy'])->name('talent-tracker.destroy');
+
     Route::get('/performance/kpi',                          [\App\Http\Controllers\PerformanceController::class, 'kpiAppraisal'])->name('performance.kpi');
     Route::get('/performance/attitude',                     [\App\Http\Controllers\PerformanceController::class, 'attitude'])->name('performance.attitude');
     Route::get('/performance/report',                       fn() => redirect('/performance/report/q2'))->name('performance.report');

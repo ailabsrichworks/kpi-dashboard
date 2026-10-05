@@ -805,6 +805,12 @@
                 ],
             ],
             [
+                'title' => 'Talent Tracker',
+                'items' => [
+                    ['label' => 'Training & Speakers', 'href' => '/talent-tracker', 'match' => 'talent-tracker*', 'icon' => 'users'],
+                ],
+            ],
+            [
                 'title'   => 'Attendance',
                 'hr_only' => true,
                 'items'   => [
