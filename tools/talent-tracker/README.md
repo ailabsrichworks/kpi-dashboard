@@ -1,6 +1,6 @@
 # Richworks Talent Tracker
 
-Tracks Richworks staff who have attended training, served as speaker or trainer, and answered questions.
+Tracks Richworks staff who have attended training, served as a speaker, and answered questions.
 
 ## Run
 
