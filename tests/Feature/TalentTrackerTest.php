@@ -111,6 +111,11 @@ class TalentTrackerTest extends TestCase
         $this->as('EXECUTIVE', 'BTS')->postJson('/talent-tracker/records', ['type' => 'nope'] + $this->payload())->assertStatus(422);
     }
 
+    public function test_trainer_type_is_no_longer_accepted(): void
+    {
+        $this->as('SLT')->postJson('/talent-tracker/records', ['type' => 'trainer'] + $this->payload())->assertStatus(422);
+    }
+
     public function test_requires_login(): void
     {
         // Logged-out requests are bounced to login by the route group and never reach a write.

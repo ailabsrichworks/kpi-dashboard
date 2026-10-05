@@ -1,7 +1,7 @@
 -- Run this once in the Supabase SQL Editor (dashboard -> SQL Editor -> New query).
 --
 -- Backs the Talent Tracker page (/talent-tracker): one row per training an
--- employee attended, or a session they spoke at / trained / answered
+-- employee attended, or a session they spoke at / answered
 -- questions in. Staff themselves are NOT stored here -- the page reads the
 -- existing `employees` table, so a person's name, position and department
 -- always match the rest of the system.
@@ -15,7 +15,7 @@ create table if not exists talent_records (
     id uuid primary key default gen_random_uuid(),
     company_code text not null,
     employee_id uuid not null,
-    type text not null check (type in ('attended', 'speaker', 'trainer', 'qna', 'other')),
+    type text not null check (type in ('attended', 'speaker', 'qna', 'other')),
     title text not null,
     record_date date not null,
     notes text null,
