@@ -116,6 +116,8 @@ tr.person[aria-selected="true"] td:first-child{box-shadow:inset 3px 0 0 var(--go
 .mini b{display:block;font-size:20px;line-height:1.1;font-weight:900;font-variant-numeric:tabular-nums;color:var(--c)}
 .mini span{color:var(--muted);font-size:9px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}
 .span-line{color:var(--muted);font-size:11px;margin:-4px 0 14px}
+.tl-wrap{border-top:1px solid var(--line)}
+.tl-h{font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:var(--sage,var(--muted));margin:0 0 12px}
 .timeline{list-style:none;margin:0;padding:0}
 .timeline .yr{display:flex;align-items:center;gap:10px;margin:14px 0 8px;font-size:10px;font-weight:900;letter-spacing:.14em;color:var(--sage)}
 .timeline .yr:first-child{margin-top:0}
@@ -193,7 +195,7 @@ tr.person[aria-selected="true"] td:first-child{box-shadow:inset 3px 0 0 var(--go
             <button class="btn small danger" id="btn-del-person">Delete</button>
           </div>
         </div>
-        <div class="panel-b"><div class="d-summary" id="d-summary"></div><div class="span-line" id="d-span"></div><ul class="timeline" id="timeline"></ul></div>
+        <div class="panel-b"><div class="d-summary" id="d-summary"></div><div class="span-line" id="d-span"></div></div>
         <form class="form" id="rec-form" hidden>
           <h3>Add record</h3>
           <div class="grid2">
@@ -204,7 +206,8 @@ tr.person[aria-selected="true"] td:first-child{box-shadow:inset 3px 0 0 var(--go
           <label>Notes (optional)<textarea id="r-notes" placeholder="e.g. Organiser, questions answered, duration"></textarea></label>
           <div class="row"><button class="btn primary" type="submit">Save record</button></div>
         </form>
-      </div>
+        <div class="panel-b tl-wrap"><h3 class="tl-h">Timeline</h3><ul class="timeline" id="timeline"></ul></div>
+              </div>
     </div>
   </div>
 
@@ -336,7 +339,7 @@ function renderDetail(){
   $('d-span').textContent = dates.length ? `${c.total} activit${c.total===1?'y':'ies'} · first ${fmtDate(dates[dates.length-1])} · latest ${fmtDate(dates[0])}` : '';
   const tl = $('timeline');
   if (!recs.length){
-    tl.replaceChildren(h('li',{style:'display:block'}, h('div',{class:'empty',style:'padding:12px'}, h('b',{},'No records yet'), 'Add the first record below.')));
+    tl.replaceChildren(h('li',{style:'display:block'}, h('div',{class:'empty',style:'padding:12px'}, h('b',{},'No records yet'), 'Add the first record above.')));
     return;
   }
   const items = []; let yr = null;
