@@ -7,7 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * Talent Tracker -- who has attended training, been a speaker/trainer, or
+ * Talent Tracker -- who has attended training, been a speaker, or
  * answered questions. Staff are the company's existing `employees`; only the
  * records live in `talent_records` (see database/sql/create_talent_records.sql).
  *
@@ -18,7 +18,7 @@ use Illuminate\Http\Request;
  */
 class TalentTrackerController extends Controller
 {
-    private const TYPES = ['attended', 'speaker', 'trainer', 'qna', 'other'];
+    private const TYPES = ['attended', 'speaker', 'qna', 'other'];
 
     private function canEdit(): bool
     {

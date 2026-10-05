@@ -31,7 +31,7 @@
   --sage:var(--th-accent2); --gold:var(--th-accent); --deep:#1a3d34;
   --line:color-mix(in srgb,var(--th-border) 22%,white); --surface2:color-mix(in srgb,var(--th-accent2) 7%,white);
   --accent:var(--deep); --accent-ink:#fff; --danger:#c0392b;
-  --c-attended:#3b6fb6; --c-speaker:color-mix(in srgb,var(--th-accent) 75%,#5a4300); --c-trainer:#1f7a5a; --c-qna:#7c5cbf; --c-other:#64748b;
+  --c-attended:#3b6fb6; --c-speaker:color-mix(in srgb,var(--th-accent) 75%,#5a4300); --c-qna:#7c5cbf; --c-other:#64748b;
   --shadow:0 1px 2px rgba(15,23,42,.04);
 }
 *{box-sizing:border-box}
@@ -107,15 +107,17 @@ tr.person[aria-selected="true"] td:first-child{box-shadow:inset 3px 0 0 var(--go
 .cnt.zero{color:#cbd5e1;font-weight:400}
 .cnt:not(.zero){background:color-mix(in srgb,var(--c) 14%,white);color:var(--c)}
 .tag{display:inline-block;padding:1px 8px;border-radius:6px;font-size:10px;font-weight:800;white-space:nowrap;background:color-mix(in srgb,var(--c) 14%,white);color:var(--c)}
-.t-trainer{--c:var(--c-trainer)}.t-speaker{--c:var(--c-speaker)}.t-attended{--c:var(--c-attended)}.t-qna{--c:var(--c-qna)}.t-other{--c:var(--c-other)}
+.t-speaker{--c:var(--c-speaker)}.t-attended{--c:var(--c-attended)}.t-qna{--c:var(--c-qna)}.t-other{--c:var(--c-other)}
 
 /* selected person */
-.d-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
-@media (max-width:520px){.d-summary{grid-template-columns:repeat(2,1fr)}}
+.d-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+@media (max-width:420px){.d-summary{grid-template-columns:repeat(1,1fr)}}
 .mini{border:1px solid var(--line);border-radius:12px;padding:8px 10px;border-top:3px solid var(--c,var(--line));background:var(--surface)}
 .mini b{display:block;font-size:20px;line-height:1.1;font-weight:900;font-variant-numeric:tabular-nums;color:var(--c)}
 .mini span{color:var(--muted);font-size:9px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}
 .span-line{color:var(--muted);font-size:11px;margin:-4px 0 14px}
+.tl-wrap{border-top:1px solid var(--line)}
+.tl-h{font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:var(--sage,var(--muted));margin:0 0 12px}
 .timeline{list-style:none;margin:0;padding:0}
 .timeline .yr{display:flex;align-items:center;gap:10px;margin:14px 0 8px;font-size:10px;font-weight:900;letter-spacing:.14em;color:var(--sage)}
 .timeline .yr:first-child{margin-top:0}
@@ -150,7 +152,7 @@ tr.person[aria-selected="true"] td:first-child{box-shadow:inset 3px 0 0 var(--go
 <header class="hero">
   <span class="eyebrow">People Development</span>
   <h1>Talent Tracker</h1>
-  <p>Track who at Richworks has attended training, served as a speaker or trainer, and answered questions. For management to review and follow up.</p>
+  <p>Track who at Richworks has attended training, served as a speaker, and answered questions. For management to review and follow up.</p>
 </header>
 
 <nav class="topbar"><div class="topbar-in">
@@ -177,7 +179,7 @@ tr.person[aria-selected="true"] td:first-child{box-shadow:inset 3px 0 0 var(--go
         <div class="chips" id="role-chips"></div>
       </div>
       <div class="scroll"><table>
-        <thead><tr><th>Name</th><th class="n" title="Has attended training">Attended</th><th class="n">Speaker</th><th class="n">Trainer</th><th class="n" title="Answered questions">Q&amp;A</th></tr></thead>
+        <thead><tr><th>Name</th><th class="n" title="Has attended training">Attended</th><th class="n">Speaker</th><th class="n" title="Answered questions">Q&amp;A</th></tr></thead>
         <tbody id="people-body"></tbody>
       </table></div>
       <div id="people-empty"></div>
@@ -193,7 +195,7 @@ tr.person[aria-selected="true"] td:first-child{box-shadow:inset 3px 0 0 var(--go
             <button class="btn small danger" id="btn-del-person">Delete</button>
           </div>
         </div>
-        <div class="panel-b"><div class="d-summary" id="d-summary"></div><div class="span-line" id="d-span"></div><ul class="timeline" id="timeline"></ul></div>
+        <div class="panel-b"><div class="d-summary" id="d-summary"></div><div class="span-line" id="d-span"></div></div>
         <form class="form" id="rec-form" hidden>
           <h3>Add record</h3>
           <div class="grid2">
@@ -204,7 +206,8 @@ tr.person[aria-selected="true"] td:first-child{box-shadow:inset 3px 0 0 var(--go
           <label>Notes (optional)<textarea id="r-notes" placeholder="e.g. Organiser, questions answered, duration"></textarea></label>
           <div class="row"><button class="btn primary" type="submit">Save record</button></div>
         </form>
-      </div>
+        <div class="panel-b tl-wrap"><h3 class="tl-h">Timeline</h3><ul class="timeline" id="timeline"></ul></div>
+              </div>
     </div>
   </div>
 
@@ -231,7 +234,6 @@ tr.person[aria-selected="true"] td:first-child{box-shadow:inset 3px 0 0 var(--go
 const TYPES = [
   {k:'attended', label:'Attended training', short:'Attended'},
   {k:'speaker',  label:'Speaker',        short:'Speaker'},
-  {k:'trainer',  label:'Trainer',        short:'Trainer'},
   {k:'qna',      label:'Answered questions', short:'Q&A'},
   {k:'other',    label:'Other',      short:'Other'}
 ];
@@ -259,7 +261,7 @@ function toast(msg){ const t=h('div',{class:'toast',role:'status'},msg); documen
 function pById(id){ return state.people.find(p=>p.id===id); }
 
 function counts(pid){
-  const c = {attended:0,speaker:0,trainer:0,qna:0,other:0,total:0,last:''};
+  const c = {attended:0,speaker:0,qna:0,other:0,total:0,last:''};
   for (const r of state.records) if (r.personId===pid){ c[r.type]=(c[r.type]||0)+1; c.total++; if(r.date>c.last) c.last=r.date; }
   return c;
 }
@@ -273,7 +275,6 @@ function renderStats(){
     ['Staff in list', state.people.length, 'var(--ink)'],
     ['Attended training', ids('attended'), 'var(--c-attended)'],
     ['Been a speaker', ids('speaker'), 'var(--c-speaker)'],
-    ['Been a trainer', ids('trainer'), 'var(--c-trainer)'],
     ['Answered questions', ids('qna'), 'var(--c-qna)'],
   ];
   $('stats').replaceChildren(...items.map(([l,n,c])=>h('div',{class:'stat',style:'--c:'+c}, h('b',{},n), h('span',{},l))));
@@ -306,7 +307,6 @@ function renderPeople(){
       h('td',{}, h('div',{class:'name'},p.name), h('div',{class:'sub'},[p.staffId,p.position,p.company,p.department].filter(Boolean).join(' · ')||'No details')),
       h('td',{class:'n'},cntEl(c.attended,'attended')),
       h('td',{class:'n'},cntEl(c.speaker,'speaker')),
-      h('td',{class:'n'},cntEl(c.trainer,'trainer')),
       h('td',{class:'n'},cntEl(c.qna,'qna')));
   }));
   const em = $('people-empty');
@@ -330,13 +330,13 @@ function renderDetail(){
   $('rec-form').hidden = !state.canWrite;
   $('btn-del-person').textContent = confirmDel==='person' ? 'Yes, delete this staff member' : 'Delete';
   const recs = state.records.filter(r=>r.personId===p.id).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  $('d-summary').replaceChildren(...[['attended','Attended'],['speaker','Speaker'],['trainer','Trainer'],['qna','Q&A']].map(([k,l])=>
+  $('d-summary').replaceChildren(...[['attended','Attended'],['speaker','Speaker'],['qna','Q&A']].map(([k,l])=>
     h('div',{class:'mini t-'+k},h('b',{},c[k]),h('span',{},l))));
   const dates = recs.map(r=>r.date).filter(Boolean);
   $('d-span').textContent = dates.length ? `${c.total} activit${c.total===1?'y':'ies'} · first ${fmtDate(dates[dates.length-1])} · latest ${fmtDate(dates[0])}` : '';
   const tl = $('timeline');
   if (!recs.length){
-    tl.replaceChildren(h('li',{style:'display:block'}, h('div',{class:'empty',style:'padding:12px'}, h('b',{},'No records yet'), 'Add the first record below.')));
+    tl.replaceChildren(h('li',{style:'display:block'}, h('div',{class:'empty',style:'padding:12px'}, h('b',{},'No records yet'), 'Add the first record above.')));
     return;
   }
   const items = []; let yr = null;
@@ -514,9 +514,9 @@ $('btn-bulk').onclick=bulkModal;
 /* CSV export */
 const csvCell=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
 $('btn-export').onclick=()=>{
-  const rows=[['Name','Staff ID','Company','Department','Position','Remarks','Attended training','Speaker','Trainer','Answered questions','Other','Latest record']];
+  const rows=[['Name','Staff ID','Company','Department','Position','Remarks','Attended training','Speaker','Answered questions','Other','Latest record']];
   for(const p of [...state.people].sort((a,b)=>a.name.localeCompare(b.name))){ const c=counts(p.id);
-    rows.push([p.name,p.staffId,p.company,p.department,p.position,p.remarks,c.attended,c.speaker,c.trainer,c.qna,c.other,c.last]); }
+    rows.push([p.name,p.staffId,p.company,p.department,p.position,p.remarks,c.attended,c.speaker,c.qna,c.other,c.last]); }
   rows.push([]); rows.push(['Name','Type','Title','Date','Notes']);
   for(const r of [...state.records].sort((a,b)=>(b.date||'').localeCompare(a.date||''))) rows.push([pById(r.personId)?.name||'',TYPE[r.type]?.label||r.type,r.title,r.date,r.notes]);
   const csv='﻿'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n');
