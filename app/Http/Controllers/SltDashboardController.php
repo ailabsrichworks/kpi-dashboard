@@ -32,7 +32,8 @@ class SltDashboardController extends Controller
     private function requireSltAccess(array $user): void
     {
         $dept = strtoupper(trim($user['department_code'] ?? ''));
-        if ($dept !== 'SLT OFFICE' && !$this->isBtsSession()) {
+        $role = strtoupper(trim($user['role'] ?? ''));
+        if ($dept !== 'SLT OFFICE' && $role !== 'SLT' && !$this->isBtsSession()) {
             abort(403, 'This page is only accessible to SLT Office.');
         }
     }

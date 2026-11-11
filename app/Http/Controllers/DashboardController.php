@@ -886,7 +886,8 @@ class DashboardController extends Controller
     private function requireSltOffice(array $user): void
     {
         $dept = strtoupper(trim($user['department_code'] ?? ''));
-        if (!in_array($dept, ['SLT OFFICE', 'BTS'])) {
+        $role = strtoupper(trim($user['role'] ?? ''));
+        if ($role !== 'SLT' && !in_array($dept, ['SLT OFFICE', 'BTS'])) {
             abort(403, 'This page is only accessible to SLT Office.');
         }
     }

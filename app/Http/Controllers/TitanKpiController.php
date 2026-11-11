@@ -56,6 +56,7 @@ class TitanKpiController extends Controller
         // not tied to company_code or the VP exclusion the way TITAN is, and
         // still true while impersonating someone outside TITAN via View As.
         return ($user['role'] !== 'VP' && $user['company_code'] === 'RCG' && $user['department_code'] === 'TITAN')
+            || $user['role'] === 'SLT'
             || $this->isBtsSession();
     }
 
