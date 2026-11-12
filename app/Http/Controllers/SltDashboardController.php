@@ -158,6 +158,27 @@ class SltDashboardController extends Controller
               ]) ?? []);
         $nameById = collect($allEmployees)->keyBy('id');
 
+        // A cross-company monitor (BTS, CORPORATE GOVERNANCE & HR DEPT) has
+        // one employee row per company they can log into, but only counts as
+        // actual STAFF of a company when that row is their default one
+        // (user_company_roles.is_default) — same rule as the dashboard's
+        // own company-wide ranking. They can still monitor this company's
+        // page; they just don't appear in its own staff roster. A row with
+        // no user_company_roles entry at all is treated as default, so a
+        // normal single-company employee is never affected.
+        $employeeIdsForDefaultCheck = collect($employees)->pluck('id')->filter()->values()->toArray();
+        if (!empty($employeeIdsForDefaultCheck)) {
+            $rolesForCompany = $supabase->get('user_company_roles', [
+                'company_code' => 'eq.' . $companyCode,
+                'employee_id'  => 'in.(' . implode(',', $employeeIdsForDefaultCheck) . ')',
+                'select'       => 'employee_id,is_default',
+            ]);
+            $isDefaultByEmployeeId = collect($rolesForCompany)->pluck('is_default', 'employee_id');
+            $employees = array_values(array_filter($employees, function ($emp) use ($isDefaultByEmployeeId) {
+                return $isDefaultByEmployeeId->get($emp['id'], true) !== false;
+            }));
+        }
+
         $empIds = collect($employees)->pluck('id')->filter()->values()->toArray();
 
         $reports = [];
