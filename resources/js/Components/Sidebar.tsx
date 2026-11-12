@@ -12,10 +12,11 @@ export default function Sidebar() {
 
     const departmentCode = (layout.departmentCode ?? '').trim().toUpperCase();
     const isBts = departmentCode === 'BTS';
-    const isSltDept = ['SLT OFFICE', 'BTS'].includes(departmentCode);
+    const isHrGovernance = departmentCode === 'CORPORATE GOVERNANCE & HR DEPT';
+    const isSltDept = ['SLT OFFICE', 'BTS', 'CORPORATE GOVERNANCE & HR DEPT'].includes(departmentCode);
     const isQuarterControlAuthorized = isBts || layout.quarterControlAccess === true;
     const hasTitanAccess =
-        (layout.role !== 'VP' && layout.companyCode === 'RCG' && layout.departmentCode === 'TITAN') || isBts;
+        (layout.role !== 'VP' && layout.companyCode === 'RCG' && layout.departmentCode === 'TITAN') || isBts || isHrGovernance;
 
     const companyInitial = (layout.companyCode || 'R').charAt(0).toUpperCase();
 

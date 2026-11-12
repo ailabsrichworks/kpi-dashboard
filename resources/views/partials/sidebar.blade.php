@@ -854,7 +854,7 @@
     <nav class="flex-1 overflow-y-auto text-[12px] space-y-5 pr-1 min-h-0 custom-scroll">
         @php
             $isBts = session('department_code') === 'BTS';
-            $isSltDept = in_array(strtoupper(trim(session('department_code') ?? '')), ['SLT OFFICE', 'BTS']);
+            $isSltDept = in_array(strtoupper(trim(session('department_code') ?? '')), ['SLT OFFICE', 'BTS', 'CORPORATE GOVERNANCE & HR DEPT']);
             $isQuarterControlAuthorized = $isBts || in_array(session('employee_uuid'), [
                 '8e322638-49a5-4560-b800-8d846c53e7c8', // Suley -- RCG
                 '700c2198-4871-45c6-a63f-e2e1ad80e657', // Suley -- RGHB
@@ -879,7 +879,8 @@
                     @foreach($section['items'] as $item)
                         @php
                             $hasTitanAccess = (session('role') !== 'VP' && session('company_code') === 'RCG' && session('department_code') === 'TITAN')
-                                || session('department_code') === 'BTS';
+                                || session('department_code') === 'BTS'
+                                || session('department_code') === 'CORPORATE GOVERNANCE & HR DEPT';
                         @endphp
                         @if(($item['slt_only'] ?? false) && !$isSltDept)
                             @continue
