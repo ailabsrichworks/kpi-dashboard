@@ -32,8 +32,9 @@ class JobDescriptionController extends Controller
         ]) ?? [];
 
         $role                   = strtoupper(trim($user['role'] ?? ''));
-        // BTS has cross-department admin/support access, same level as SLT.
-        $canSwitchDepartment    = $role === 'SLT' || ($user['department_code'] ?? '') === 'BTS';
+        // BTS and CORPORATE GOVERNANCE & HR DEPT have cross-department
+        // admin/support access, same level as SLT.
+        $canSwitchDepartment    = $role === 'SLT' || $this->isCrossCompanyMonitorSession();
         $selectedDepartmentCode = session('selected_department_code') ?? $user['department_code'] ?? null;
 
         $department = null;

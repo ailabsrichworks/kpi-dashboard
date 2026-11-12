@@ -56,14 +56,16 @@ class TitanKpiController extends Controller
         // not tied to company_code or the VP exclusion the way TITAN is, and
         // still true while impersonating someone outside TITAN via View As.
         return ($user['role'] !== 'VP' && $user['company_code'] === 'RCG' && $user['department_code'] === 'TITAN')
-            || $this->isBtsSession();
+            || $this->isCrossCompanyMonitorSession();
     }
 
     private function isTitanManager(array $user): bool
     {
         // BTS has cross-company admin/support access, same level as SLT —
         // manager-equivalent regardless of the employee's actual role, and
-        // still true while impersonating someone via View As.
+        // still true while impersonating someone via View As. This is an
+        // EDIT-level permission (adjust weightage), so CORPORATE GOVERNANCE
+        // & HR DEPT's monitor-only access deliberately does not extend here.
         return in_array($user['role'], ['MANAGER', 'SLT']) || $this->isBtsSession();
     }
 

@@ -698,7 +698,7 @@ class PerformanceController extends Controller
             fn ($id) => $supabase->first('employees', ['id' => 'eq.' . $id, 'select' => '*']),
             $delegations
         );
-        if (!$appraiserLevel && $this->isBtsSession()) {
+        if (!$appraiserLevel && $this->isCrossCompanyMonitorSession()) {
             $appraiserLevel = 'manager';
         }
         if (!$appraiserLevel) {
@@ -800,8 +800,9 @@ class PerformanceController extends Controller
         // chain — including while impersonating someone via View As, where
         // the impersonated employee's own chain is irrelevant to BTS's role.
         // Defaults to 'manager', the widest level (KPI scores + all
-        // sections), not just Section 7 remarks.
-        if (!$appraiserLevel && $this->isBtsSession()) {
+        // sections), not just Section 7 remarks. CORPORATE GOVERNANCE & HR
+        // DEPT gets the same read access to appraisals, cross-company.
+        if (!$appraiserLevel && $this->isCrossCompanyMonitorSession()) {
             $appraiserLevel = 'manager';
         }
         if (!$appraiserLevel) {

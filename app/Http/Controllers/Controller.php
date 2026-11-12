@@ -26,6 +26,19 @@ abstract class Controller
     }
 
     /**
+     * CORPORATE GOVERNANCE & HR DEPT gets the same cross-department/
+     * cross-company monitoring access as BTS, in every company, regardless
+     * of the individual employee's role — but deliberately NOT View As
+     * (AdminController::ensureBts() checks department_code directly, not
+     * this helper, and stays BTS-only by explicit request).
+     */
+    protected function isCrossCompanyMonitorSession(): bool
+    {
+        return $this->isBtsSession()
+            || strtoupper(trim(session('department_code') ?? '')) === 'CORPORATE GOVERNANCE & HR DEPT';
+    }
+
+    /**
      * Named-individual grant, not a role/department change: Suley (RCG COO /
      * RGHB Group COO) was explicitly given standing access to the BTS-only
      * Quarter Control page (both its quarter-override and appraiser-

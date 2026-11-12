@@ -524,9 +524,10 @@ class DashboardController extends Controller
 
     private function canSwitchDepartment(array $user): bool
     {
-        // BTS has cross-department admin/support access, same level as SLT
-        // — including while impersonating someone via View As.
-        return ($user['role'] ?? '') === 'SLT' || $this->isBtsSession();
+        // BTS and CORPORATE GOVERNANCE & HR DEPT have cross-department
+        // admin/support access, same level as SLT — including while BTS is
+        // impersonating someone via View As.
+        return ($user['role'] ?? '') === 'SLT' || $this->isCrossCompanyMonitorSession();
     }
 
     private function getAllDepartments(SupabaseService $supabase, string $companyCode): array
@@ -559,9 +560,10 @@ class DashboardController extends Controller
     ): array {
         $role = $user['role'] ?? '';
 
-        // BTS has cross-department admin/support access, same level as SLT
-        // — including while impersonating someone via View As.
-        if ($role === 'SLT' || $this->isBtsSession()) {
+        // BTS and CORPORATE GOVERNANCE & HR DEPT have cross-department
+        // admin/support access, same level as SLT — including while BTS is
+        // impersonating someone via View As.
+        if ($role === 'SLT' || $this->isCrossCompanyMonitorSession()) {
             $filters = [
                 'company_code' => 'eq.' . $companyCode,
                 'is_active' => 'eq.true',
@@ -802,6 +804,26 @@ class DashboardController extends Controller
 
         if (empty($employees)) return ['depts' => [], 'total_staff' => 0, 'total_depts' => 0];
 
+        // A cross-company monitor (BTS, CORPORATE GOVERNANCE & HR DEPT) has
+        // one employee row per company they can log into, but must only be
+        // counted in this company's own KPI aggregate/ranking stats when
+        // THIS row is their default company (user_company_roles.is_default).
+        // A single-company employee has exactly one row, always default, so
+        // this never changes their inclusion; a missing user_company_roles
+        // row at all (e.g. a never-logged-in placeholder) is treated as
+        // default too, so it can't silently vanish from the ranking.
+        $rolesForCompany = $supabase->get('user_company_roles', [
+            'company_code' => 'eq.' . $companyCode,
+            'employee_id'  => 'in.(' . implode(',', collect($employees)->pluck('id')->filter()->values()->toArray()) . ')',
+            'select'       => 'employee_id,is_default',
+        ]);
+        $isDefaultByEmployeeId = collect($rolesForCompany)->pluck('is_default', 'employee_id');
+        $employees = array_values(array_filter($employees, function ($emp) use ($isDefaultByEmployeeId) {
+            return $isDefaultByEmployeeId->get($emp['id'], true) !== false;
+        }));
+
+        if (empty($employees)) return ['depts' => [], 'total_staff' => 0, 'total_depts' => 0];
+
         $empIds     = collect($employees)->pluck('id')->filter()->values()->toArray();
         $empDeptMap = collect($employees)->pluck('department_code', 'id');
 
@@ -886,7 +908,7 @@ class DashboardController extends Controller
     private function requireSltOffice(array $user): void
     {
         $dept = strtoupper(trim($user['department_code'] ?? ''));
-        if (!in_array($dept, ['SLT OFFICE', 'BTS'])) {
+        if (!in_array($dept, ['SLT OFFICE', 'BTS']) && !$this->isCrossCompanyMonitorSession()) {
             abort(403, 'This page is only accessible to SLT Office.');
         }
     }
