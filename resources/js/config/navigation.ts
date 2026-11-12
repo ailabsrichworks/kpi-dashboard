@@ -69,6 +69,12 @@ export const navSections: NavSection[] = [
         ],
     },
     {
+        title: 'Talent Tracker',
+        items: [
+            { label: 'Training & Speakers', href: '/talent-tracker', match: 'talent-tracker*', icon: 'users', legacy: true },
+        ],
+    },
+    {
         title: 'Attendance',
         hrOnly: true,
         items: [
