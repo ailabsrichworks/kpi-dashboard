@@ -70,7 +70,6 @@
     <div class="relative overflow-hidden rounded-[18px] theme-header-banner theme-page-banner bg-gradient-to-r from-[#1A0A0A] to-[#7A0019] text-white px-6 py-5 shadow-[0_10px_35px_rgba(122,0,25,0.45)] flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div class="absolute top-0 left-0 right-0 h-[2px] theme-header-hairline bg-gradient-to-r from-[#D4AF37] via-[#D4AF37] to-[#D4AF37]/10"></div>
         <div class="relative">
-            <p class="text-[9px] font-black uppercase tracking-[0.18em] text-[#D4AF37] mb-1">HR &amp; BTS · Cross-Department View</p>
             <h1 class="text-xl font-black tracking-tight leading-tight">
                 Staff Quarterly Evaluation Summary — {{ $companyCode }} · {{ $currentFinancialYear }}
             </h1>
