@@ -532,6 +532,10 @@ Route::middleware(['kpi.auth'])->group(function () {
     Route::get('/slt-dashboard', [\App\Http\Controllers\SltDashboardController::class, 'index'])
         ->name('slt-dashboard');
 
+    // BTS / CORPORATE GOVERNANCE & HR DEPT only — all-staff quarterly evaluation summary (Q1-Q4 per staff)
+    Route::get('/staff-evaluation-summary', [\App\Http\Controllers\StaffEvaluationSummaryController::class, 'index'])
+        ->name('staff-evaluation-summary');
+
     /*
     |--------------------------------------------------------------------------
     | KPI MAIN

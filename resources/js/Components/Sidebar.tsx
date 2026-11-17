@@ -14,6 +14,7 @@ export default function Sidebar() {
     const isBts = departmentCode === 'BTS';
     const isHrGovernance = departmentCode === 'CORPORATE GOVERNANCE & HR DEPT';
     const isSltDept = ['SLT OFFICE', 'BTS', 'CORPORATE GOVERNANCE & HR DEPT'].includes(departmentCode);
+    const isHrBts = isBts || isHrGovernance;
     const isQuarterControlAuthorized = isBts || layout.quarterControlAccess === true;
     const hasTitanAccess =
         (layout.role !== 'VP' && layout.companyCode === 'RCG' && layout.departmentCode === 'TITAN') || isBts || isHrGovernance;
@@ -136,6 +137,7 @@ export default function Sidebar() {
                                         if (item.sltOnly && !isSltDept) return null;
                                         if (item.titanOnly && !hasTitanAccess) return null;
                                         if (item.btsOnly && !isBts) return null;
+                                        if (item.hrBtsOnly && !isHrBts) return null;
 
                                         const isActive = isNavItemActive(item, url);
                                         const badgeCount = item.badge === 'unreadNotifications' ? layout.unreadNotificationCount : 0;
