@@ -264,7 +264,7 @@
         </div>
         <div class="relative flex-1 bg-slate-50">
             <div id="quarterModalLoading" class="absolute inset-0 flex items-center justify-center text-xs font-bold text-slate-400">Loading…</div>
-            <iframe id="quarterModalFrame" src="about:blank" onload="document.getElementById('quarterModalLoading').style.display='none';" class="relative z-10 w-full h-full border-0"></iframe>
+            <iframe id="quarterModalFrame" src="about:blank" onload="onQuarterFrameLoad(this)" class="relative z-10 w-full h-full border-0"></iframe>
         </div>
     </div>
 </div>
@@ -281,6 +281,24 @@ function closeQuarterModal() {
     document.getElementById('quarterModalOverlay').classList.add('hidden');
     document.getElementById('quarterModalFrame').src = 'about:blank';
     document.body.style.overflow = '';
+}
+// The embedded page is a full standalone page with its own sidebar + "ml-[230px]"
+// main content offset + ANIRA chat widget -- fine on a normal navigation, but
+// redundant/cramped inside this popup, so strip them once the frame loads.
+// Same-origin, so this always succeeds; wrapped in try/catch anyway in case the
+// frame ever lands on about:blank or an error page with no such elements.
+function onQuarterFrameLoad(frame) {
+    document.getElementById('quarterModalLoading').style.display = 'none';
+    try {
+        var doc = frame.contentDocument || frame.contentWindow.document;
+        doc.getElementById('sidebar')?.remove();
+        doc.getElementById('aiChatBubble')?.remove();
+        doc.getElementById('aiChatPanel')?.remove();
+        var main = doc.getElementById('mainContent');
+        if (main) main.classList.remove('ml-[230px]');
+    } catch (e) {
+        // ignore -- cross-origin or empty frame, popup still shows the full page
+    }
 }
 document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') closeQuarterModal();
