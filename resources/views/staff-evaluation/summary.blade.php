@@ -246,7 +246,7 @@
      instead of a full navigation, so the summary list stays behind it. --}}
 <div
     id="quarterModalOverlay"
-    class="hidden fixed inset-0 z-[10000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 no-print"
+    class="hidden fixed inset-0 z-[10000] bg-slate-950 flex items-center justify-center p-3 sm:p-6 no-print"
     onclick="if (event.target === this) closeQuarterModal();"
 >
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[92vh] flex flex-col overflow-hidden">
