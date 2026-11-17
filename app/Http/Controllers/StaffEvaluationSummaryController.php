@@ -136,6 +136,7 @@ class StaffEvaluationSummaryController extends Controller
         foreach ($employees as $emp) {
             $role = strtoupper(trim($emp['role'] ?? ''));
             $row = [
+                'uuid'          => $emp['id'],
                 'employee_id'   => $emp['employee_id'] ?? '-',
                 'name'          => $emp['short_name'] ?? $emp['full_name'] ?? 'Unknown',
                 'department'    => $emp['department_code'] ?? '-',

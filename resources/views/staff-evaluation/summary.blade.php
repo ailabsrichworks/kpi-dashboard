@@ -199,6 +199,12 @@
                             @foreach($quarters as $q)
                                 @php $cell = $row['quarters'][$q]; @endphp
                                 <td class="px-3 py-2 text-center">
+                                    <button
+                                        type="button"
+                                        onclick="openQuarterModal('{{ $row['uuid'] }}', '{{ $q }}', '{{ addslashes($row['name']) }}')"
+                                        title="View {{ $row['name'] }}'s {{ $q }} evaluation"
+                                        class="cursor-pointer hover:-translate-y-0.5 hover:shadow-md transition"
+                                    >
                                     @if($cell['score'] !== null)
                                         <span class="q-pill" style="background:{{ $cell['bg'] }}22;">
                                             <span class="score-pill-score" style="color:{{ $cell['bg'] === '#FFD700' ? '#8a6d00' : $cell['bg'] }};">{{ number_format($cell['score'], 1) }}</span>
@@ -211,6 +217,7 @@
                                             <span class="score-pill-label" style="color:{{ $sm['text'] }};">{{ $cell['label'] }}</span>
                                         </span>
                                     @endif
+                                    </button>
                                 </td>
                             @endforeach
                             <td class="px-3 py-2 text-center">
@@ -232,7 +239,53 @@
 </div>
 </main>
 
+{{-- ═══════ QUARTER EVALUATION POPUP ═══════ --}}
+{{-- Reuses the existing /performance/appraise/{employeeId}/{quarter} page --
+     the same read access BTS/HR already have via isCrossCompanyMonitorSession()
+     in PerformanceController::appraiserReport() -- just opened as an overlay
+     instead of a full navigation, so the summary list stays behind it. --}}
+<div
+    id="quarterModalOverlay"
+    class="hidden fixed inset-0 z-[10000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 no-print"
+    onclick="if (event.target === this) closeQuarterModal();"
+>
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[92vh] flex flex-col overflow-hidden">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-[#D4AF37]/30 bg-gradient-to-r from-[#1A0A0A] to-[#7A0019] text-white shrink-0">
+            <div>
+                <p class="text-[9px] uppercase tracking-widest text-[#D4AF37] font-black">Quarterly Evaluation</p>
+                <p id="quarterModalTitle" class="text-sm font-black"></p>
+            </div>
+            <button type="button" onclick="closeQuarterModal()" aria-label="Close"
+                class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition shrink-0">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+        <div class="relative flex-1 bg-slate-50">
+            <div id="quarterModalLoading" class="absolute inset-0 flex items-center justify-center text-xs font-bold text-slate-400">Loading…</div>
+            <iframe id="quarterModalFrame" src="about:blank" onload="document.getElementById('quarterModalLoading').style.display='none';" class="relative z-10 w-full h-full border-0"></iframe>
+        </div>
+    </div>
+</div>
+
 <script>
+function openQuarterModal(employeeUuid, quarter, staffName) {
+    document.getElementById('quarterModalTitle').textContent = staffName + ' — ' + quarter;
+    document.getElementById('quarterModalLoading').style.display = 'flex';
+    document.getElementById('quarterModalFrame').src = '/performance/appraise/' + employeeUuid + '/' + quarter.toLowerCase();
+    document.getElementById('quarterModalOverlay').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+}
+function closeQuarterModal() {
+    document.getElementById('quarterModalOverlay').classList.add('hidden');
+    document.getElementById('quarterModalFrame').src = 'about:blank';
+    document.body.style.overflow = '';
+}
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeQuarterModal();
+});
+
 function filterStaffSearch() {
     var q = document.getElementById('staffSearch').value.trim().toLowerCase();
     var lastGroupVisible = {};
