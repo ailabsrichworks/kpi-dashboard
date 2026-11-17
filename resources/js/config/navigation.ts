@@ -7,6 +7,7 @@ export interface NavItem {
     sltOnly?: boolean;
     titanOnly?: boolean;
     btsOnly?: boolean;
+    hrBtsOnly?: boolean;
     /**
      * True when this route's controller still returns a plain Blade `view()`
      * response rather than `Inertia::render()`. Inertia's own <Link> globally
@@ -49,6 +50,7 @@ export const navSections: NavSection[] = [
             { label: 'Notifications', href: '/notifications', match: 'notifications*', icon: 'bell', badge: 'unreadNotifications' },
             { label: 'Job Description', href: '/job-description', match: 'job-description*', icon: 'jobdesc', legacy: true },
             { label: 'SLT Dashboard', href: '/slt-dashboard', match: 'slt-dashboard*', icon: 'analytics', sltOnly: true },
+            { label: 'Staff Evaluation Summary', href: '/staff-evaluation-summary', match: 'staff-evaluation-summary*', icon: 'report', hrBtsOnly: true, legacy: true },
         ],
     },
     {
