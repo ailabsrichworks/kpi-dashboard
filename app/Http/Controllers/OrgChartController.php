@@ -18,9 +18,15 @@ class OrgChartController extends Controller
 
     // Mirrors ApprovalHierarchyService::getApprover()'s exact per-role chain
     // (EXECUTIVE -> manager_id, fallback vp_id; MANAGER -> vp_id, fallback
-    // reports_to_id; VP -> reports_to_id; SLT -> top) but just returns the
-    // parent id instead of fetching a fresh row, since the whole roster is
-    // already loaded in memory here.
+    // reports_to_id; VP -> reports_to_id) but just returns the parent id
+    // instead of fetching a fresh row, since the whole roster is already
+    // loaded in memory here. One deliberate difference from that service:
+    // SLT also resolves via reports_to_id here. ApprovalHierarchyService
+    // treats every SLT as the top of the approval chain (correct -- nothing
+    // above SLT approves anything), but org-chart-wise two SLT staff aren't
+    // necessarily peers: a company can have its own SLT reporting to a
+    // group-level SLT (e.g. RCG's Hafiz Jasmi reporting to Suley). Without
+    // this, every SLT row becomes its own disconnected root.
     private function parentIdFor(array $emp): ?string
     {
         $role = strtoupper(trim($emp['role'] ?? ''));
@@ -28,8 +34,8 @@ class OrgChartController extends Controller
         return match ($role) {
             'EXECUTIVE' => $emp['manager_id'] ?: ($emp['vp_id'] ?: null),
             'MANAGER'   => $emp['vp_id'] ?: ($emp['reports_to_id'] ?: null),
-            'VP'        => $emp['reports_to_id'] ?: null,
-            default     => null, // SLT, and anything unrecognised, sit at the top
+            'VP', 'SLT' => $emp['reports_to_id'] ?: null,
+            default     => null, // unrecognised role -- nothing to resolve against
         };
     }
 
@@ -70,9 +76,35 @@ class OrgChartController extends Controller
                 'select'       => 'employee_id,is_default',
             ]);
             $isDefaultByEmployeeId = collect($rolesForCompany)->pluck('is_default', 'employee_id');
-            $employees = array_values(array_filter($employees, function ($emp) use ($isDefaultByEmployeeId) {
+            $allById = collect($employees)->keyBy('id');
+            $keptById = collect($employees)->filter(function ($emp) use ($isDefaultByEmployeeId) {
                 return $isDefaultByEmployeeId->get($emp['id'], true) !== false;
-            }));
+            })->keyBy('id');
+
+            // A row dropped above still has to come back if some KEPT staff
+            // member's real reporting line points straight at them --
+            // otherwise excluding a non-default row (meant only to hide a
+            // BTS/HR viewer's own foreign membership from a company that
+            // isn't theirs) would also decapitate the real chain of command
+            // whenever a company's true top happens to have it as a
+            // secondary, not default, membership (e.g. Suley is RCG's top
+            // SLT -- every VP and Hafiz Jasmi report straight to her -- but
+            // her own default company membership is elsewhere). Resolved to
+            // a fixed point since a re-added parent can itself need another.
+            do {
+                $toAdd = [];
+                foreach ($keptById->all() as $emp) {
+                    $parentId = $this->parentIdFor($emp);
+                    if ($parentId && !$keptById->has($parentId) && $allById->has($parentId)) {
+                        $toAdd[$parentId] = $allById->get($parentId);
+                    }
+                }
+                foreach ($toAdd as $id => $empToAdd) {
+                    $keptById->put($id, $empToAdd);
+                }
+            } while (!empty($toAdd));
+
+            $employees = $keptById->values()->all();
         }
 
         $nodes = [];
