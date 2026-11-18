@@ -152,28 +152,26 @@
             <p class="text-[11px] font-black text-slate-800">Reporting Structure</p>
             <p class="text-[9px] text-slate-400 mt-0.5">Executive → Manager → VP → SLT, resolved from each staff member's direct reporting line. Scroll to see the full chart.</p>
         </div>
-        <div class="overflow-auto thin-scroll px-6 py-4" style="max-height:75vh;" id="orgChartScroll">
+
+        {{-- Company name sits as a plain, always-visible banner ABOVE the
+             scrollable tree -- not as a node inside it -- so it's never
+             pushed out of view by scrolling and always reads big & centered,
+             regardless of how many top-level roots the tree itself has. --}}
+        @if(!empty($roots))
+            <div class="text-center py-3 border-b border-[#E5E7EB] bg-[#FAFAF9]">
+                <p class="text-2xl sm:text-3xl font-black text-[#1A0A0A] tracking-tight">{{ $companyCode }}</p>
+                <p class="text-[9px] uppercase tracking-[0.2em] text-[#B8860B] font-black mt-1">Organization Chart</p>
+            </div>
+        @endif
+
+        <div class="overflow-auto thin-scroll px-6 py-6" style="max-height:75vh;" id="orgChartScroll">
             @if(empty($roots))
                 <p class="text-center text-[11px] text-slate-400 py-10">No active staff found.</p>
             @else
                 <ul class="org-tree" id="orgTreeRoot">
-                    @if(count($roots) > 1)
-                        <li>
-                            <div class="org-card inline-flex flex-col items-center gap-1 px-4 py-2.5 rounded-xl border-2 bg-[#1A0A0A] text-white w-[160px] text-center" style="border-color:#D4AF37;">
-                                <span class="text-[11px] font-black">{{ $companyCode }}</span>
-                                <span class="text-[8px] uppercase tracking-widest text-[#D4AF37] font-black">Company</span>
-                            </div>
-                            <ul>
-                                @foreach($roots as $root)
-                                    @include('org-chart._node', ['node' => $root, 'roleBadgeStyle' => $roleBadgeStyle])
-                                @endforeach
-                            </ul>
-                        </li>
-                    @else
-                        @foreach($roots as $root)
-                            @include('org-chart._node', ['node' => $root, 'roleBadgeStyle' => $roleBadgeStyle])
-                        @endforeach
-                    @endif
+                    @foreach($roots as $root)
+                        @include('org-chart._node', ['node' => $root, 'roleBadgeStyle' => $roleBadgeStyle])
+                    @endforeach
                 </ul>
             @endif
         </div>
