@@ -107,8 +107,21 @@
 
         <form method="GET" action="{{ route('org-chart') }}" class="relative flex flex-wrap items-center gap-2">
             <div class="flex flex-col">
+                <label class="text-[9px] text-white/60 uppercase tracking-wide mb-0.5">Company</label>
+                {{-- Resets the department filter on change -- a department
+                     code picked for the old company (e.g. TITAN) has no
+                     match in a different company's roster, so starting
+                     back at "All Departments" avoids landing on a chart
+                     that looks empty/filtered for no visible reason. --}}
+                <select name="company" onchange="document.getElementById('orgChartDeptSelect').value='ALL'; this.form.submit();" class="text-xs font-bold rounded-lg px-2.5 py-1.5 text-[#1a1a1a] bg-white border border-white/20">
+                    @foreach($companies as $c)
+                        <option value="{{ $c['code'] }}" @selected($companyCode === strtoupper($c['code']))>{{ $c['name'] ?? $c['code'] }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="flex flex-col">
                 <label class="text-[9px] text-white/60 uppercase tracking-wide mb-0.5">Department</label>
-                <select name="department" onchange="this.form.submit()" class="text-xs font-bold rounded-lg px-2.5 py-1.5 text-[#1a1a1a] bg-white border border-white/20">
+                <select id="orgChartDeptSelect" name="department" onchange="this.form.submit()" class="text-xs font-bold rounded-lg px-2.5 py-1.5 text-[#1a1a1a] bg-white border border-white/20">
                     <option value="ALL" @selected($deptFilter === 'ALL')>All Departments</option>
                     @foreach($departments as $d)
                         <option value="{{ $d['code'] }}" @selected($deptFilter === $d['code'])>{{ $d['name'] ?? $d['code'] }}</option>

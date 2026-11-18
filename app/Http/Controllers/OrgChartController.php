@@ -47,8 +47,29 @@ class OrgChartController extends Controller
 
         $this->requireHrBtsAccess();
 
-        $companyCode = session('company_code');
-        $deptFilter  = strtoupper(trim($request->query('department', 'ALL')));
+        // Every viewer who reaches this page already passed
+        // requireHrBtsAccess() above, i.e. is a cross-company monitor by
+        // definition (see Controller::isCrossCompanyMonitorSession()'s own
+        // docblock: "cross-department/cross-company monitoring access...
+        // in every company"). Without this, the chart was silently locked
+        // to whichever single company the viewer happened to be logged
+        // into right now, with no way to see any other company's
+        // structure short of logging out and picking a different
+        // dashboard at login -- which made an entire company's
+        // departments (e.g. RCG's TITAN, MARKETING, OPERATION... when the
+        // viewer's own session company is RGHB) look simply missing.
+        $companies = $supabase->get('companies', [
+            'select' => 'code,name',
+            'order'  => 'name.asc',
+        ]) ?? [];
+
+        $requestedCompany = strtoupper(trim($request->query('company', '')));
+        $validCompanyCodes = collect($companies)->pluck('code')->map(fn ($c) => strtoupper($c))->all();
+        $companyCode = in_array($requestedCompany, $validCompanyCodes, true)
+            ? $requestedCompany
+            : strtoupper(session('company_code'));
+
+        $deptFilter = strtoupper(trim($request->query('department', 'ALL')));
 
         $departments = $supabase->get('departments', [
             'company_code' => 'eq.' . $companyCode,
@@ -164,6 +185,7 @@ class OrgChartController extends Controller
         return view('org-chart.index', [
             'today'       => now()->timezone('Asia/Kuala_Lumpur')->format('d M Y'),
             'companyCode' => $companyCode,
+            'companies'   => $companies,
             'departments' => $departments,
             'deptFilter'  => $deptFilter,
             'roots'       => $roots,
