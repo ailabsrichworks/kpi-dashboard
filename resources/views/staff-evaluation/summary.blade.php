@@ -19,6 +19,9 @@
         .q-pill { display:inline-flex; flex-direction:column; align-items:center; justify-content:center; min-width:64px; padding:4px 8px; border-radius:10px; line-height:1.1; }
         .score-pill-score { font-size:13px; font-weight:900; }
         .score-pill-label { font-size:8px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; opacity:.85; margin-top:1px; }
+        .legend-badge { cursor: pointer; user-select: none; transition: transform .15s, box-shadow .15s; }
+        .legend-badge:hover { transform: translateY(-1px); }
+        .legend-badge.legend-active { outline: 2px solid #1E293B; outline-offset: 2px; }
         @media print {
             #sidebar, .no-print { display: none !important; }
             #mainContent { margin-left: 0 !important; }
@@ -141,10 +144,27 @@
     <div class="flex flex-wrap items-center gap-2 px-1">
         <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">Legend</span>
         @foreach($bandMeta as $key => $b)
-            <span class="text-[9px] font-black px-2.5 py-1 rounded-full" style="background:{{ $b['bg'] }}22;color:{{ $b['bg'] === '#FFD700' ? '#8a6d00' : $b['bg'] }};">{{ $b['label'] }} ({{ $b['range'] }})</span>
+            <span
+                class="legend-badge text-[9px] font-black px-2.5 py-1 rounded-full"
+                style="background:{{ $b['bg'] }}22;color:{{ $b['bg'] === '#FFD700' ? '#8a6d00' : $b['bg'] }};"
+                data-filter-key="{{ $key }}"
+                onclick="filterByBand('{{ $key }}', this)"
+                title="Click to show only {{ $b['label'] }} staff"
+            >{{ $b['label'] }} ({{ $b['range'] }})</span>
         @endforeach
-        <span class="text-[9px] font-black px-2.5 py-1 rounded-full bg-slate-100 text-slate-500">Not Submitted</span>
-        <span class="text-[9px] font-black px-2.5 py-1 rounded-full" style="background:#FEF3C722;color:#B45309;">Awaiting Sign-off</span>
+        <span
+            class="legend-badge text-[9px] font-black px-2.5 py-1 rounded-full bg-slate-100 text-slate-500"
+            data-filter-key="not_submitted|pending"
+            onclick="filterByBand('not_submitted|pending', this)"
+            title="Click to show only Not Submitted staff"
+        >Not Submitted</span>
+        <span
+            class="legend-badge text-[9px] font-black px-2.5 py-1 rounded-full"
+            style="background:#FEF3C722;color:#B45309;"
+            data-filter-key="awaiting_signoff"
+            onclick="filterByBand('awaiting_signoff', this)"
+            title="Click to show only Awaiting Sign-off staff"
+        >Awaiting Sign-off</span>
     </div>
 
     {{-- ═══════ STAFF × QUARTER TABLE ═══════ --}}
@@ -200,6 +220,7 @@
                                 <td class="px-3 py-2 text-center">
                                     <button
                                         type="button"
+                                        data-key="{{ $cell['status_key'] }}"
                                         onclick="openQuarterModal('{{ $row['uuid'] }}', '{{ $q }}', '{{ addslashes($row['name']) }}')"
                                         title="View {{ $row['name'] }}'s {{ $q }} evaluation"
                                         class="cursor-pointer hover:-translate-y-0.5 hover:shadow-md transition"
@@ -303,12 +324,40 @@ document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') closeQuarterModal();
 });
 
+// activeBandFilter holds one of the legend's data-filter-key values (possibly
+// several status/band keys joined by '|', e.g. "not_submitted|pending"), or
+// null when no legend badge is selected.
+var activeBandFilter = null;
+
+function filterByBand(filterKey, badgeEl) {
+    var isReclicking = activeBandFilter === filterKey;
+    document.querySelectorAll('.legend-badge').forEach(function (b) { b.classList.remove('legend-active'); });
+    if (isReclicking) {
+        activeBandFilter = null;
+    } else {
+        activeBandFilter = filterKey;
+        badgeEl.classList.add('legend-active');
+    }
+    applyStaffFilters();
+}
+
 function filterStaffSearch() {
+    applyStaffFilters();
+}
+
+function applyStaffFilters() {
     var q = document.getElementById('staffSearch').value.trim().toLowerCase();
-    var lastGroupVisible = {};
+    var bandKeys = activeBandFilter ? activeBandFilter.split('|') : null;
     document.querySelectorAll('#staffListBody tr.staff-row').forEach(function (tr) {
-        var matches = q === '' || tr.dataset.search.indexOf(q) !== -1;
-        tr.style.display = matches ? '' : 'none';
+        var matchesSearch = q === '' || tr.dataset.search.indexOf(q) !== -1;
+        var matchesBand = true;
+        if (bandKeys) {
+            matchesBand = false;
+            tr.querySelectorAll('[data-key]').forEach(function (cellEl) {
+                if (bandKeys.indexOf(cellEl.dataset.key) !== -1) matchesBand = true;
+            });
+        }
+        tr.style.display = (matchesSearch && matchesBand) ? '' : 'none';
     });
     document.querySelectorAll('#staffListBody .role-group-row').forEach(function (header) {
         var next = header.nextElementSibling;
