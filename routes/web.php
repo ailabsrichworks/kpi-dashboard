@@ -536,6 +536,10 @@ Route::middleware(['kpi.auth'])->group(function () {
     Route::get('/staff-evaluation-summary', [\App\Http\Controllers\StaffEvaluationSummaryController::class, 'index'])
         ->name('staff-evaluation-summary');
 
+    // BTS / CORPORATE GOVERNANCE & HR DEPT only — full company org chart
+    Route::get('/org-chart', [\App\Http\Controllers\OrgChartController::class, 'index'])
+        ->name('org-chart');
+
     /*
     |--------------------------------------------------------------------------
     | KPI MAIN

@@ -747,6 +747,13 @@
                         'icon'        => 'report',
                         'hr_bts_only' => true,
                     ],
+                    [
+                        'label'       => 'Org Chart',
+                        'href'        => route('org-chart'),
+                        'match'       => 'org-chart*',
+                        'icon'        => 'users',
+                        'hr_bts_only' => true,
+                    ],
                 ],
             ],
             [
