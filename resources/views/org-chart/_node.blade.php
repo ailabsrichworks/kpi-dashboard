@@ -17,7 +17,15 @@
             class="text-[8px] font-black uppercase tracking-wide px-2 py-0.5 rounded-full"
             style="background:{{ $style['bg'] }};color:{{ $style['text'] }};"
         >{{ $node['role'] }}</span>
-        <p class="text-[9px] text-slate-400 leading-tight break-words">{{ $node['position'] ?: $node['department'] }}</p>
+        {{-- Always shown, separately from position -- a staff member's
+             position (e.g. "Client Account Manager") usually says nothing
+             about which department they're in, so without this line their
+             department was only ever visible via the filter dropdown, not
+             by looking at the chart itself. --}}
+        <p class="text-[8px] font-black uppercase tracking-wide text-[#B8860B] mt-0.5">{{ $node['department'] }}</p>
+        @if($node['position'])
+            <p class="text-[9px] text-slate-400 leading-tight break-words">{{ $node['position'] }}</p>
+        @endif
         <p class="text-[8px] text-slate-300">{{ $node['employee_id'] }}</p>
     </div>
 
