@@ -24,7 +24,14 @@
             flex-direction: column;
             align-items: center;
         }
-        .org-tree ul { flex-direction: row; }
+        /* flex-start, not the inherited center: with align-items:center a
+           leaf sibling (no children, shorter li) gets vertically centered
+           against a sibling with a deep subtree (taller li) in the same
+           row, pushing the leaf's top edge down and breaking the row's
+           horizontal connector line into disconnected segments. flex-start
+           keeps every sibling's top edge flush so the line stays continuous
+           no matter how uneven the subtrees below it are. */
+        .org-tree ul { flex-direction: row; align-items: flex-start; }
         .org-tree li {
             list-style-type: none;
             position: relative;
