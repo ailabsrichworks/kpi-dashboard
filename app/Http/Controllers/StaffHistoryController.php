@@ -96,32 +96,14 @@ class StaffHistoryController extends Controller
         $employeesById = collect($employees)->keyBy('id');
 
         // Edit Staff Data now only lists Active staff -- an Inactive one's
-        // only home in this app is here, so surface them as their own
-        // roster (not just buried inside the event log below) alongside
-        // their most recent history record, if any.
-        $latestRecordByEmployeeId = collect($supabase->get('staff_history', [
+        // only home in this app is here, so every Inactive staff member
+        // must show up somewhere in this page's own Rekod Sejarah Staff
+        // list, even one HR never got around to logging a real event for
+        // yet. Tracked per employee_id so that case can be detected below.
+        $hasRecordByEmployeeId = collect($supabase->get('staff_history', [
             'company_code' => 'eq.' . $companyCode,
-            'select'       => 'employee_id,event_type,event_date',
-            'order'        => 'event_date.desc,created_at.desc',
-        ]) ?? [])->groupBy('employee_id')->map(fn ($g) => $g->first());
-
-        $inactiveStaff = collect($employees)
-            ->filter(fn ($e) => !$e['is_active'])
-            ->map(function ($e) use ($deptNameByCode, $latestRecordByEmployeeId) {
-                $latest = $latestRecordByEmployeeId->get($e['id']);
-                return [
-                    'id'              => $e['id'],
-                    'employee_name'   => $e['short_name'] ?? $e['full_name'],
-                    'employee_code'   => $e['employee_id'],
-                    'department'      => $deptNameByCode->get($e['department_code'] ?? '', $e['department_code'] ?? '-'),
-                    'role'            => $e['role'],
-                    'latest_event'    => $latest ? (self::EVENT_TYPES[$latest['event_type']] ?? self::EVENT_TYPES['other']) : null,
-                    'latest_event_date' => $latest['event_date'] ?? null,
-                ];
-            })
-            ->sortBy('employee_name')
-            ->values()
-            ->all();
+            'select'       => 'employee_id',
+        ]) ?? [])->pluck('employee_id')->flip();
 
         $eventFilter = strtoupper(trim($request->query('event_type', 'ALL')));
         $eventFilter = array_key_exists(strtolower($eventFilter), self::EVENT_TYPES) ? strtolower($eventFilter) : 'ALL';
@@ -156,6 +138,34 @@ class StaffHistoryController extends Controller
             ];
         }
 
+        // Any Inactive staff member with zero staff_history rows at all
+        // would otherwise never appear anywhere on this page -- surfaced
+        // here as a placeholder row (no real staff_history id, so Edit/
+        // Delete aren't offered on it) pointing HR at the Add Record form
+        // instead. Only under "All Events", since it isn't really any one
+        // event type a filter could match.
+        if ($eventFilter === 'ALL') {
+            foreach ($employees as $emp) {
+                if ($emp['is_active'] || $hasRecordByEmployeeId->has($emp['id'])) {
+                    continue;
+                }
+                $rows[] = [
+                    'id'              => null,
+                    'employee_name'   => $emp['short_name'] ?? $emp['full_name'],
+                    'employee_code'   => $emp['employee_id'],
+                    'department'      => $deptNameByCode->get($emp['department_code'] ?? '', $emp['department_code'] ?? '-'),
+                    'currently_active'=> false,
+                    'event_type'      => null,
+                    'event_meta'      => ['label' => 'Inactive — Tiada Rekod', 'bg' => '#F1F5F9', 'text' => '#64748B'],
+                    'event_date'      => null,
+                    'reason'          => null,
+                    'notes'           => 'Staff ini Inactive tetapi belum ada rekod sejarah. Sila tambah rekod di atas.',
+                    'recorded_by_name'=> '-',
+                    'created_at'      => null,
+                ];
+            }
+        }
+
         return view('staff-history.index', [
             'today'        => now()->timezone('Asia/Kuala_Lumpur')->format('d M Y'),
             'companyCode'  => $companyCode,
@@ -164,7 +174,6 @@ class StaffHistoryController extends Controller
             'eventTypes'   => self::EVENT_TYPES,
             'eventFilter'  => $eventFilter,
             'rows'         => $rows,
-            'inactiveStaff'=> $inactiveStaff,
         ]);
     }
 

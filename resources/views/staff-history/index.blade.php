@@ -76,7 +76,7 @@
     @endif
 
     {{-- ═══════ ADD RECORD FORM ═══════ --}}
-    <div class="bg-white rounded-2xl soft-card border border-[#E5E7EB] border-t-[3px] border-t-[#D4AF37] overflow-hidden" x-data="{ open: true }">
+    <div id="addRecordForm" class="bg-white rounded-2xl soft-card border border-[#E5E7EB] border-t-[3px] border-t-[#D4AF37] overflow-hidden scroll-mt-20" x-data="{ open: true }">
         <button type="button" @click="open = !open" class="w-full flex items-center justify-between px-5 py-4 text-left">
             <div>
                 <p class="text-[13px] font-black text-slate-800">+ Add Record / Tambah Rekod Baru</p>
@@ -156,49 +156,6 @@
         </div>
     </div>
 
-    {{-- ═══════ INACTIVE STAFF ROSTER ═══════ --}}
-    <div class="bg-white rounded-2xl soft-card border border-[#E5E7EB] border-t-[3px] border-t-[#B91C1C] overflow-hidden">
-        <div class="p-4 pb-2">
-            <p class="text-[11px] font-black text-slate-800">Staff Inactive ({{ count($inactiveStaff) }})</p>
-            <p class="text-[9px] text-slate-400 mt-0.5">Staff yang tidak lagi Active untuk company ini. Tidak dipaparkan dalam Edit Staff Data.</p>
-        </div>
-
-        @if(count($inactiveStaff) > 0)
-            <div class="overflow-x-auto thin-scroll">
-                <table class="w-full text-[11px]">
-                    <thead>
-                        <tr class="text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-y border-[#E5E7EB]">
-                            <th class="px-4 py-2.5">Staff</th>
-                            <th class="px-4 py-2.5">Department</th>
-                            <th class="px-4 py-2.5">Role</th>
-                            <th class="px-4 py-2.5">Rekod Terkini</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($inactiveStaff as $s)
-                            <tr class="border-b border-[#F1F5F9] hover:bg-[#FAFAF9]">
-                                <td class="px-4 py-3">
-                                    <p class="font-black text-slate-800">{{ $s['employee_name'] }}</p>
-                                    <p class="text-[9px] text-slate-400">{{ $s['employee_code'] }}</p>
-                                </td>
-                                <td class="px-4 py-3 text-slate-600">{{ $s['department'] }}</td>
-                                <td class="px-4 py-3 text-slate-600">{{ $s['role'] }}</td>
-                                <td class="px-4 py-3 whitespace-nowrap">
-                                    @if($s['latest_event'])
-                                        <span class="text-[9px] font-black px-2.5 py-1 rounded-full" style="background:{{ $s['latest_event']['bg'] }};color:{{ $s['latest_event']['text'] }};">{{ $s['latest_event']['label'] }}</span>
-                                        <span class="text-[9px] text-slate-400 ml-1">{{ \Illuminate\Support\Carbon::parse($s['latest_event_date'])->format('d M Y') }}</span>
-                                    @else
-                                        <span class="text-[9px] text-slate-300">Tiada rekod lagi</span>
-                                    @endif
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-        @endif
-    </div>
-
     {{-- ═══════ LEGEND (klik untuk filter) ═══════ --}}
     <div class="flex flex-wrap items-center gap-2 px-1">
         <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">Legend</span>
@@ -243,7 +200,7 @@
                             <td class="px-4 py-3">
                                 <span class="text-[9px] font-black px-2.5 py-1 rounded-full whitespace-nowrap" style="background:{{ $r['event_meta']['bg'] }};color:{{ $r['event_meta']['text'] }};">{{ $r['event_meta']['label'] }}</span>
                             </td>
-                            <td class="px-4 py-3 text-slate-600 whitespace-nowrap">{{ \Illuminate\Support\Carbon::parse($r['event_date'])->format('d M Y') }}</td>
+                            <td class="px-4 py-3 text-slate-600 whitespace-nowrap">{{ $r['event_date'] ? \Illuminate\Support\Carbon::parse($r['event_date'])->format('d M Y') : '—' }}</td>
                             <td class="px-4 py-3 text-slate-600 max-w-[260px]">
                                 @if($r['reason'])<p class="font-semibold">{{ $r['reason'] }}</p>@endif
                                 @if($r['notes'])<p class="text-[10px] text-slate-400">{{ $r['notes'] }}</p>@endif
@@ -251,21 +208,25 @@
                             </td>
                             <td class="px-4 py-3 text-slate-400 whitespace-nowrap">{{ $r['recorded_by_name'] }}</td>
                             <td class="px-4 py-3 text-right whitespace-nowrap">
-                                <button type="button"
-                                    onclick="openEditModal({!! \Illuminate\Support\Js::from([
-                                        'id' => $r['id'],
-                                        'employee_name' => $r['employee_name'],
-                                        'event_type' => $r['event_type'],
-                                        'event_date' => $r['event_date'],
-                                        'reason' => $r['reason'],
-                                        'notes' => $r['notes'],
-                                    ]) !!})"
-                                    class="text-[10px] font-bold text-[#1D4ED8] hover:underline mr-2">Edit</button>
-                                <form method="POST" action="{{ route('staff-history.destroy', $r['id']) }}" class="inline" onsubmit="return confirm('Padam rekod ini? Tindakan ini tidak boleh diundur.')">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="text-[10px] font-bold text-[#B91C1C] hover:underline">Delete</button>
-                                </form>
+                                @if($r['id'])
+                                    <button type="button"
+                                        onclick="openEditModal({!! \Illuminate\Support\Js::from([
+                                            'id' => $r['id'],
+                                            'employee_name' => $r['employee_name'],
+                                            'event_type' => $r['event_type'],
+                                            'event_date' => $r['event_date'],
+                                            'reason' => $r['reason'],
+                                            'notes' => $r['notes'],
+                                        ]) !!})"
+                                        class="text-[10px] font-bold text-[#1D4ED8] hover:underline mr-2">Edit</button>
+                                    <form method="POST" action="{{ route('staff-history.destroy', $r['id']) }}" class="inline" onsubmit="return confirm('Padam rekod ini? Tindakan ini tidak boleh diundur.')">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="text-[10px] font-bold text-[#B91C1C] hover:underline">Delete</button>
+                                    </form>
+                                @else
+                                    <a href="#addRecordForm" class="text-[10px] font-bold text-[#D4AF37] hover:underline">+ Tambah Rekod</a>
+                                @endif
                             </td>
                         </tr>
                     @empty
