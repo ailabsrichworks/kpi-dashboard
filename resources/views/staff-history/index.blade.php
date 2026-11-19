@@ -204,14 +204,14 @@
                             <td class="px-4 py-3 text-slate-400 whitespace-nowrap">{{ $r['recorded_by_name'] }}</td>
                             <td class="px-4 py-3 text-right whitespace-nowrap">
                                 <button type="button"
-                                    onclick='openEditModal(@json([
-                                        "id" => $r["id"],
-                                        "employee_name" => $r["employee_name"],
-                                        "event_type" => $r["event_type"],
-                                        "event_date" => $r["event_date"],
-                                        "reason" => $r["reason"],
-                                        "notes" => $r["notes"],
-                                    ]))'
+                                    onclick="openEditModal({!! \Illuminate\Support\Js::from([
+                                        'id' => $r['id'],
+                                        'employee_name' => $r['employee_name'],
+                                        'event_type' => $r['event_type'],
+                                        'event_date' => $r['event_date'],
+                                        'reason' => $r['reason'],
+                                        'notes' => $r['notes'],
+                                    ]) !!})"
                                     class="text-[10px] font-bold text-[#1D4ED8] hover:underline mr-2">Edit</button>
                                 <form method="POST" action="{{ route('staff-history.destroy', $r['id']) }}" class="inline" onsubmit="return confirm('Padam rekod ini? Tindakan ini tidak boleh diundur.')">
                                     @csrf
