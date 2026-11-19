@@ -156,11 +156,16 @@
         </div>
     </div>
 
-    {{-- ═══════ LEGEND ═══════ --}}
+    {{-- ═══════ LEGEND (klik untuk filter) ═══════ --}}
     <div class="flex flex-wrap items-center gap-2 px-1">
         <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">Legend</span>
+        <a href="{{ route('staff-history', ['company' => $companyCode, 'event_type' => 'ALL']) }}"
+            class="text-[9px] font-black px-2.5 py-1 rounded-full border transition hover:opacity-80 {{ $eventFilter === 'ALL' ? 'border-slate-400' : 'border-transparent' }}"
+            style="background:#E5E7EB;color:#334155;">All</a>
         @foreach($eventTypes as $key => $meta)
-            <span class="text-[9px] font-black px-2.5 py-1 rounded-full" style="background:{{ $meta['bg'] }};color:{{ $meta['text'] }};">{{ $meta['label'] }}</span>
+            <a href="{{ route('staff-history', ['company' => $companyCode, 'event_type' => $key]) }}"
+                class="text-[9px] font-black px-2.5 py-1 rounded-full border transition hover:opacity-80 {{ $eventFilter === $key ? 'border-slate-400' : 'border-transparent' }}"
+                style="background:{{ $meta['bg'] }};color:{{ $meta['text'] }};">{{ $meta['label'] }}</a>
         @endforeach
     </div>
 
