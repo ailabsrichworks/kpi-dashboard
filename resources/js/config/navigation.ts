@@ -50,7 +50,7 @@ export const navSections: NavSection[] = [
             { label: 'Notifications', href: '/notifications', match: 'notifications*', icon: 'bell', badge: 'unreadNotifications' },
             { label: 'Job Description', href: '/job-description', match: 'job-description*', icon: 'jobdesc', legacy: true },
             { label: 'SLT Dashboard', href: '/slt-dashboard', match: 'slt-dashboard*', icon: 'analytics', sltOnly: true },
-            { label: 'Staff Evaluation Summary', href: '/staff-evaluation-summary', match: 'staff-evaluation-summary*', icon: 'report', hrBtsOnly: true, legacy: true },
+            { label: 'Staff Summary', href: '/staff-evaluation-summary', match: 'staff-evaluation-summary*', icon: 'report', hrBtsOnly: true, legacy: true },
             { label: 'Org Chart', href: '/org-chart', match: 'org-chart*', icon: 'users', hrBtsOnly: true, legacy: true },
         ],
     },

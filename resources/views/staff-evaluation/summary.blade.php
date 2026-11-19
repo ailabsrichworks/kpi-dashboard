@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Staff Evaluation Summary</title>
+    <title>Staff Summary</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -74,7 +74,7 @@
         <div class="absolute top-0 left-0 right-0 h-[2px] theme-header-hairline bg-gradient-to-r from-[#D4AF37] via-[#D4AF37] to-[#D4AF37]/10"></div>
         <div class="relative">
             <h1 class="text-xl font-black tracking-tight leading-tight">
-                Staff Quarterly Evaluation Summary — {{ $companyCode }} · {{ $currentFinancialYear }}
+                Staff Summary — {{ $companyCode }} · {{ $currentFinancialYear }}
             </h1>
             <p class="text-[11px] text-white/60 mt-1">{{ $today }} · Every staff member's appraisal status and score, side-by-side across all four quarters</p>
         </div>
@@ -171,7 +171,7 @@
     <div class="bg-white rounded-2xl soft-card border border-[#E5E7EB] border-t-[3px] border-t-[#D4AF37] overflow-hidden flex flex-col">
         <div class="p-4 pb-2 flex items-center justify-between flex-wrap gap-2">
             <div>
-                <p class="text-[11px] font-black text-slate-800">All Staff — Quarterly Evaluation Summary</p>
+                <p class="text-[11px] font-black text-slate-800">All Staff — Summary</p>
                 <p class="text-[9px] text-slate-400 mt-0.5">Grouped by seniority (SLT → VP → Manager → Executive), each staff member's Q1–Q4 appraisal status/score</p>
             </div>
             <input

@@ -741,7 +741,7 @@
                         'slt_only' => true,
                     ],
                     [
-                        'label'       => 'Staff Evaluation Summary',
+                        'label'       => 'Staff Summary',
                         'href'        => route('staff-evaluation-summary'),
                         'match'       => 'staff-evaluation-summary*',
                         'icon'        => 'report',
