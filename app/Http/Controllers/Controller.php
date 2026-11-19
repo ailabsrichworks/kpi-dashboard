@@ -40,14 +40,14 @@ abstract class Controller
 
     /**
      * Named-individual grant, not a role/department change: Suley (RCG COO /
-     * RGHB Group COO) was explicitly given standing access to the BTS-only
-     * Quarter Control page (both its quarter-override and appraiser-
-     * delegation actions), 2026-08-21, at the user's request. Deliberately
-     * NOT done by setting her department_code to BTS -- that would also
-     * hand her every OTHER isBtsSession()-gated feature (View As, Titan
-     * cross-company access, HR attendance, etc.), none of which were asked
-     * for. Both of her ids are listed since which one is active depends on
-     * which company she's logged into (RCG vs RGHB).
+     * RGHB Group COO) was explicitly given standing access to Quarter
+     * Control (both its quarter-override and appraiser-delegation actions),
+     * 2026-08-21, at the user's request, despite not being BTS or HR.
+     * Deliberately NOT done by setting her department_code to BTS -- that
+     * would also hand her every OTHER isBtsSession()-gated feature (View As,
+     * Titan cross-company access, HR attendance, etc.), none of which were
+     * asked for. Both of her ids are listed since which one is active
+     * depends on which company she's logged into (RCG vs RGHB).
      */
     private const QUARTER_CONTROL_EXTRA_ACCESS_IDS = [
         '8e322638-49a5-4560-b800-8d846c53e7c8', // Suley -- RCG
@@ -62,16 +62,21 @@ abstract class Controller
     /**
      * Static, session-only version of isQuarterControlAuthorized() so
      * non-controller code (HandleInertiaRequests, sharing this as a Layout
-     * prop for the React sidebar) can check the same named-individual grant
-     * without duplicating the id list a third time -- the Blade sidebar
-     * partial still keeps its own copy (see partials/sidebar.blade.php)
-     * since it runs before this Inertia-only middleware would apply.
+     * prop for the React sidebar) can check the same access without
+     * duplicating the id list a third time -- the Blade sidebar partial
+     * still keeps its own copy (see partials/sidebar.blade.php) since it
+     * runs before this Inertia-only middleware would apply.
+     *
+     * HR (CORPORATE GOVERNANCE & HR DEPT) has the same standing access as
+     * BTS here, same as every other HR/BTS cross-company tool in this app
+     * (isCrossCompanyMonitorSession()) -- Quarter Control just can't reuse
+     * that instance method directly since this one has to stay static.
      */
     public static function sessionHasQuarterControlAccess(): bool
     {
-        $isBts = session('admin_impersonating') === true
-            || strtoupper(trim(session('department_code') ?? '')) === 'BTS';
+        $isHrBts = session('admin_impersonating') === true
+            || in_array(strtoupper(trim(session('department_code') ?? '')), ['BTS', 'CORPORATE GOVERNANCE & HR DEPT'], true);
 
-        return $isBts || in_array(session('employee_uuid'), self::QUARTER_CONTROL_EXTRA_ACCESS_IDS, true);
+        return $isHrBts || in_array(session('employee_uuid'), self::QUARTER_CONTROL_EXTRA_ACCESS_IDS, true);
     }
 }

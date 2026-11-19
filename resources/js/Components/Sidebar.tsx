@@ -138,7 +138,7 @@ export default function Sidebar() {
                                         if (item.sltOnly && !isSltDept) return null;
                                         if (item.titanOnly && !hasTitanAccess) return null;
                                         if (item.btsOnly && !isBts && !(item.quarterControlOnly && isQuarterControlAuthorized)) return null;
-                                        if (item.hrBtsOnly && !isHrBts) return null;
+                                        if (item.hrBtsOnly && !isHrBts && !(item.quarterControlOnly && isQuarterControlAuthorized)) return null;
 
                                         const isActive = isNavItemActive(item, url);
                                         const badgeCount = item.badge === 'unreadNotifications' ? layout.unreadNotificationCount : 0;

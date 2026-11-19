@@ -115,7 +115,10 @@ export const navSections: NavSection[] = [
             { label: 'Staff History', href: '/staff-history', match: 'staff-history*', icon: 'history', hrBtsOnly: true, legacy: true },
             { label: 'Edit Staff Data', href: '/staff-management', match: 'staff-management*', icon: 'edit', hrBtsOnly: true, legacy: true },
             { label: 'View As (Employee KPI)', href: '/admin/view-as', match: 'admin/view-as*', icon: 'users', btsOnly: true },
-            { label: 'Quarter Control', href: '/admin/quarter-control', match: 'admin/quarter-control*', icon: 'calendar', btsOnly: true, quarterControlOnly: true, legacy: true },
+            // HR now has the same standing Quarter Control access as BTS
+            // (plus the named Suley grant) -- see
+            // Controller::sessionHasQuarterControlAccess().
+            { label: 'Quarter Control', href: '/admin/quarter-control', match: 'admin/quarter-control*', icon: 'calendar', hrBtsOnly: true, quarterControlOnly: true, legacy: true },
         ],
     },
 ];

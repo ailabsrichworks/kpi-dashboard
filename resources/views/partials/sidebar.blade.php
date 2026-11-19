@@ -876,7 +876,10 @@
                         'hr_bts_only' => true,
                     ],
                     ['label' => 'View As (Employee KPI)', 'href' => route('admin.view-as'), 'match' => 'admin/view-as*', 'icon' => 'users', 'bts_only' => true],
-                    ['label' => 'Quarter Control', 'href' => route('admin.quarter-control'), 'match' => 'admin/quarter-control*', 'icon' => 'calendar', 'bts_only' => true, 'quarter_control_only' => true],
+                    // HR now has the same standing Quarter Control access as
+                    // BTS (plus the named Suley grant for anyone outside both) --
+                    // see Controller::sessionHasQuarterControlAccess().
+                    ['label' => 'Quarter Control', 'href' => route('admin.quarter-control'), 'match' => 'admin/quarter-control*', 'icon' => 'calendar', 'hr_bts_only' => true, 'quarter_control_only' => true],
                 ],
             ],
         ];
@@ -922,7 +925,7 @@
                         @if(($item['slt_only'] ?? false) && !$isSltDept)
                             @continue
                         @endif
-                        @if(($item['hr_bts_only'] ?? false) && !$isHrBts)
+                        @if(($item['hr_bts_only'] ?? false) && !$isHrBts && !(($item['quarter_control_only'] ?? false) && $isQuarterControlAuthorized))
                             @continue
                         @endif
                         @if(($item['bts_only'] ?? false) && !$isBts && !(($item['quarter_control_only'] ?? false) && $isQuarterControlAuthorized))
