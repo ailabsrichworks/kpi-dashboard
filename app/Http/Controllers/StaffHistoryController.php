@@ -95,6 +95,34 @@ class StaffHistoryController extends Controller
 
         $employeesById = collect($employees)->keyBy('id');
 
+        // Edit Staff Data now only lists Active staff -- an Inactive one's
+        // only home in this app is here, so surface them as their own
+        // roster (not just buried inside the event log below) alongside
+        // their most recent history record, if any.
+        $latestRecordByEmployeeId = collect($supabase->get('staff_history', [
+            'company_code' => 'eq.' . $companyCode,
+            'select'       => 'employee_id,event_type,event_date',
+            'order'        => 'event_date.desc,created_at.desc',
+        ]) ?? [])->groupBy('employee_id')->map(fn ($g) => $g->first());
+
+        $inactiveStaff = collect($employees)
+            ->filter(fn ($e) => !$e['is_active'])
+            ->map(function ($e) use ($deptNameByCode, $latestRecordByEmployeeId) {
+                $latest = $latestRecordByEmployeeId->get($e['id']);
+                return [
+                    'id'              => $e['id'],
+                    'employee_name'   => $e['short_name'] ?? $e['full_name'],
+                    'employee_code'   => $e['employee_id'],
+                    'department'      => $deptNameByCode->get($e['department_code'] ?? '', $e['department_code'] ?? '-'),
+                    'role'            => $e['role'],
+                    'latest_event'    => $latest ? (self::EVENT_TYPES[$latest['event_type']] ?? self::EVENT_TYPES['other']) : null,
+                    'latest_event_date' => $latest['event_date'] ?? null,
+                ];
+            })
+            ->sortBy('employee_name')
+            ->values()
+            ->all();
+
         $eventFilter = strtoupper(trim($request->query('event_type', 'ALL')));
         $eventFilter = array_key_exists(strtolower($eventFilter), self::EVENT_TYPES) ? strtolower($eventFilter) : 'ALL';
 
@@ -136,6 +164,7 @@ class StaffHistoryController extends Controller
             'eventTypes'   => self::EVENT_TYPES,
             'eventFilter'  => $eventFilter,
             'rows'         => $rows,
+            'inactiveStaff'=> $inactiveStaff,
         ]);
     }
 

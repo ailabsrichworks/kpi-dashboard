@@ -156,6 +156,49 @@
         </div>
     </div>
 
+    {{-- ═══════ INACTIVE STAFF ROSTER ═══════ --}}
+    <div class="bg-white rounded-2xl soft-card border border-[#E5E7EB] border-t-[3px] border-t-[#B91C1C] overflow-hidden">
+        <div class="p-4 pb-2">
+            <p class="text-[11px] font-black text-slate-800">Staff Inactive ({{ count($inactiveStaff) }})</p>
+            <p class="text-[9px] text-slate-400 mt-0.5">Staff yang tidak lagi Active untuk company ini. Tidak dipaparkan dalam Edit Staff Data.</p>
+        </div>
+
+        @if(count($inactiveStaff) > 0)
+            <div class="overflow-x-auto thin-scroll">
+                <table class="w-full text-[11px]">
+                    <thead>
+                        <tr class="text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-y border-[#E5E7EB]">
+                            <th class="px-4 py-2.5">Staff</th>
+                            <th class="px-4 py-2.5">Department</th>
+                            <th class="px-4 py-2.5">Role</th>
+                            <th class="px-4 py-2.5">Rekod Terkini</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($inactiveStaff as $s)
+                            <tr class="border-b border-[#F1F5F9] hover:bg-[#FAFAF9]">
+                                <td class="px-4 py-3">
+                                    <p class="font-black text-slate-800">{{ $s['employee_name'] }}</p>
+                                    <p class="text-[9px] text-slate-400">{{ $s['employee_code'] }}</p>
+                                </td>
+                                <td class="px-4 py-3 text-slate-600">{{ $s['department'] }}</td>
+                                <td class="px-4 py-3 text-slate-600">{{ $s['role'] }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap">
+                                    @if($s['latest_event'])
+                                        <span class="text-[9px] font-black px-2.5 py-1 rounded-full" style="background:{{ $s['latest_event']['bg'] }};color:{{ $s['latest_event']['text'] }};">{{ $s['latest_event']['label'] }}</span>
+                                        <span class="text-[9px] text-slate-400 ml-1">{{ \Illuminate\Support\Carbon::parse($s['latest_event_date'])->format('d M Y') }}</span>
+                                    @else
+                                        <span class="text-[9px] text-slate-300">Tiada rekod lagi</span>
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </div>
+
     {{-- ═══════ LEGEND (klik untuk filter) ═══════ --}}
     <div class="flex flex-wrap items-center gap-2 px-1">
         <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">Legend</span>

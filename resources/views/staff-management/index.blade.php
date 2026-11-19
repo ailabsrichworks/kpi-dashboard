@@ -41,14 +41,6 @@
                 </select>
             </div>
             <div class="flex flex-col">
-                <label class="text-[9px] text-white/60 uppercase tracking-wide mb-0.5">Status</label>
-                <select name="status" onchange="this.form.submit()" class="text-xs font-bold rounded-lg px-2.5 py-1.5 text-[#1a1a1a] bg-white border border-white/20">
-                    <option value="all" @selected($statusFilter === 'all')>All</option>
-                    <option value="active" @selected($statusFilter === 'active')>Active</option>
-                    <option value="inactive" @selected($statusFilter === 'inactive')>Inactive</option>
-                </select>
-            </div>
-            <div class="flex flex-col">
                 <label class="text-[9px] text-white/60 uppercase tracking-wide mb-0.5">Search</label>
                 <input type="text" name="q" value="{{ $search }}" placeholder="Nama / ID staff..." class="text-xs font-bold rounded-lg px-2.5 py-1.5 text-[#1a1a1a] bg-white border border-white/20 w-44">
             </div>
@@ -67,8 +59,12 @@
 
     <div class="bg-white rounded-2xl soft-card border border-[#E5E7EB] border-t-[3px] border-t-[#D4AF37] overflow-hidden">
         <div class="p-4 pb-2">
-            <p class="text-[11px] font-black text-slate-800">Staff ({{ count($employees) }})</p>
-            <p class="text-[9px] text-slate-400 mt-0.5">Termasuk staff Active dan Inactive. Klik Edit untuk ubah sebarang maklumat staff.</p>
+            <p class="text-[11px] font-black text-slate-800">Staff Active ({{ count($employees) }})</p>
+            <p class="text-[9px] text-slate-400 mt-0.5">
+                Hanya staff Active dipaparkan di sini. Klik Edit untuk ubah sebarang maklumat staff.
+                Staff yang resign/diberhentikan (Inactive) kini direkod di
+                <a href="{{ route('staff-history', ['company' => $companyCode]) }}" class="text-[#1D4ED8] font-bold hover:underline">Staff History</a>.
+            </p>
         </div>
 
         <div class="overflow-x-auto thin-scroll">
@@ -79,7 +75,6 @@
                         <th class="px-4 py-2.5">Department</th>
                         <th class="px-4 py-2.5">Role</th>
                         <th class="px-4 py-2.5">Position</th>
-                        <th class="px-4 py-2.5">Status</th>
                         <th class="px-4 py-2.5 text-right">Action</th>
                     </tr>
                 </thead>
@@ -93,20 +88,13 @@
                             <td class="px-4 py-3 text-slate-600">{{ $e['department_name'] }}</td>
                             <td class="px-4 py-3 text-slate-600">{{ $e['role'] }}</td>
                             <td class="px-4 py-3 text-slate-600">{{ $e['position'] ?? '-' }}</td>
-                            <td class="px-4 py-3">
-                                @if($e['is_active'])
-                                    <span class="text-[9px] font-black px-2.5 py-1 rounded-full" style="background:#DCFCE7;color:#15803D;">Active</span>
-                                @else
-                                    <span class="text-[9px] font-black px-2.5 py-1 rounded-full" style="background:#FEE2E2;color:#B91C1C;">Inactive</span>
-                                @endif
-                            </td>
                             <td class="px-4 py-3 text-right">
                                 <a href="{{ route('staff-management.edit', $e['id']) }}" class="text-[10px] font-black px-3 py-1.5 rounded-lg bg-[#1A0A0A] text-white hover:bg-[#7A0019] transition">Edit</a>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="px-4 py-10 text-center text-slate-400 text-[11px]">Tiada staff dijumpai.</td>
+                            <td colspan="5" class="px-4 py-10 text-center text-slate-400 text-[11px]">Tiada staff active dijumpai.</td>
                         </tr>
                     @endforelse
                 </tbody>

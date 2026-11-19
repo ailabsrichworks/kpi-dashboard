@@ -45,8 +45,13 @@ class StaffManagementController extends Controller
         $companies   = $this->companies($supabase);
         $companyCode = $this->resolveCompanyCode($request, $companies);
 
+        // Active staff only -- an inactive/resigned staff member's data is
+        // now edited through Staff History instead (its own Edit modal on
+        // the history record, plus the "Staff Status Selepas Ini" action),
+        // so there's no longer a reason for them to also appear here.
         $employees = $supabase->get('employees', [
             'company_code' => 'eq.' . $companyCode,
+            'is_active'    => 'eq.true',
             'select'       => 'id,employee_id,short_name,full_name,email,role,position,department_code,is_active,join_date',
             'order'        => 'short_name.asc',
         ]) ?? [];
@@ -83,20 +88,6 @@ class StaffManagementController extends Controller
             }));
         }
 
-        // A company with 40+ staff and only a couple of inactive ones (the
-        // common case -- RCG currently has 46 active vs 2 inactive) buries
-        // those few rows alphabetically among everyone else with no way to
-        // jump straight to them, which is exactly what looked like "only
-        // Active shows up here" even though both were always being fetched.
-        $statusFilter = strtolower(trim($request->query('status', 'all')));
-        if (!in_array($statusFilter, ['all', 'active', 'inactive'], true)) {
-            $statusFilter = 'all';
-        }
-        if ($statusFilter !== 'all') {
-            $wantActive = $statusFilter === 'active';
-            $employees  = array_values(array_filter($employees, fn ($emp) => (bool) $emp['is_active'] === $wantActive));
-        }
-
         foreach ($employees as &$emp) {
             $emp['department_name'] = $deptNameByCode->get($emp['department_code'] ?? '', $emp['department_code'] ?? '-');
         }
@@ -108,7 +99,6 @@ class StaffManagementController extends Controller
             'companies'    => $companies,
             'employees'    => $employees,
             'search'       => $search,
-            'statusFilter' => $statusFilter,
         ]);
     }
 
@@ -186,7 +176,6 @@ class StaffManagementController extends Controller
             'reports_to_id'  => ['nullable', 'uuid'],
             'join_date'      => ['nullable', 'date'],
             'hr_access'      => ['nullable', 'boolean'],
-            'status'         => ['required', 'in:active,inactive'],
         ]);
 
         if ($validator->fails()) {
@@ -259,7 +248,9 @@ class StaffManagementController extends Controller
             'reports_to_id'   => $reportsToId,
             'join_date'       => $data['join_date'] ?? null,
             'hr_access'       => $request->boolean('hr_access'),
-            'is_active'       => $data['status'] === 'active',
+            // is_active is deliberately not editable here -- only Staff
+            // History can deactivate/reactivate a staff member now, since
+            // that's where the reason/event for it gets recorded.
         ]);
 
         $successMessage = 'Data staff berjaya dikemaskini.';

@@ -53,8 +53,9 @@
         </div>
     @endif
 
-    <div class="bg-[#FFFBEB] border border-[#D4AF37]/40 text-[#92700C] text-[10px] font-semibold rounded-xl px-4 py-3">
-        Nota: Jika Company ditukar, Manager / VP / Reports To akan di-kosongkan secara automatik (sebab mereka dari company lama). Sila buka semula halaman ini selepas simpan untuk tetapkan Manager/VP baru.
+    <div class="bg-[#FFFBEB] border border-[#D4AF37]/40 text-[#92700C] text-[10px] font-semibold rounded-xl px-4 py-3 space-y-1">
+        <p>Nota: Jika Company ditukar, Manager / VP / Reports To akan di-kosongkan secara automatik (sebab mereka dari company lama). Sila buka semula halaman ini selepas simpan untuk tetapkan Manager/VP baru.</p>
+        <p>Untuk resign / berhenti kerja / diberhentikan, rekod di <a href="{{ route('staff-history', ['company' => $employee['company_code']]) }}" class="underline font-bold">Staff History</a> — bukan di sini.</p>
     </div>
 
     <form method="POST" action="{{ route('staff-management.update', $employee['id']) }}" class="bg-white rounded-2xl soft-card border border-[#E5E7EB] border-t-[3px] border-t-[#D4AF37] p-6 space-y-6">
@@ -71,13 +72,6 @@
                 <div>
                     <label class="field-label">Salutation</label>
                     <input type="text" name="salutation" value="{{ old('salutation', $employee['salutation']) }}" placeholder="Puan / Encik / Dr..." class="field-input">
-                </div>
-                <div>
-                    <label class="field-label">Status</label>
-                    <select name="status" class="field-input">
-                        <option value="active" @selected($employee['is_active'])>Active</option>
-                        <option value="inactive" @selected(!$employee['is_active'])>Inactive</option>
-                    </select>
                 </div>
                 <div>
                     <label class="field-label">Short Name</label>
