@@ -540,6 +540,26 @@ Route::middleware(['kpi.auth'])->group(function () {
     Route::get('/org-chart', [\App\Http\Controllers\OrgChartController::class, 'index'])
         ->name('org-chart');
 
+    // BTS / CORPORATE GOVERNANCE & HR DEPT only — staff lifecycle records
+    // (resigned, terminated, suspended, rejoined, transferred, promoted...)
+    Route::get('/staff-history', [\App\Http\Controllers\StaffHistoryController::class, 'index'])
+        ->name('staff-history');
+    Route::post('/staff-history', [\App\Http\Controllers\StaffHistoryController::class, 'store'])
+        ->name('staff-history.store');
+    Route::put('/staff-history/{id}', [\App\Http\Controllers\StaffHistoryController::class, 'update'])
+        ->name('staff-history.update');
+    Route::delete('/staff-history/{id}', [\App\Http\Controllers\StaffHistoryController::class, 'destroy'])
+        ->name('staff-history.destroy');
+
+    // BTS / CORPORATE GOVERNANCE & HR DEPT only — direct edit access to any
+    // staff member's full profile/org data
+    Route::get('/staff-management', [\App\Http\Controllers\StaffManagementController::class, 'index'])
+        ->name('staff-management');
+    Route::get('/staff-management/{id}/edit', [\App\Http\Controllers\StaffManagementController::class, 'edit'])
+        ->name('staff-management.edit');
+    Route::put('/staff-management/{id}', [\App\Http\Controllers\StaffManagementController::class, 'update'])
+        ->name('staff-management.update');
+
     /*
     |--------------------------------------------------------------------------
     | KPI MAIN

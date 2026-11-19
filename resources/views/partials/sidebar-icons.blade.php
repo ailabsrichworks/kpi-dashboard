@@ -185,4 +185,18 @@
         </svg>
         @break
 
+    @case('history')
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 12a9 9 0 1 0 2.64-6.36M3 12V5M3 12h7"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 2"/>
+        </svg>
+        @break
+
+    @case('edit')
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 20h9"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+        </svg>
+        @break
+
 @endswitch

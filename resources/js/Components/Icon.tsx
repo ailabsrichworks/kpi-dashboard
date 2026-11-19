@@ -116,6 +116,18 @@ const paths: Record<string, ReactNode> = {
     ),
     linkage: <path strokeLinecap="round" strokeLinejoin="round" d="M9 17H7A5 5 0 017 7h2M15 7h2a5 5 0 010 10h-2M8 12h8" />,
     help: <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />,
+    history: (
+        <>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 12a9 9 0 1 0 2.64-6.36M3 12V5M3 12h7" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 2" />
+        </>
+    ),
+    edit: (
+        <>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 20h9" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+        </>
+    ),
 };
 
 export default function Icon({ name, className = 'w-4 h-4' }: { name: string; className?: string }) {

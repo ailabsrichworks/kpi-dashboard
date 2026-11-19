@@ -754,6 +754,20 @@
                         'icon'        => 'users',
                         'hr_bts_only' => true,
                     ],
+                    [
+                        'label'       => 'Staff History',
+                        'href'        => route('staff-history'),
+                        'match'       => 'staff-history*',
+                        'icon'        => 'history',
+                        'hr_bts_only' => true,
+                    ],
+                    [
+                        'label'       => 'Edit Staff Data',
+                        'href'        => route('staff-management'),
+                        'match'       => 'staff-management*',
+                        'icon'        => 'edit',
+                        'hr_bts_only' => true,
+                    ],
                 ],
             ],
             [

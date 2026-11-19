@@ -52,6 +52,8 @@ export const navSections: NavSection[] = [
             { label: 'SLT Dashboard', href: '/slt-dashboard', match: 'slt-dashboard*', icon: 'analytics', sltOnly: true },
             { label: 'Staff Summary', href: '/staff-evaluation-summary', match: 'staff-evaluation-summary*', icon: 'report', hrBtsOnly: true, legacy: true },
             { label: 'Org Chart', href: '/org-chart', match: 'org-chart*', icon: 'users', hrBtsOnly: true, legacy: true },
+            { label: 'Staff History', href: '/staff-history', match: 'staff-history*', icon: 'history', hrBtsOnly: true, legacy: true },
+            { label: 'Edit Staff Data', href: '/staff-management', match: 'staff-management*', icon: 'edit', hrBtsOnly: true, legacy: true },
         ],
     },
     {
