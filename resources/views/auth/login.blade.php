@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
+    <script defer src="/vendor/alpinejs/alpinejs-3.14.9.min.js"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
         .login-bg { background: radial-gradient(circle at top left, rgba(196,184,150,.35), transparent 32%), radial-gradient(circle at bottom right, rgba(166,147,116,.25), transparent 38%), linear-gradient(135deg, #F1EBE0 0%, #E9E0D1 45%, #DED2BC 78%, #F1EBE0 100%); }

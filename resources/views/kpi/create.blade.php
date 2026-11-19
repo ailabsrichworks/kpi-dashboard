@@ -4,7 +4,7 @@
     <title>Create KPI</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
+    <script defer src="/vendor/alpinejs/alpinejs-3.14.9.min.js"></script>
 
     <style>
         .category-card{

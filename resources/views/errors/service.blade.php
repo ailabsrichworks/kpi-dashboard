@@ -3,7 +3,7 @@
 <head>
     <title>Service Unavailable</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
+    <script defer src="/vendor/alpinejs/alpinejs-3.14.9.min.js"></script>
 </head>
 <body class="min-h-screen bg-[#f4f7fb] flex items-center justify-center p-6">
     <div class="bg-white rounded-3xl border border-slate-200 shadow-xl p-10 max-w-md w-full text-center">

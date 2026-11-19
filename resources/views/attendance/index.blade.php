@@ -7,7 +7,7 @@
     <title>Attendance Import</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
+    <script defer src="/vendor/alpinejs/alpinejs-3.14.9.min.js"></script>
     <style>
         *, body { font-family: 'Inter', sans-serif; }
         .tbl th { background:#1a3d34;color:#fff;padding:9px 11px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;white-space:nowrap; }

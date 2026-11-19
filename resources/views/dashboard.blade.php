@@ -17,7 +17,7 @@
 
     {{-- Tailwind Play CDN — must be sync (it generates styles by scanning DOM) --}}
     <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
+    <script defer src="/vendor/alpinejs/alpinejs-3.14.9.min.js"></script>
     <style>
         .brand-panel { background: radial-gradient(circle at top left,rgba(59,130,246,.16),transparent 30%), radial-gradient(circle at bottom right,rgba(20,184,166,.13),transparent 34%), linear-gradient(135deg,#06142f 0%,#0b1f45 52%,#020617 100%); }
         .soft-card   { box-shadow: 0 8px 30px rgba(15,23,42,.07); }
