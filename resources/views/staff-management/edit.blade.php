@@ -32,7 +32,7 @@
         <div class="absolute top-0 left-0 right-0 h-[2px] theme-header-hairline bg-gradient-to-r from-[#D4AF37] via-[#D4AF37] to-[#D4AF37]/10"></div>
         <div class="relative">
             <h1 class="text-xl font-black tracking-tight leading-tight">Edit Staff — {{ $employee['short_name'] ?? $employee['full_name'] }}</h1>
-            <p class="text-[11px] text-white/60 mt-1">{{ $employee['employee_id'] }} · Setiap perubahan disimpan terus ke rekod staff ini</p>
+            <p class="text-[11px] text-white/60 mt-1">{{ $employee['employee_id'] }} · Every change is saved directly to this staff member's record</p>
         </div>
         <a href="{{ route('staff-management', ['company' => $employee['company_code']]) }}" class="relative text-xs font-bold px-3 py-1.5 rounded-lg bg-white/15 border border-white/20 hover:bg-white/25 transition">&larr; Back to List</a>
     </div>
@@ -54,8 +54,8 @@
     @endif
 
     <div class="bg-[#FFFBEB] border border-[#D4AF37]/40 text-[#92700C] text-[10px] font-semibold rounded-xl px-4 py-3 space-y-1">
-        <p>Nota: Jika Company ditukar, Manager / VP / Reports To akan di-kosongkan secara automatik (sebab mereka dari company lama). Sila buka semula halaman ini selepas simpan untuk tetapkan Manager/VP baru.</p>
-        <p>Untuk resign / berhenti kerja / diberhentikan, rekod di <a href="{{ route('staff-history', ['company' => $employee['company_code']]) }}" class="underline font-bold">Staff History</a> — bukan di sini.</p>
+        <p>Note: If Company is changed, Manager / VP / Reports To will be cleared automatically (since they belong to the old company). Please reopen this page after saving to assign a new Manager/VP.</p>
+        <p>For resignation / termination, record it in <a href="{{ route('staff-history', ['company' => $employee['company_code']]) }}" class="underline font-bold">Staff History</a> — not here.</p>
     </div>
 
     <form method="POST" action="{{ route('staff-management.update', $employee['id']) }}" class="bg-white rounded-2xl soft-card border border-[#E5E7EB] border-t-[3px] border-t-[#D4AF37] p-6 space-y-6">
@@ -118,7 +118,7 @@
                 <div class="md:col-span-2">
                     <label class="field-label">Department</label>
                     <select name="department_code" id="departmentSelect" class="field-input">
-                        <option value="">— Pilih Department —</option>
+                        <option value="">— Select Department —</option>
                         @foreach($allDepartments->groupBy('company_code') as $companyCode => $depts)
                             <optgroup label="{{ $companies->firstWhere('code', $companyCode)['name'] ?? $companyCode }}" data-company="{{ $companyCode }}">
                                 @foreach($depts as $d)
@@ -174,17 +174,17 @@
                     </select>
                 </div>
             </div>
-            <p class="text-[9px] text-slate-400 mt-2">Executive guna Manager (fallback VP); Manager guna VP (fallback Reports To); VP/SLT guna Reports To. Isi medan yang sepadan dengan role staff ini.</p>
+            <p class="text-[9px] text-slate-400 mt-2">Executive uses Manager (fallback VP); Manager uses VP (fallback Reports To); VP/SLT uses Reports To. Fill in the field matching this staff member's role.</p>
         </div>
 
         <div class="flex items-center gap-2">
             <input type="checkbox" name="hr_access" id="hrAccess" value="1" @checked(old('hr_access', $employee['hr_access'])) class="w-4 h-4 accent-[#D4AF37]">
-            <label for="hrAccess" class="text-[11px] font-bold text-slate-700">HR Access (boleh capai ciri HR tambahan)</label>
+            <label for="hrAccess" class="text-[11px] font-bold text-slate-700">HR Access (can access additional HR features)</label>
         </div>
 
         <div class="flex justify-end gap-2 pt-2 border-t border-[#E5E7EB]">
             <a href="{{ route('staff-management', ['company' => $employee['company_code']]) }}" class="text-xs font-bold px-5 py-2.5 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50">Cancel</a>
-            <button type="submit" class="text-xs font-black px-6 py-2.5 rounded-xl bg-[#D4AF37] text-[#1a1a1a] hover:bg-[#c19c2f] transition shadow-md">Simpan Perubahan / Save Changes</button>
+            <button type="submit" class="text-xs font-black px-6 py-2.5 rounded-xl bg-[#D4AF37] text-[#1a1a1a] hover:bg-[#c19c2f] transition shadow-md">Save Changes</button>
         </div>
     </form>
 

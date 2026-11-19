@@ -28,7 +28,7 @@
         <div class="absolute top-0 left-0 right-0 h-[2px] theme-header-hairline bg-gradient-to-r from-[#D4AF37] via-[#D4AF37] to-[#D4AF37]/10"></div>
         <div class="relative">
             <h1 class="text-xl font-black tracking-tight leading-tight">Edit Staff Data — {{ $companyCode }}</h1>
-            <p class="text-[11px] text-white/60 mt-1">{{ $today }} · HR/BTS sahaja boleh edit terus data staff di sini</p>
+            <p class="text-[11px] text-white/60 mt-1">{{ $today }} · Only HR/BTS can directly edit staff data here</p>
         </div>
 
         <form method="GET" action="{{ route('staff-management') }}" class="relative flex flex-wrap items-center gap-2">
@@ -42,7 +42,7 @@
             </div>
             <div class="flex flex-col">
                 <label class="text-[9px] text-white/60 uppercase tracking-wide mb-0.5">Search</label>
-                <input type="text" name="q" value="{{ $search }}" placeholder="Nama / ID staff..." class="text-xs font-bold rounded-lg px-2.5 py-1.5 text-[#1a1a1a] bg-white border border-white/20 w-44">
+                <input type="text" name="q" value="{{ $search }}" placeholder="Name / Staff ID..." class="text-xs font-bold rounded-lg px-2.5 py-1.5 text-[#1a1a1a] bg-white border border-white/20 w-44">
             </div>
             <button type="submit" class="text-xs font-black px-3 py-1.5 rounded-lg bg-[#D4AF37] text-[#1a1a1a] mt-4">Go</button>
         </form>
@@ -61,8 +61,8 @@
         <div class="p-4 pb-2">
             <p class="text-[11px] font-black text-slate-800">Staff Active ({{ count($employees) }})</p>
             <p class="text-[9px] text-slate-400 mt-0.5">
-                Hanya staff Active dipaparkan di sini. Klik Edit untuk ubah sebarang maklumat staff.
-                Staff yang resign/diberhentikan (Inactive) kini direkod di
+                Only Active staff are shown here. Click Edit to change any staff information.
+                Staff who have resigned/been terminated (Inactive) are now recorded in
                 <a href="{{ route('staff-history', ['company' => $companyCode]) }}" class="text-[#1D4ED8] font-bold hover:underline">Staff History</a>.
             </p>
         </div>
@@ -94,7 +94,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="5" class="px-4 py-10 text-center text-slate-400 text-[11px]">Tiada staff active dijumpai.</td>
+                            <td colspan="5" class="px-4 py-10 text-center text-slate-400 text-[11px]">No active staff found.</td>
                         </tr>
                     @endforelse
                 </tbody>

@@ -30,7 +30,7 @@
         <div class="absolute top-0 left-0 right-0 h-[2px] theme-header-hairline bg-gradient-to-r from-[#D4AF37] via-[#D4AF37] to-[#D4AF37]/10"></div>
         <div class="relative">
             <h1 class="text-xl font-black tracking-tight leading-tight">Staff History — {{ $companyCode }}</h1>
-            <p class="text-[11px] text-white/60 mt-1">{{ $today }} · Rekod sejarah staff (berhenti, diberhentikan, kembali bekerja, dsb.)</p>
+            <p class="text-[11px] text-white/60 mt-1">{{ $today }} · Staff lifecycle records (resignation, termination, rejoining, etc.)</p>
         </div>
 
         <form method="GET" action="{{ route('staff-history') }}" class="relative flex flex-wrap items-center gap-2">
@@ -79,8 +79,8 @@
     <div id="addRecordForm" class="bg-white rounded-2xl soft-card border border-[#E5E7EB] border-t-[3px] border-t-[#D4AF37] overflow-hidden scroll-mt-20" x-data="{ open: true }">
         <button type="button" @click="open = !open" class="w-full flex items-center justify-between px-5 py-4 text-left">
             <div>
-                <p class="text-[13px] font-black text-slate-800">+ Add Record / Tambah Rekod Baru</p>
-                <p class="text-[10px] text-slate-400 mt-0.5">Simpan rekod bila-bila staff resign, diberhentikan, kembali bekerja, atau apa-apa perubahan status lain.</p>
+                <p class="text-[13px] font-black text-slate-800">+ Add Record</p>
+                <p class="text-[10px] text-slate-400 mt-0.5">Save a record whenever staff resign, are terminated, rejoin, or any other status change.</p>
             </div>
             <svg class="w-4 h-4 text-slate-400 transition-transform" :class="{ 'rotate-180': !open }" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -95,7 +95,7 @@
                 <div class="md:col-span-1">
                     <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Staff</label>
                     <select name="employee_id" required class="mt-1 w-full text-xs rounded-lg px-3 py-2 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40">
-                        <option value="">— Pilih Staff —</option>
+                        <option value="">— Select Staff —</option>
                         <optgroup label="Active Staff">
                             @foreach($employees as $e)
                                 @if($e['is_active'])
@@ -116,7 +116,7 @@
                 <div>
                     <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Event Type</label>
                     <select name="event_type" id="historyEventType" required onchange="suggestStatus(this.value, 'historyStatusAction')" class="mt-1 w-full text-xs rounded-lg px-3 py-2 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40">
-                        <option value="">— Pilih Jenis —</option>
+                        <option value="">— Select Type —</option>
                         @foreach($eventTypes as $key => $meta)
                             <option value="{{ $key }}" data-suggest="{{ $meta['suggest_status'] ?? 'no_change' }}">{{ $meta['label'] }}</option>
                         @endforeach
@@ -129,34 +129,34 @@
                 </div>
 
                 <div>
-                    <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Reason / Sebab (ringkas)</label>
-                    <input type="text" name="reason" maxlength="255" placeholder="cth: Peluang kerja baru" class="mt-1 w-full text-xs rounded-lg px-3 py-2 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Reason (brief)</label>
+                    <input type="text" name="reason" maxlength="255" placeholder="e.g. New job opportunity" class="mt-1 w-full text-xs rounded-lg px-3 py-2 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40">
                 </div>
 
                 <div>
-                    <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Staff Status Selepas Ini</label>
+                    <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Staff Status After This</label>
                     <select name="status_action" id="historyStatusAction" class="mt-1 w-full text-xs rounded-lg px-3 py-2 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40">
-                        <option value="no_change">Tiada Perubahan</option>
-                        <option value="active">Aktifkan (Active)</option>
-                        <option value="inactive">Tidak Aktifkan (Inactive)</option>
+                        <option value="no_change">No Change</option>
+                        <option value="active">Set Active</option>
+                        <option value="inactive">Set Inactive</option>
                     </select>
                 </div>
 
                 <div class="md:col-span-2">
-                    <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Notes / Catatan Tambahan</label>
-                    <input type="text" name="notes" maxlength="2000" placeholder="Maklumat tambahan (jika ada)" class="mt-1 w-full text-xs rounded-lg px-3 py-2 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Notes</label>
+                    <input type="text" name="notes" maxlength="2000" placeholder="Additional information (if any)" class="mt-1 w-full text-xs rounded-lg px-3 py-2 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40">
                 </div>
 
                 <div class="md:col-span-3 flex justify-end">
                     <button type="submit" class="text-xs font-black px-5 py-2.5 rounded-xl bg-[#D4AF37] text-[#1a1a1a] hover:bg-[#c19c2f] transition shadow-md">
-                        Simpan Rekod / Save Record
+                        Save Record
                     </button>
                 </div>
             </form>
         </div>
     </div>
 
-    {{-- ═══════ LEGEND (klik untuk filter) ═══════ --}}
+    {{-- ═══════ LEGEND (click to filter) ═══════ --}}
     <div class="flex flex-wrap items-center gap-2 px-1">
         <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">Legend</span>
         <a href="{{ route('staff-history', ['company' => $companyCode, 'event_type' => 'ALL']) }}"
@@ -172,8 +172,8 @@
     {{-- ═══════ HISTORY LIST ═══════ --}}
     <div class="bg-white rounded-2xl soft-card border border-[#E5E7EB] border-t-[3px] border-t-[#D4AF37] overflow-hidden">
         <div class="p-4 pb-2">
-            <p class="text-[11px] font-black text-slate-800">Rekod Sejarah Staff ({{ count($rows) }})</p>
-            <p class="text-[9px] text-slate-400 mt-0.5">Tersusun mengikut tarikh event terkini dahulu.</p>
+            <p class="text-[11px] font-black text-slate-800">Staff History Records ({{ count($rows) }})</p>
+            <p class="text-[9px] text-slate-400 mt-0.5">Sorted by most recent event date first.</p>
         </div>
 
         <div class="overflow-x-auto thin-scroll">
@@ -219,19 +219,19 @@
                                             'notes' => $r['notes'],
                                         ]) !!})"
                                         class="text-[10px] font-bold text-[#1D4ED8] hover:underline mr-2">Edit</button>
-                                    <form method="POST" action="{{ route('staff-history.destroy', $r['id']) }}" class="inline" onsubmit="return confirm('Padam rekod ini? Tindakan ini tidak boleh diundur.')">
+                                    <form method="POST" action="{{ route('staff-history.destroy', $r['id']) }}" class="inline" onsubmit="return confirm('Delete this record? This action cannot be undone.')">
                                         @csrf
                                         @method('DELETE')
                                         <button type="submit" class="text-[10px] font-bold text-[#B91C1C] hover:underline">Delete</button>
                                     </form>
                                 @else
-                                    <a href="#addRecordForm" class="text-[10px] font-bold text-[#D4AF37] hover:underline">+ Tambah Rekod</a>
+                                    <a href="#addRecordForm" class="text-[10px] font-bold text-[#D4AF37] hover:underline">+ Add Record</a>
                                 @endif
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7" class="px-4 py-10 text-center text-slate-400 text-[11px]">Tiada rekod sejarah untuk company ini lagi.</td>
+                            <td colspan="7" class="px-4 py-10 text-center text-slate-400 text-[11px]">No history records for this company yet.</td>
                         </tr>
                     @endforelse
                 </tbody>
@@ -245,8 +245,8 @@
 {{-- ═══════ EDIT MODAL ═══════ --}}
 <div id="editModal" class="fixed inset-0 z-50 items-center justify-center bg-black/40 px-4">
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
-        <p class="text-[13px] font-black text-slate-800 mb-1">Edit Rekod — <span id="editModalName"></span></p>
-        <p class="text-[10px] text-slate-400 mb-4">Kemaskini maklumat rekod ini.</p>
+        <p class="text-[13px] font-black text-slate-800 mb-1">Edit Record — <span id="editModalName"></span></p>
+        <p class="text-[10px] text-slate-400 mb-4">Update this record's information.</p>
         <form id="editModalForm" method="POST" class="space-y-3">
             @csrf
             @method('PUT')
@@ -267,27 +267,27 @@
             </div>
 
             <div>
-                <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Reason / Sebab</label>
+                <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Reason</label>
                 <input type="text" name="reason" id="editReason" maxlength="255" class="mt-1 w-full text-xs rounded-lg px-3 py-2 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40">
             </div>
 
             <div>
-                <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Notes / Catatan</label>
+                <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Notes</label>
                 <input type="text" name="notes" id="editNotes" maxlength="2000" class="mt-1 w-full text-xs rounded-lg px-3 py-2 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40">
             </div>
 
             <div>
-                <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Staff Status Selepas Ini</label>
+                <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Staff Status After This</label>
                 <select name="status_action" id="editStatusAction" class="mt-1 w-full text-xs rounded-lg px-3 py-2 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/40">
-                    <option value="no_change">Tiada Perubahan</option>
-                    <option value="active">Aktifkan (Active)</option>
-                    <option value="inactive">Tidak Aktifkan (Inactive)</option>
+                    <option value="no_change">No Change</option>
+                    <option value="active">Set Active</option>
+                    <option value="inactive">Set Inactive</option>
                 </select>
             </div>
 
             <div class="flex justify-end gap-2 pt-2">
-                <button type="button" onclick="closeEditModal()" class="text-xs font-bold px-4 py-2 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50">Batal</button>
-                <button type="submit" class="text-xs font-black px-5 py-2 rounded-xl bg-[#D4AF37] text-[#1a1a1a] hover:bg-[#c19c2f] transition">Simpan / Save</button>
+                <button type="button" onclick="closeEditModal()" class="text-xs font-bold px-4 py-2 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50">Cancel</button>
+                <button type="submit" class="text-xs font-black px-5 py-2 rounded-xl bg-[#D4AF37] text-[#1a1a1a] hover:bg-[#c19c2f] transition">Save</button>
             </div>
         </form>
     </div>

@@ -17,17 +17,16 @@ class StaffHistoryController extends Controller
         }
     }
 
-    // Bilingual labels throughout (per the request this page be designed so
-    // HR understands it) plus a badge colour per event, used by both the
-    // "Add Record" form and the timeline list.
+    // Clear, plain-English labels plus a badge colour per event, used by
+    // both the "Add Record" form and the timeline list.
     public const EVENT_TYPES = [
-        'resigned'    => ['label' => 'Resigned / Berhenti Kerja',          'bg' => '#FEE2E2', 'text' => '#B91C1C', 'suggest_status' => 'inactive'],
-        'terminated'  => ['label' => 'Terminated / Diberhentikan',          'bg' => '#FEE2E2', 'text' => '#991B1B', 'suggest_status' => 'inactive'],
-        'suspended'   => ['label' => 'Suspended / Digantung Kerja',        'bg' => '#FFEDD5', 'text' => '#C2410C', 'suggest_status' => null],
-        'rejoined'    => ['label' => 'Rejoined / Kembali Bekerja',         'bg' => '#DCFCE7', 'text' => '#15803D', 'suggest_status' => 'active'],
-        'transferred' => ['label' => 'Transferred / Pertukaran Jabatan',  'bg' => '#DBEAFE', 'text' => '#1D4ED8', 'suggest_status' => null],
-        'promoted'    => ['label' => 'Promoted / Kenaikan Pangkat',        'bg' => '#EDE9FE', 'text' => '#6D28D9', 'suggest_status' => null],
-        'other'       => ['label' => 'Other / Lain-lain',                  'bg' => '#F1F5F9', 'text' => '#475569', 'suggest_status' => null],
+        'resigned'    => ['label' => 'Resigned',     'bg' => '#FEE2E2', 'text' => '#B91C1C', 'suggest_status' => 'inactive'],
+        'terminated'  => ['label' => 'Terminated',   'bg' => '#FEE2E2', 'text' => '#991B1B', 'suggest_status' => 'inactive'],
+        'suspended'   => ['label' => 'Suspended',    'bg' => '#FFEDD5', 'text' => '#C2410C', 'suggest_status' => null],
+        'rejoined'    => ['label' => 'Rejoined',     'bg' => '#DCFCE7', 'text' => '#15803D', 'suggest_status' => 'active'],
+        'transferred' => ['label' => 'Transferred',  'bg' => '#DBEAFE', 'text' => '#1D4ED8', 'suggest_status' => null],
+        'promoted'    => ['label' => 'Promoted',     'bg' => '#EDE9FE', 'text' => '#6D28D9', 'suggest_status' => null],
+        'other'       => ['label' => 'Other',        'bg' => '#F1F5F9', 'text' => '#475569', 'suggest_status' => null],
     ];
 
     private function companies(SupabaseService $supabase): array
@@ -78,7 +77,7 @@ class StaffHistoryController extends Controller
     public function index(Request $request, SupabaseService $supabase)
     {
         if (!session()->has('employee_uuid') || !session()->has('company_code')) {
-            return redirect()->route('login')->with('error', 'Sila login terlebih dahulu.');
+            return redirect()->route('login')->with('error', 'Please log in first.');
         }
 
         $this->requireHrBtsAccess();
@@ -97,9 +96,9 @@ class StaffHistoryController extends Controller
 
         // Edit Staff Data now only lists Active staff -- an Inactive one's
         // only home in this app is here, so every Inactive staff member
-        // must show up somewhere in this page's own Rekod Sejarah Staff
-        // list, even one HR never got around to logging a real event for
-        // yet. Tracked per employee_id so that case can be detected below.
+        // must show up somewhere in this page's own history list, even one
+        // HR never got around to logging a real event for yet. Tracked per
+        // employee_id so that case can be detected below.
         $hasRecordByEmployeeId = collect($supabase->get('staff_history', [
             'company_code' => 'eq.' . $companyCode,
             'select'       => 'employee_id',
@@ -156,10 +155,10 @@ class StaffHistoryController extends Controller
                     'department'      => $deptNameByCode->get($emp['department_code'] ?? '', $emp['department_code'] ?? '-'),
                     'currently_active'=> false,
                     'event_type'      => null,
-                    'event_meta'      => ['label' => 'Inactive — Tiada Rekod', 'bg' => '#F1F5F9', 'text' => '#64748B'],
+                    'event_meta'      => ['label' => 'Inactive — No Record', 'bg' => '#F1F5F9', 'text' => '#64748B'],
                     'event_date'      => null,
                     'reason'          => null,
-                    'notes'           => 'Staff ini Inactive tetapi belum ada rekod sejarah. Sila tambah rekod di atas.',
+                    'notes'           => 'This staff member is Inactive but has no history record yet. Please add one above.',
                     'recorded_by_name'=> '-',
                     'created_at'      => null,
                 ];
@@ -180,7 +179,7 @@ class StaffHistoryController extends Controller
     public function store(Request $request, SupabaseService $supabase)
     {
         if (!session()->has('employee_uuid') || !session()->has('company_code')) {
-            return redirect()->route('login')->with('error', 'Sila login terlebih dahulu.');
+            return redirect()->route('login')->with('error', 'Please log in first.');
         }
 
         $this->requireHrBtsAccess();
@@ -212,7 +211,7 @@ class StaffHistoryController extends Controller
         $employee = $employee[0] ?? null;
 
         if (!$employee) {
-            return back()->withInput()->with('error', 'Staff tidak dijumpai.');
+            return back()->withInput()->with('error', 'Staff not found.');
         }
 
         $companyCode = strtoupper($employee['company_code']);
@@ -236,13 +235,13 @@ class StaffHistoryController extends Controller
         }
 
         return redirect()->route('staff-history', ['company' => $companyCode])
-            ->with('success', 'Rekod sejarah staff berjaya disimpan.');
+            ->with('success', 'Staff history record saved successfully.');
     }
 
     public function update(string $id, Request $request, SupabaseService $supabase)
     {
         if (!session()->has('employee_uuid') || !session()->has('company_code')) {
-            return redirect()->route('login')->with('error', 'Sila login terlebih dahulu.');
+            return redirect()->route('login')->with('error', 'Please log in first.');
         }
 
         $this->requireHrBtsAccess();
@@ -266,7 +265,7 @@ class StaffHistoryController extends Controller
         $existing = $existing[0] ?? null;
 
         if (!$existing) {
-            return back()->with('error', 'Rekod tidak dijumpai.');
+            return back()->with('error', 'Record not found.');
         }
 
         $supabase->patch('staff_history', ['id' => 'eq.' . $id], [
@@ -285,13 +284,13 @@ class StaffHistoryController extends Controller
         }
 
         return redirect()->route('staff-history', ['company' => $existing['company_code']])
-            ->with('success', 'Rekod sejarah staff berjaya dikemaskini.');
+            ->with('success', 'Staff history record updated successfully.');
     }
 
     public function destroy(string $id, Request $request, SupabaseService $supabase)
     {
         if (!session()->has('employee_uuid') || !session()->has('company_code')) {
-            return redirect()->route('login')->with('error', 'Sila login terlebih dahulu.');
+            return redirect()->route('login')->with('error', 'Please log in first.');
         }
 
         $this->requireHrBtsAccess();
@@ -303,6 +302,6 @@ class StaffHistoryController extends Controller
         $supabase->delete('staff_history', ['id' => 'eq.' . $id]);
 
         return redirect()->route('staff-history', ['company' => $companyCode])
-            ->with('success', 'Rekod sejarah staff dipadam.');
+            ->with('success', 'Staff history record deleted.');
     }
 }

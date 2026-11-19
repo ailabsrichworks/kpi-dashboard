@@ -37,7 +37,7 @@ class StaffManagementController extends Controller
     public function index(Request $request, SupabaseService $supabase)
     {
         if (!session()->has('employee_uuid') || !session()->has('company_code')) {
-            return redirect()->route('login')->with('error', 'Sila login terlebih dahulu.');
+            return redirect()->route('login')->with('error', 'Please log in first.');
         }
 
         $this->requireHrBtsAccess();
@@ -105,7 +105,7 @@ class StaffManagementController extends Controller
     public function edit(string $id, Request $request, SupabaseService $supabase)
     {
         if (!session()->has('employee_uuid') || !session()->has('company_code')) {
-            return redirect()->route('login')->with('error', 'Sila login terlebih dahulu.');
+            return redirect()->route('login')->with('error', 'Please log in first.');
         }
 
         $this->requireHrBtsAccess();
@@ -114,7 +114,7 @@ class StaffManagementController extends Controller
         $employee = $employee[0] ?? null;
 
         if (!$employee) {
-            abort(404, 'Staff tidak dijumpai.');
+            abort(404, 'Staff not found.');
         }
 
         $companies = $this->companies($supabase);
@@ -149,7 +149,7 @@ class StaffManagementController extends Controller
     public function update(string $id, Request $request, SupabaseService $supabase)
     {
         if (!session()->has('employee_uuid') || !session()->has('company_code')) {
-            return redirect()->route('login')->with('error', 'Sila login terlebih dahulu.');
+            return redirect()->route('login')->with('error', 'Please log in first.');
         }
 
         $this->requireHrBtsAccess();
@@ -158,7 +158,7 @@ class StaffManagementController extends Controller
         $original = $original[0] ?? null;
 
         if (!$original) {
-            abort(404, 'Staff tidak dijumpai.');
+            abort(404, 'Staff not found.');
         }
 
         $validator = Validator::make($request->all(), [
@@ -188,7 +188,7 @@ class StaffManagementController extends Controller
         $companies    = $this->companies($supabase);
         $validCompany = in_array($companyCode, collect($companies)->pluck('code')->map(fn ($c) => strtoupper($c))->all(), true);
         if (!$validCompany) {
-            return back()->withInput()->withErrors(['company_code' => 'Company tidak sah.']);
+            return back()->withInput()->withErrors(['company_code' => 'Invalid company.']);
         }
 
         // department_code has a real FK into departments.code -- must be
@@ -200,7 +200,7 @@ class StaffManagementController extends Controller
             'select'       => 'code',
         ]);
         if (empty($deptMatch)) {
-            return back()->withInput()->withErrors(['department_code' => 'Department ini tiada dalam company yang dipilih.']);
+            return back()->withInput()->withErrors(['department_code' => 'This department does not exist in the selected company.']);
         }
 
         $movedCompany = strtoupper($original['company_code']) !== $companyCode;
@@ -224,11 +224,11 @@ class StaffManagementController extends Controller
                     continue;
                 }
                 if ($value === $id) {
-                    return back()->withInput()->withErrors([$field => 'Staff tidak boleh report kepada diri sendiri.']);
+                    return back()->withInput()->withErrors([$field => 'Staff cannot report to themselves.']);
                 }
                 $match = $supabase->get('employees', ['id' => 'eq.' . $value, 'company_code' => 'eq.' . $companyCode, 'select' => 'id']);
                 if (empty($match)) {
-                    return back()->withInput()->withErrors([$field => 'Staff yang dipilih tiada dalam company yang sama.']);
+                    return back()->withInput()->withErrors([$field => 'The selected staff member is not in the same company.']);
                 }
             }
         }
@@ -253,9 +253,9 @@ class StaffManagementController extends Controller
             // that's where the reason/event for it gets recorded.
         ]);
 
-        $successMessage = 'Data staff berjaya dikemaskini.';
+        $successMessage = 'Staff data updated successfully.';
         if ($movedCompany) {
-            $successMessage .= ' Company telah ditukar -- sila tetapkan semula Manager/VP/Reports To untuk company baru.';
+            $successMessage .= ' Company was changed -- please re-assign Manager/VP/Reports To for the new company.';
         }
 
         return redirect()->route('staff-management.edit', $id)->with('success', $successMessage);
