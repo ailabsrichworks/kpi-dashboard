@@ -128,15 +128,25 @@ class OrgChartController extends Controller
             $employees = $keptById->values()->all();
         }
 
+        // Full display name per department code (e.g. PROGRAM -> "Program &
+        // Project Management Office") -- falls back to the raw code for a
+        // department that has no distinct full name on file, so a staff
+        // card never ends up blank. department_code itself is untouched
+        // everywhere else (employees.department_code, the FK, the filter
+        // dropdown's value) -- this map only changes what gets displayed.
+        $deptNameByCode = collect($departments)->pluck('name', 'code')
+            ->map(fn ($name, $code) => $name ?: $code);
+
         $nodes = [];
         foreach ($employees as $emp) {
             $role = strtoupper(trim($emp['role'] ?? '')) ?: '-';
+            $deptCode = $emp['department_code'] ?? '-';
             $nodes[$emp['id']] = [
                 'id'             => $emp['id'],
                 'employee_id'    => $emp['employee_id'] ?? '-',
                 'name'           => $emp['short_name'] ?? $emp['full_name'] ?? 'Unknown',
                 'role'           => $role,
-                'department'     => $emp['department_code'] ?? '-',
+                'department'     => $deptNameByCode->get($deptCode, $deptCode),
                 'position'       => $emp['position'] ?? null,
                 // Not removed from the tree when a department filter is active
                 // (that would break the chain above/below it) -- just flagged
