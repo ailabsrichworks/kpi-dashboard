@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * A new, legacy-side table — `staff_history` has no Platform `company_id`
@@ -16,11 +17,28 @@ use Illuminate\Support\Facades\DB;
  * ON DELETE CASCADE, since employees are never hard-deleted in this app
  * (is_active is the soft-delete flag), so a cascade here would just be
  * silent, unused dead-code risk.
+ *
+ * `employees` itself predates every migration in this repo (created
+ * directly in production, same as every other legacy table) and is never
+ * created by any migration here — so the CI "tenant-isolation" job, which
+ * replays every migration against a fresh, empty disposable Postgres
+ * container, has no `employees` table to reference at all. This is the
+ * first migration to write real SQL against a legacy table rather than
+ * just mention one in a comment (confirmed by grepping every prior
+ * migration), which is why this didn't surface until now. Guarded the
+ * same way `2026_06_19_033957_create_sessions_table`'s duplicate-table fix
+ * was: skip cleanly when the dependency isn't there, instead of failing
+ * the whole migrate run for an environment that was never going to have
+ * this table anyway.
  */
 return new class extends Migration
 {
     public function up(): void
     {
+        if (!Schema::connection('pgsql')->hasTable('employees')) {
+            return;
+        }
+
         DB::connection('pgsql')->statement(<<<'SQL'
             create table if not exists public.staff_history (
                 id uuid primary key default gen_random_uuid(),
