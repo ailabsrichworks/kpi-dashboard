@@ -23,6 +23,17 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            /* Without this, a flex container's own box defaults to its
+               PARENT's available width, not its content's natural width --
+               so a tree wider than the visible scroll area got centered
+               into a box narrower than itself, pushing roughly half of it
+               into negative scrollLeft territory that a left-to-right
+               scrollbar can never reach. A department landing in that half
+               (e.g. TITAN, a few siblings in) was genuinely unreachable by
+               scrolling, not just hard to find. fit-content lets the box
+               grow to its real content width so the whole tree sits in
+               positive, scrollable space from end to end. */
+            width: fit-content;
         }
         /* flex-start, not the inherited center: with align-items:center a
            leaf sibling (no children, shorter li) gets vertically centered
@@ -210,6 +221,31 @@ function filterOrgChart() {
         card.classList.add(matches ? 'org-search-match' : 'org-search-hidden');
     });
 }
+
+// A department filter only dims non-matching cards -- it never removes
+// them, since hiding them would cut the reporting lines above/below
+// (see org-node-dimmed's own comment in _node.blade.php). But a wide
+// tree (TITAN's own VP, a few siblings in, with 8 of her own reports)
+// can land well outside the visible scroll area with nothing on screen
+// to say which direction the highlighted department actually is in --
+// which is exactly what looked like "TITAN isn't even in the chart".
+// Scroll the first non-dimmed match into view automatically instead of
+// leaving the viewer to guess.
+@if($deptFilter !== 'ALL')
+    document.addEventListener('DOMContentLoaded', function () {
+        var match = document.querySelector('#orgTreeRoot .org-node:not(.org-node-dimmed)');
+        var container = document.getElementById('orgChartScroll');
+        if (match && container) {
+            // Not scrollIntoView(): unreliable here across nested scroll
+            // containers (observed resetting scrollLeft back to 0 instead
+            // of scrolling) -- computed directly instead.
+            var matchRect = match.getBoundingClientRect();
+            var containerRect = container.getBoundingClientRect();
+            var delta = (matchRect.left - containerRect.left) - (containerRect.width - matchRect.width) / 2;
+            container.scrollLeft += delta;
+        }
+    });
+@endif
 </script>
 
 </body>
