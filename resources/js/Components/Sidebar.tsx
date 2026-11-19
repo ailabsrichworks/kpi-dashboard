@@ -122,6 +122,7 @@ export default function Sidebar() {
                     {navSections.map((section) => {
                         if (section.hrOnly && !layout.hrAccess) return null;
                         if (section.btsOnly && !isBts && !(section.quarterControlOnly && isQuarterControlAuthorized)) return null;
+                        if (section.hrBtsOnly && !isHrBts && !(section.quarterControlOnly && isQuarterControlAuthorized)) return null;
 
                         return (
                             <div key={section.title}>
@@ -136,7 +137,7 @@ export default function Sidebar() {
                                     {section.items.map((item) => {
                                         if (item.sltOnly && !isSltDept) return null;
                                         if (item.titanOnly && !hasTitanAccess) return null;
-                                        if (item.btsOnly && !isBts) return null;
+                                        if (item.btsOnly && !isBts && !(item.quarterControlOnly && isQuarterControlAuthorized)) return null;
                                         if (item.hrBtsOnly && !isHrBts) return null;
 
                                         const isActive = isNavItemActive(item, url);

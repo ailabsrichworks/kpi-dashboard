@@ -9,6 +9,12 @@ export interface NavItem {
     btsOnly?: boolean;
     hrBtsOnly?: boolean;
     /**
+     * Mirrors the section-level flag of the same name: lets a btsOnly item
+     * still open for the named-individual "Quarter Control" grant even
+     * though the caller isn't BTS.
+     */
+    quarterControlOnly?: boolean;
+    /**
      * True when this route's controller still returns a plain Blade `view()`
      * response rather than `Inertia::render()`. Inertia's own <Link> globally
      * intercepts same-origin clicks (see @inertiajs/core's shouldIntercept);
@@ -29,6 +35,7 @@ export interface NavSection {
     items: NavItem[];
     hrOnly?: boolean;
     btsOnly?: boolean;
+    hrBtsOnly?: boolean;
     /**
      * Mirrors partials/sidebar.blade.php's `quarter_control_only`: lets this
      * bts_only section still open for the named-individual "Quarter Control"
@@ -52,8 +59,6 @@ export const navSections: NavSection[] = [
             { label: 'SLT Dashboard', href: '/slt-dashboard', match: 'slt-dashboard*', icon: 'analytics', sltOnly: true },
             { label: 'Staff Summary', href: '/staff-evaluation-summary', match: 'staff-evaluation-summary*', icon: 'report', hrBtsOnly: true, legacy: true },
             { label: 'Org Chart', href: '/org-chart', match: 'org-chart*', icon: 'users', hrBtsOnly: true, legacy: true },
-            { label: 'Staff History', href: '/staff-history', match: 'staff-history*', icon: 'history', hrBtsOnly: true, legacy: true },
-            { label: 'Edit Staff Data', href: '/staff-management', match: 'staff-management*', icon: 'edit', hrBtsOnly: true, legacy: true },
         ],
     },
     {
@@ -96,12 +101,21 @@ export const navSections: NavSection[] = [
         ],
     },
     {
+        // HR/BTS staff-admin tools (Staff History, Edit Staff Data) belong
+        // here, not under Overview. 'View As' stays BTS-only via its own
+        // item-level flag; 'Quarter Control' is now ALSO item-level
+        // btsOnly (previously relied entirely on the section gate being
+        // BTS-only) plus its own quarterControlOnly, so it still opens for
+        // the named-individual grant without also exposing it to every HR
+        // user now that the section itself admits HR too.
         title: 'Admin Setup',
-        btsOnly: true,
+        hrBtsOnly: true,
         quarterControlOnly: true,
         items: [
+            { label: 'Staff History', href: '/staff-history', match: 'staff-history*', icon: 'history', hrBtsOnly: true, legacy: true },
+            { label: 'Edit Staff Data', href: '/staff-management', match: 'staff-management*', icon: 'edit', hrBtsOnly: true, legacy: true },
             { label: 'View As (Employee KPI)', href: '/admin/view-as', match: 'admin/view-as*', icon: 'users', btsOnly: true },
-            { label: 'Quarter Control', href: '/admin/quarter-control', match: 'admin/quarter-control*', icon: 'calendar', legacy: true },
+            { label: 'Quarter Control', href: '/admin/quarter-control', match: 'admin/quarter-control*', icon: 'calendar', btsOnly: true, quarterControlOnly: true, legacy: true },
         ],
     },
 ];

@@ -754,20 +754,6 @@
                         'icon'        => 'users',
                         'hr_bts_only' => true,
                     ],
-                    [
-                        'label'       => 'Staff History',
-                        'href'        => route('staff-history'),
-                        'match'       => 'staff-history*',
-                        'icon'        => 'history',
-                        'hr_bts_only' => true,
-                    ],
-                    [
-                        'label'       => 'Edit Staff Data',
-                        'href'        => route('staff-management'),
-                        'match'       => 'staff-management*',
-                        'icon'        => 'edit',
-                        'hr_bts_only' => true,
-                    ],
                 ],
             ],
             [
@@ -860,18 +846,37 @@
                 ],
             ],
             [
-                // 'View As' stays BTS-only via its own item-level flag below;
-                // 'Quarter Control' additionally opens for the named-individual
-                // grant in Controller::isQuarterControlAuthorized() (Suley, RCG
-                // COO / RGHB Group COO, 2026-08-21) -- letting the whole section
-                // through on quarter_control_only so she sees SOMETHING here,
-                // while the still-bts_only item inside stays hidden from her.
+                // HR/BTS staff-admin tools (Staff History, Edit Staff Data)
+                // belong here, not under Overview -- this whole section is
+                // exactly "admin setup" tooling, not general dashboard
+                // browsing. 'View As' stays BTS-only via its own item-level
+                // flag below; 'Quarter Control' is now ALSO item-level
+                // bts_only (previously relied entirely on the section gate
+                // being BTS-only) plus its own quarter_control_only, so it
+                // additionally opens for the named-individual grant in
+                // Controller::isQuarterControlAuthorized() (Suley, RCG COO /
+                // RGHB Group COO, 2026-08-21) without also exposing it to
+                // every HR user now that the section itself admits HR too.
                 'title'                 => 'Admin Setup',
-                'bts_only'              => true,
+                'hr_bts_only'           => true,
                 'quarter_control_only'  => true,
                 'items'    => [
+                    [
+                        'label'       => 'Staff History',
+                        'href'        => route('staff-history'),
+                        'match'       => 'staff-history*',
+                        'icon'        => 'history',
+                        'hr_bts_only' => true,
+                    ],
+                    [
+                        'label'       => 'Edit Staff Data',
+                        'href'        => route('staff-management'),
+                        'match'       => 'staff-management*',
+                        'icon'        => 'edit',
+                        'hr_bts_only' => true,
+                    ],
                     ['label' => 'View As (Employee KPI)', 'href' => route('admin.view-as'), 'match' => 'admin/view-as*', 'icon' => 'users', 'bts_only' => true],
-                    ['label' => 'Quarter Control', 'href' => route('admin.quarter-control'), 'match' => 'admin/quarter-control*', 'icon' => 'calendar'],
+                    ['label' => 'Quarter Control', 'href' => route('admin.quarter-control'), 'match' => 'admin/quarter-control*', 'icon' => 'calendar', 'bts_only' => true, 'quarter_control_only' => true],
                 ],
             ],
         ];
@@ -896,6 +901,9 @@
             @if(($section['bts_only'] ?? false) && !$isBts && !(($section['quarter_control_only'] ?? false) && $isQuarterControlAuthorized))
                 @continue
             @endif
+            @if(($section['hr_bts_only'] ?? false) && !$isHrBts && !(($section['quarter_control_only'] ?? false) && $isQuarterControlAuthorized))
+                @continue
+            @endif
             <div>
                 <div class="sidebar-text flex items-center gap-2 mb-1 px-2">
                     <p class="sidebar-accent-text text-[9px] text-[#D4AF37] font-semibold uppercase tracking-widest shrink-0">
@@ -917,7 +925,7 @@
                         @if(($item['hr_bts_only'] ?? false) && !$isHrBts)
                             @continue
                         @endif
-                        @if(($item['bts_only'] ?? false) && !$isBts)
+                        @if(($item['bts_only'] ?? false) && !$isBts && !(($item['quarter_control_only'] ?? false) && $isQuarterControlAuthorized))
                             @continue
                         @endif
                         @if(($item['titan_only'] ?? false) && !$hasTitanAccess)
