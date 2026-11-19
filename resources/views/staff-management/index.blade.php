@@ -41,6 +41,14 @@
                 </select>
             </div>
             <div class="flex flex-col">
+                <label class="text-[9px] text-white/60 uppercase tracking-wide mb-0.5">Status</label>
+                <select name="status" onchange="this.form.submit()" class="text-xs font-bold rounded-lg px-2.5 py-1.5 text-[#1a1a1a] bg-white border border-white/20">
+                    <option value="all" @selected($statusFilter === 'all')>All</option>
+                    <option value="active" @selected($statusFilter === 'active')>Active</option>
+                    <option value="inactive" @selected($statusFilter === 'inactive')>Inactive</option>
+                </select>
+            </div>
+            <div class="flex flex-col">
                 <label class="text-[9px] text-white/60 uppercase tracking-wide mb-0.5">Search</label>
                 <input type="text" name="q" value="{{ $search }}" placeholder="Nama / ID staff..." class="text-xs font-bold rounded-lg px-2.5 py-1.5 text-[#1a1a1a] bg-white border border-white/20 w-44">
             </div>

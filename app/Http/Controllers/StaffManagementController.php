@@ -83,17 +83,32 @@ class StaffManagementController extends Controller
             }));
         }
 
+        // A company with 40+ staff and only a couple of inactive ones (the
+        // common case -- RCG currently has 46 active vs 2 inactive) buries
+        // those few rows alphabetically among everyone else with no way to
+        // jump straight to them, which is exactly what looked like "only
+        // Active shows up here" even though both were always being fetched.
+        $statusFilter = strtolower(trim($request->query('status', 'all')));
+        if (!in_array($statusFilter, ['all', 'active', 'inactive'], true)) {
+            $statusFilter = 'all';
+        }
+        if ($statusFilter !== 'all') {
+            $wantActive = $statusFilter === 'active';
+            $employees  = array_values(array_filter($employees, fn ($emp) => (bool) $emp['is_active'] === $wantActive));
+        }
+
         foreach ($employees as &$emp) {
             $emp['department_name'] = $deptNameByCode->get($emp['department_code'] ?? '', $emp['department_code'] ?? '-');
         }
         unset($emp);
 
         return view('staff-management.index', [
-            'today'       => now()->timezone('Asia/Kuala_Lumpur')->format('d M Y'),
-            'companyCode' => $companyCode,
-            'companies'   => $companies,
-            'employees'   => $employees,
-            'search'      => $search,
+            'today'        => now()->timezone('Asia/Kuala_Lumpur')->format('d M Y'),
+            'companyCode'  => $companyCode,
+            'companies'    => $companies,
+            'employees'    => $employees,
+            'search'       => $search,
+            'statusFilter' => $statusFilter,
         ]);
     }
 
