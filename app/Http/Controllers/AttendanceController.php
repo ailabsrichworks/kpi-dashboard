@@ -36,7 +36,7 @@ class AttendanceController extends Controller
         return session('hr_access') === true || $this->isBtsSession();
     }
 
-    public function index(SupabaseService $supabase)
+    public function index()
     {
         if (!session()->has('employee_uuid') || !session()->has('company_code')) {
             return redirect()->route('login');
@@ -48,15 +48,8 @@ class AttendanceController extends Controller
             $company = self::VALID_COMPANIES[0];
         }
 
-        $departments = $supabase->get('departments', [
-            'company_code' => 'eq.' . $company,
-            'select'       => 'code,name',
-            'order'        => 'name.asc',
-        ]) ?? [];
-
         return view('attendance.index', [
             'defaultCompany' => $company,
-            'departments'    => $departments,
             'defaultPeriod'  => now()->format('Y-m'),
         ]);
     }

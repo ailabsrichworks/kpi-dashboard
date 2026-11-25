@@ -155,9 +155,6 @@
                 <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Department</p>
                 <select id="deptFilter" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs" onchange="renderStaffList()">
                     <option value="">All</option>
-                    @foreach($departments as $d)
-                    <option value="{{ $d['code'] }}">{{ $d['name'] ?? $d['code'] }}</option>
-                    @endforeach
                 </select>
             </div>
             <div class="flex-1 min-w-[150px]">
@@ -386,8 +383,29 @@ function loadStaffList() {
     document.getElementById('staffList').innerHTML = '<p class="text-[12px] text-slate-400 px-2 py-6 text-center">Loading…</p>';
     fetch("{{ route('attendance.staff') }}?company=" + encodeURIComponent(company) + "&period=" + encodeURIComponent(period))
         .then(function(r) { return r.json(); })
-        .then(function(d) { STAFF_CACHE = d.staff || []; renderStaffList(); })
+        .then(function(d) { STAFF_CACHE = d.staff || []; rebuildDeptFilterOptions(); renderStaffList(); })
         .catch(function() { document.getElementById('staffList').innerHTML = '<p class="text-[12px] text-red-500 px-2 py-6 text-center">Could not load attendance.</p>'; });
+}
+
+// The Department filter is built from whatever department text actually
+// appears in the imported attendance data (InfoTech's own department codes,
+// e.g. "BD"/"PROG"/"MPR") -- NOT from this company's official departments
+// table, which uses a completely different, unrelated set of codes/names
+// (e.g. "ALUMNI"/"Alumni"). Comparing those two was why the filter never
+// matched anything before.
+function rebuildDeptFilterOptions() {
+    var sel = document.getElementById('deptFilter');
+    var current = sel.value;
+    var values = Array.from(new Set(STAFF_CACHE.map(function(s) { return s.department; })
+        .filter(function(v) { return v && v !== '—'; })))
+        .sort(function(a, b) { return a.localeCompare(b); });
+    var hasUnassigned = STAFF_CACHE.some(function(s) { return s.department === '—'; });
+
+    var html = '<option value="">All</option>' +
+        values.map(function(v) { return '<option value="' + v + '">' + v + '</option>'; }).join('') +
+        (hasUnassigned ? '<option value="—">Unassigned</option>' : '');
+    sel.innerHTML = html;
+    sel.value = values.indexOf(current) !== -1 || current === '—' ? current : '';
 }
 
 var _debounce;
