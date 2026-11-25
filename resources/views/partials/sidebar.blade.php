@@ -829,7 +829,7 @@
                 'hr_only' => true,
                 'items'   => [
                     [
-                        'label' => 'Import & Analysis',
+                        'label' => 'Attendance Records',
                         'href'  => '/attendance',
                         'match' => 'attendance*',
                         'icon'  => 'attendance',

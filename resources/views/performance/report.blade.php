@@ -900,7 +900,7 @@
                 @else
                     <div class="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-5 py-4 mb-5">
                         <svg class="w-5 h-5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                        <p class="text-[12px] text-slate-500">Attendance data for {{ $qLabel }} has not been imported yet. HR will upload the data via <strong>Import &amp; Analysis</strong>.</p>
+                        <p class="text-[12px] text-slate-500">Attendance data for {{ $qLabel }} has not been imported yet. HR will upload the data via <strong>Attendance Records</strong>.</p>
                     </div>
                 @endif
 

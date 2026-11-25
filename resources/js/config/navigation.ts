@@ -88,7 +88,7 @@ export const navSections: NavSection[] = [
         title: 'Attendance',
         hrOnly: true,
         items: [
-            { label: 'Import & Analysis', href: '/attendance', match: 'attendance*', icon: 'attendance', legacy: true },
+            { label: 'Attendance Records', href: '/attendance', match: 'attendance*', icon: 'attendance', legacy: true },
         ],
     },
     {

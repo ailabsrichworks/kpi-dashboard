@@ -46,7 +46,7 @@
 {{-- ══ HEADER ═══════════════════════════════════════════════════════════ --}}
 <div class="rounded-2xl bg-gradient-to-r from-[#0d241f] to-[#1a3d34] text-white px-6 py-5 mb-4 no-print flex flex-wrap items-center justify-between gap-3">
     <div>
-        <h1 class="text-lg font-black">Attendance Import &amp; Analysis</h1>
+        <h1 class="text-lg font-black">Attendance Records</h1>
         <p class="text-[11px] text-white/60 mt-0.5">Upload the InfoTech Daily Attendance Report CSV, review, and manage every staff member's record.</p>
     </div>
     <span class="text-[9px] font-black uppercase tracking-widest bg-white/10 border border-white/25 rounded-full px-3 py-1.5">🔒 BTS &amp; HR Access Only</span>
