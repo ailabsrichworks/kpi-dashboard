@@ -321,7 +321,7 @@ function renderReview(d) {
         return '' +
         '<div class="conflict-card border-2 border-red-200 bg-red-50/60 rounded-xl p-4" data-eid="' + c.internal_id + '">' +
             '<div class="flex items-center justify-between gap-2 mb-2">' +
-                '<div><span class="text-[12.5px] font-black text-slate-800">' + c.name + '</span> <span class="text-[11px] text-slate-400">· ' + c.internal_id + ' · ' + (c.department || '—') + '</span></div>' +
+                '<div><span class="text-[12.5px] font-black text-slate-800">' + c.name + '</span> <span class="text-[11px] text-slate-400">· ' + c.internal_id + ' · ' + deptName(c.department) + '</span></div>' +
                 '<span class="text-[10px] font-black uppercase" data-status>' + c.count + ' day(s) — Unresolved</span>' +
             '</div>' +
             rows + moreNote +
@@ -373,6 +373,8 @@ function confirmImport() {
 }
 
 // ───────────────────── Step 3: staff attendance ─────────────────────
+var DEPT_NAMES = {!! json_encode($departmentNames) !!};
+function deptName(code) { return code ? (DEPT_NAMES[code] || code) : '—'; }
 var STAFF_CACHE = [];
 var selected = new Set();
 var dailyCache = {};
@@ -387,23 +389,22 @@ function loadStaffList() {
         .catch(function() { document.getElementById('staffList').innerHTML = '<p class="text-[12px] text-red-500 px-2 py-6 text-center">Could not load attendance.</p>'; });
 }
 
-// The Department filter is built from whatever department text actually
-// appears in the imported attendance data (InfoTech's own department codes,
-// e.g. "BD"/"PROG"/"MPR") -- NOT from this company's official departments
-// table, which uses a completely different, unrelated set of codes/names
-// (e.g. "ALUMNI"/"Alumni"). Comparing those two was why the filter never
-// matched anything before.
+// Built from whichever department codes actually appear in the loaded
+// staff list -- each staff's department code now comes from THIS company's
+// own employees table (see AttendanceController::preview()), never
+// InfoTech's raw export column, so it always matches a real department and
+// deptName() always has a real full name to show for it.
 function rebuildDeptFilterOptions() {
     var sel = document.getElementById('deptFilter');
     var current = sel.value;
     var values = Array.from(new Set(STAFF_CACHE.map(function(s) { return s.department; })
         .filter(function(v) { return v && v !== '—'; })))
-        .sort(function(a, b) { return a.localeCompare(b); });
+        .sort(function(a, b) { return deptName(a).localeCompare(deptName(b)); });
     var hasUnassigned = STAFF_CACHE.some(function(s) { return s.department === '—'; });
 
     var html = '<option value="">All</option>' +
-        values.map(function(v) { return '<option value="' + v + '">' + v + '</option>'; }).join('') +
-        (hasUnassigned ? '<option value="—">Unassigned</option>' : '');
+        values.map(function(v) { return '<option value="' + v + '">' + deptName(v) + '</option>'; }).join('') +
+        (hasUnassigned ? '<option value="—">Unassigned (not matched to a department)</option>' : '');
     sel.innerHTML = html;
     sel.value = values.indexOf(current) !== -1 || current === '—' ? current : '';
 }
@@ -430,7 +431,7 @@ function renderStaffList() {
         '<div class="staff-row border border-slate-200 rounded-xl overflow-hidden" id="row-' + cssId(s.internal_id) + '">' +
             '<div class="grid items-center gap-2.5 px-3.5 py-2.5 cursor-pointer hover:bg-slate-50 text-[11.5px]" style="grid-template-columns:22px 1.6fr repeat(7,.7fr) 20px;" onclick="toggleRow(\'' + s.internal_id + '\')">' +
                 '<input type="checkbox" onclick="event.stopPropagation(); toggleSelect(\'' + s.internal_id + '\')">' +
-                '<div class="min-w-0"><span class="font-black text-slate-800 truncate block">' + s.name + '</span><span class="text-[10px] text-slate-400">' + s.internal_id + ' · ' + s.department + '</span></div>' +
+                '<div class="min-w-0"><span class="font-black text-slate-800 truncate block">' + s.name + '</span><span class="text-[10px] text-slate-400">' + s.internal_id + ' · ' + deptName(s.department) + '</span></div>' +
                 '<div class="text-center font-black">' + s.working_days + '</div>' +
                 '<div class="text-center font-black">' + s.present_days + '</div>' +
                 '<div class="text-center font-black ' + (s.absent_days>0?'text-red-600':'') + '">' + s.absent_days + '</div>' +

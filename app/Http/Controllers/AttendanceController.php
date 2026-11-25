@@ -36,7 +36,7 @@ class AttendanceController extends Controller
         return session('hr_access') === true || $this->isBtsSession();
     }
 
-    public function index()
+    public function index(SupabaseService $supabase)
     {
         if (!session()->has('employee_uuid') || !session()->has('company_code')) {
             return redirect()->route('login');
@@ -48,9 +48,23 @@ class AttendanceController extends Controller
             $company = self::VALID_COMPANIES[0];
         }
 
+        // Every staff member's department is now stamped onto their
+        // attendance rows from THIS table (see preview()), not InfoTech's
+        // own raw export code -- this map just turns that stored code into
+        // the full name everywhere it's displayed.
+        $departments = $supabase->get('departments', [
+            'company_code' => 'eq.' . $company,
+            'select'       => 'code,name',
+        ]) ?? [];
+        $departmentNames = [];
+        foreach ($departments as $d) {
+            $departmentNames[$d['code']] = $d['name'] ?? $d['code'];
+        }
+
         return view('attendance.index', [
-            'defaultCompany' => $company,
-            'defaultPeriod'  => now()->format('Y-m'),
+            'defaultCompany'   => $company,
+            'defaultPeriod'    => now()->format('Y-m'),
+            'departmentNames'  => $departmentNames,
         ]);
     }
 
@@ -110,7 +124,18 @@ class AttendanceController extends Controller
         $records = [];
         $conflictsByStaff = [];
         foreach ($parsed['records'] as $rec) {
-            $rec['employee_id']    = $dbIndex[$rec['internal_id']]['id'] ?? null;
+            $match = $dbIndex[$rec['internal_id']] ?? null;
+            $rec['employee_id'] = $match['id'] ?? null;
+            // Every HR-facing department label (filter dropdown, staff list,
+            // conflict review) uses THIS company's own department_code for
+            // that staff member -- never InfoTech's raw "Department Code"
+            // export column, which is InfoTech's own unrelated short code
+            // (e.g. "BD"/"PROG") and doesn't correspond to anything in our
+            // departments table. A staff member not found in our own
+            // employees table (unmatched internal_id) has no real department
+            // to show, so this stays null rather than falling back to that
+            // cryptic code.
+            $rec['department'] = $match['department_code'] ?? null;
             $key                   = $rec['internal_id'] . '|' . $rec['date'];
             $prev                  = $existingByKey[$key] ?? null;
             $rec['is_conflict']    = false;
