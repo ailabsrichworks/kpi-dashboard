@@ -1156,7 +1156,7 @@
                         @foreach([['label'=>'Strengths','name'=>'s6_strengths'],['label'=>'Work Ethics / Attitude','name'=>'s6_ethics'],['label'=>'Areas Need Improvement','name'=>'s6_improvement'],['label'=>'Training Required','name'=>'s6_training']] as $pf)
                         <div>
                             <div class="flex items-center gap-2 mb-2"><span class="w-1.5 h-1.5 rounded-full bg-[#6B9080] flex-shrink-0"></span><p class="f-label">{{ $pf['label'] }}</p></div>
-                            <input type="text" name="{{ $pf['name'] }}" placeholder="—" class="f-input perf-analysis-input" readonly style="pointer-events:none;opacity:0.55;background:#f8fafc;cursor:not-allowed;">
+                            <textarea name="{{ $pf['name'] }}" rows="3" placeholder="—" class="f-area perf-analysis-input" readonly style="pointer-events:none;opacity:0.55;background:#f8fafc;cursor:not-allowed;resize:vertical;text-transform:uppercase;"></textarea>
                             <button type="button" class="perf-rephrase-btn no-print" data-field-label="{{ $pf['label'] }}" onclick="rephrasePerfField(this)" style="display:inline-flex;align-items:center;gap:3px;margin-top:6px;font-size:8px;font-weight:800;color:#4a7c6b;background:#f0f9f6;border:1px solid #d1e7e0;border-radius:6px;padding:3px 7px;cursor:pointer;">✨ Rephrase</button>
                         </div>
                         @endforeach
