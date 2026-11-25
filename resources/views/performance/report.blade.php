@@ -564,7 +564,7 @@
                         $ytdMonth = \Carbon\Carbon::create()->month(now()->month)->format('M');
                         $partAFields = [
                             'Medical Leave (Days)'   => $attendanceYTD['mc_days'],
-                            'Emergency Leave (Days)' => $attendanceYTD['other_leave_days'],
+                            'Emergency Leave (Days)' => $attendanceYTD['el_days'],
                             'No. of Lateness'        => $attendanceYTD['late_count'],
                         ];
                     @endphp
@@ -883,6 +883,7 @@
                             ['label' => 'Insufficient',   'value' => $attendanceSummary['insufficient_count'],  'color' => 'text-purple-600'],
                             ['label' => 'Medical Leave',  'value' => $attendanceSummary['mc_days'],             'color' => 'text-blue-600'],
                             ['label' => 'Annual Leave',   'value' => $attendanceSummary['al_days'],             'color' => 'text-violet-600'],
+                            ['label' => 'Emergency Leave','value' => $attendanceSummary['el_days'],             'color' => 'text-orange-600'],
                             ['label' => 'Other Leave',    'value' => $attendanceSummary['other_leave_days'],    'color' => 'text-slate-500'],
                         ] as $af)
                         <div class="border border-[#6B9080]/20 rounded-xl px-4 py-3 bg-slate-50/60 text-center">
@@ -909,14 +910,14 @@
                     1 => (int)($attendanceSummary['late_count']          ?? 0),
                     2 => (int)($attendanceSummary['absent_days']          ?? 0),
                     3 => (int)($attendanceSummary['insufficient_count']   ?? 0),
-                    4 => (int)($attendanceSummary['other_leave_days']     ?? 0),
+                    4 => (int)($attendanceSummary['el_days']              ?? 0),
                     5 => 0,
                 ];
                 $attCriteria = [
                     1 => ['label' => 'Lateness',             'desc' => 'Arriving to work up to 30 minutes after start of official work hours.'],
                     2 => ['label' => 'Absent',               'desc' => 'No clock-in record.'],
                     3 => ['label' => 'Insufficient',         'desc' => 'Early departure — before end of official work hours.'],
-                    4 => ['label' => 'EL / Unpaid Leave',    'desc' => 'Unplanned leave, especially delayed or unauthorised.'],
+                    4 => ['label' => 'Emergency Leave',      'desc' => 'Unplanned leave, especially delayed or unauthorised.'],
                     5 => ['label' => 'Disciplinary Matters', 'desc' => 'Issuance of Reminder, Warning, or Showcause Letters.'],
                 ];
                 @endphp

@@ -813,10 +813,13 @@ Route::middleware(['kpi.auth'])->group(function () {
     | PERFORMANCE EVALUATION
     |--------------------------------------------------------------------------
     */
-    Route::get('/attendance',             [\App\Http\Controllers\AttendanceController::class, 'index'])->name('attendance.index');
-    Route::get('/attendance/import',      fn() => redirect()->route('attendance.index')); // GET fallback — prevents 405 on refresh/back
-    Route::post('/attendance/import',     [\App\Http\Controllers\AttendanceController::class, 'import'])->name('attendance.import');
-    Route::post('/attendance/save',       [\App\Http\Controllers\AttendanceController::class, 'save'])->name('attendance.save');
+    Route::get('/attendance',                      [\App\Http\Controllers\AttendanceController::class, 'index'])->name('attendance.index');
+    Route::get('/attendance/import',               fn() => redirect()->route('attendance.index')); // GET fallback — prevents 405 on refresh/back
+    Route::post('/attendance/import',              [\App\Http\Controllers\AttendanceController::class, 'preview'])->name('attendance.import');
+    Route::post('/attendance/confirm',             [\App\Http\Controllers\AttendanceController::class, 'confirmImport'])->name('attendance.confirm');
+    Route::get('/attendance/staff',                [\App\Http\Controllers\AttendanceController::class, 'staffList'])->name('attendance.staff');
+    Route::get('/attendance/staff/{internalId}/daily', [\App\Http\Controllers\AttendanceController::class, 'staffDaily'])->name('attendance.staff.daily');
+    Route::post('/attendance/delete',              [\App\Http\Controllers\AttendanceController::class, 'destroy'])->name('attendance.delete');
 
     // Talent Tracker: everyone can view; only SLT/BTS can write (enforced in the controller).
     Route::get('/talent-tracker',               [\App\Http\Controllers\TalentTrackerController::class, 'index'])->name('talent-tracker.index');
