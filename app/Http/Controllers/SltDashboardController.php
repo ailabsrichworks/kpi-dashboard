@@ -26,13 +26,17 @@ class SltDashboardController extends Controller
         return $employees[0];
     }
 
-    // Same department gate used for the SLT-Office staff KPI drill-down —
-    // this page is restricted the same way. isBtsSession() keeps BTS's
+    // SLT Office + BTS only -- HR (Corporate Governance & HR Dept) does
+    // NOT get this one, unlike most other cross-department HR/BTS tools in
+    // this app (explicit request, 2026-11-19). isBtsSession() keeps BTS's
     // access even while impersonating someone outside SLT Office via View As.
+    // This had actually been using isCrossCompanyMonitorSession() (BTS OR
+    // HR), which silently granted HR this page despite this very comment
+    // already describing BTS-only as the intent -- fixed to match.
     private function requireSltAccess(array $user): void
     {
         $dept = strtoupper(trim($user['department_code'] ?? ''));
-        if ($dept !== 'SLT OFFICE' && !$this->isCrossCompanyMonitorSession()) {
+        if ($dept !== 'SLT OFFICE' && !$this->isBtsSession()) {
             abort(403, 'This page is only accessible to SLT Office.');
         }
     }

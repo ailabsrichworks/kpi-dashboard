@@ -890,7 +890,11 @@
     <nav class="flex-1 overflow-y-auto text-[12px] space-y-5 pr-1 min-h-0 custom-scroll">
         @php
             $isBts = session('department_code') === 'BTS';
-            $isSltDept = in_array(strtoupper(trim(session('department_code') ?? '')), ['SLT OFFICE', 'BTS', 'CORPORATE GOVERNANCE & HR DEPT']);
+            // SLT Dashboard is SLT Office + BTS only -- HR deliberately does
+            // NOT get this one (2026-11-19), unlike every other hr_bts_only
+            // item in this sidebar. Keep in sync with
+            // SltDashboardController::requireSltAccess().
+            $isSltDept = in_array(strtoupper(trim(session('department_code') ?? '')), ['SLT OFFICE', 'BTS']);
             $isHrBts = in_array(strtoupper(trim(session('department_code') ?? '')), ['BTS', 'CORPORATE GOVERNANCE & HR DEPT']);
             $isQuarterControlAuthorized = $isBts || in_array(session('employee_uuid'), [
                 '8e322638-49a5-4560-b800-8d846c53e7c8', // Suley -- RCG

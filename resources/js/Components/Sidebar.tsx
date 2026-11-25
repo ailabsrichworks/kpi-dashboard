@@ -13,7 +13,9 @@ export default function Sidebar() {
     const departmentCode = (layout.departmentCode ?? '').trim().toUpperCase();
     const isBts = departmentCode === 'BTS';
     const isHrGovernance = departmentCode === 'CORPORATE GOVERNANCE & HR DEPT';
-    const isSltDept = ['SLT OFFICE', 'BTS', 'CORPORATE GOVERNANCE & HR DEPT'].includes(departmentCode);
+    // SLT Dashboard is SLT Office + BTS only -- HR deliberately does not
+    // get this one (2026-11-19), unlike every other hrBtsOnly item here.
+    const isSltDept = ['SLT OFFICE', 'BTS'].includes(departmentCode);
     const isHrBts = isBts || isHrGovernance;
     const isQuarterControlAuthorized = isBts || layout.quarterControlAccess === true;
     const hasTitanAccess =
