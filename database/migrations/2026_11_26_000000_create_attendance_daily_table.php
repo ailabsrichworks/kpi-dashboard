@@ -23,15 +23,25 @@ use Illuminate\Support\Facades\Schema;
  * a rest day" (e.g. PTL).
  *
  * Legacy table, like `staff_history` -- guarded against CI's fresh,
- * migration-only disposable database, which never has `attendance_summary`
- * or `employees` (both created directly in production, predating every
- * migration here).
+ * migration-only disposable database, which never has the legacy
+ * `attendance_summary` or `employees` (both created directly in production,
+ * predating every migration here).
+ *
+ * Can't guard on hasTable('attendance_summary') alone: the Platform's own
+ * 2026_09_29_030000_create_attendance_tables migration creates an unrelated
+ * table of the exact same name (company_id/external_employee_id/sheet_url --
+ * a different feature entirely) that DOES exist in CI's fresh database. A
+ * bare hasTable() check can't tell the two apart and was passing in CI right
+ * up until the employees(id) foreign key below failed. `company_code` only
+ * exists on the legacy table, never the Platform one, so that's the real
+ * discriminator.
  */
 return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::connection('pgsql')->hasTable('attendance_summary')) {
+        if (!Schema::connection('pgsql')->hasColumn('attendance_summary', 'company_code')
+            || !Schema::connection('pgsql')->hasTable('employees')) {
             return;
         }
 
@@ -90,6 +100,15 @@ return new class extends Migration
 
     public function down(): void
     {
+        // Same discriminator as up() -- without it, this would drop the
+        // Platform attendance_summary's own genuine `name` column if this
+        // migration were ever rolled back in an environment that has that
+        // table instead of the legacy one.
+        if (!Schema::connection('pgsql')->hasColumn('attendance_summary', 'company_code')) {
+            DB::connection('pgsql')->statement('drop table if exists public.attendance_daily');
+            return;
+        }
+
         DB::connection('pgsql')->statement('drop table if exists public.attendance_daily');
         DB::connection('pgsql')->statement('alter table public.attendance_summary drop column if exists el_days');
         DB::connection('pgsql')->statement('alter table public.attendance_summary drop column if exists name');
